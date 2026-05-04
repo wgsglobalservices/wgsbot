@@ -2,6 +2,8 @@
 
 Run `pnpm setup:cloudflare` for guided commands. The script prints commands and intentionally does not accept secrets as command-line arguments.
 
+Use `pnpm deploy` for deployments. Do not run `npx wrangler deploy` directly, because `pnpm deploy` first runs the idempotent Cloudflare queue check required by this project.
+
 ## Resources
 
 - D1 database binding: `DB`
@@ -16,9 +18,7 @@ Run `pnpm setup:cloudflare` for guided commands. The script prints commands and 
 ```bash
 wrangler d1 create minutesbot
 wrangler r2 bucket create minutesbot-artifacts
-wrangler queues create minutesbot-invites
-wrangler queues create minutesbot-summaries
-wrangler queues create minutesbot-email
+pnpm cloudflare:ensure
 wrangler secret put ATTENDEE_API_KEY
 wrangler secret put ATTENDEE_WEBHOOK_SECRET
 wrangler secret put AI_API_KEY
