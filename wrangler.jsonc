@@ -2,6 +2,12 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "minutesbot-wgs",
   "main": "apps/api-worker/src/index.ts",
+  "routes": [
+    {
+      "pattern": "wgs.minutes.bot",
+      "custom_domain": true
+    }
+  ],
   "compatibility_date": "2026-05-04",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
