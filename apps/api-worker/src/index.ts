@@ -10,6 +10,8 @@ import { testActionsRoute } from "./routes/testActions";
 import { corsMiddleware } from "./middleware/cors";
 import { errorMiddleware } from "./middleware/errors";
 
+export { MeetingWorkflow } from "../../workflow-worker/src/meetingWorkflow";
+
 export const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", errorMiddleware);

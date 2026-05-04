@@ -1,6 +1,6 @@
 import { createAuditLog, getSettings } from "@minutesbot/db";
 import { daysAgoIso } from "@minutesbot/shared";
-import type { WorkflowEnv } from "./index";
+import type { WorkflowEnv } from "./env";
 import { fetchAndStoreTranscript } from "./transcriptWorkflow";
 import { generateAndSendSummary } from "./summaryWorkflow";
 

@@ -1,7 +1,9 @@
+/// <reference path="./workflows.d.ts" />
+
 import { AttendeeClient } from "@minutesbot/attendee-client";
 import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
 import { AppError, minutesBefore } from "@minutesbot/shared";
-import type { WorkflowEnv } from "./index";
+import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string };
 

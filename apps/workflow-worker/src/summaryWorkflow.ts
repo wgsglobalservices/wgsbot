@@ -1,10 +1,12 @@
+/// <reference path="./workflows.d.ts" />
+
 import { createAuditLog, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, updateSummaryStatus } from "@minutesbot/db";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
 import { filterSummaryRecipients } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
 import { AppError } from "@minutesbot/shared";
 import { createEmailProvider } from "@minutesbot/email-sender";
-import type { WorkflowEnv } from "./index";
+import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string };
 

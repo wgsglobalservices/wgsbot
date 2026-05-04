@@ -1,5 +1,7 @@
+/// <reference path="./workflows.d.ts" />
+
 import { cleanupOldArtifacts } from "./queueConsumers";
-import type { WorkflowEnv } from "./index";
+import type { WorkflowEnv } from "./env";
 
 const WorkflowBase: typeof WorkflowEntrypoint =
   (globalThis as unknown as { WorkflowEntrypoint?: typeof WorkflowEntrypoint }).WorkflowEntrypoint ??
