@@ -31,7 +31,7 @@ Development commands:
 - Lint: pnpm lint
 - Build: pnpm build
 - Local dev: pnpm dev
-- Deploy: pnpm deploy
+- Deploy: pnpm run deploy
 - Local migrations: pnpm db:migrate:local
 - Remote migrations: pnpm db:migrate:remote
 - Setup Cloudflare resources: pnpm setup:cloudflare

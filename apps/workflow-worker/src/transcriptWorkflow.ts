@@ -1,22 +1,13 @@
-/// <reference path="./workflows.d.ts" />
-
 import { AttendeeClient } from "@minutesbot/attendee-client";
 import { createArtifact, createAuditLog, getMeeting, getSettings, insertTranscriptSegment, updateTranscriptStatus } from "@minutesbot/db";
 import { AppError } from "@minutesbot/shared";
+import { WorkflowEntrypoint } from "cloudflare:workers";
+import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string; botId?: string };
 
-const WorkflowBase: typeof WorkflowEntrypoint =
-  (globalThis as unknown as { WorkflowEntrypoint?: typeof WorkflowEntrypoint }).WorkflowEntrypoint ??
-  (class {
-    env: WorkflowEnv;
-    constructor(_state: unknown, env: WorkflowEnv) {
-      this.env = env;
-    }
-  } as unknown as typeof WorkflowEntrypoint);
-
-export class TranscriptWorkflow extends WorkflowBase<WorkflowEnv, Params> {
+export class TranscriptWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
     await fetchAndStoreTranscript(this.env, event.payload.meetingId, event.payload.botId, step.do.bind(step));
   }

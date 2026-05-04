@@ -18,7 +18,8 @@ export default defineConfig({
       "@minutesbot/attendee-client": new URL("./packages/attendee-client/src/index.ts", import.meta.url).pathname,
       "@minutesbot/summary-engine": new URL("./packages/summary-engine/src/index.ts", import.meta.url).pathname,
       "@minutesbot/email-renderer": new URL("./packages/email-renderer/src/index.ts", import.meta.url).pathname,
-      "@minutesbot/email-sender": new URL("./packages/email-sender/src/index.ts", import.meta.url).pathname
+      "@minutesbot/email-sender": new URL("./packages/email-sender/src/index.ts", import.meta.url).pathname,
+      "cloudflare:workers": new URL("./tests/cloudflare-workers.ts", import.meta.url).pathname
     }
   }
 });

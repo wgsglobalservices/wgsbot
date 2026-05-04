@@ -1,18 +1,8 @@
-/// <reference path="./workflows.d.ts" />
-
 import { cleanupOldArtifacts } from "./queueConsumers";
+import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
-const WorkflowBase: typeof WorkflowEntrypoint =
-  (globalThis as unknown as { WorkflowEntrypoint?: typeof WorkflowEntrypoint }).WorkflowEntrypoint ??
-  (class {
-    env: WorkflowEnv;
-    constructor(_state: unknown, env: WorkflowEnv) {
-      this.env = env;
-    }
-  } as unknown as typeof WorkflowEntrypoint);
-
-export class CleanupWorkflow extends WorkflowBase<WorkflowEnv, Record<string, never>> {
+export class CleanupWorkflow extends WorkflowEntrypoint<WorkflowEnv, Record<string, never>> {
   async run(): Promise<void> {
     await cleanupOldArtifacts(this.env);
   }

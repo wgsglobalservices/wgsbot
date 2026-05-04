@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "minutesbot-wgs",
+  "account_id": "747b74cbd7d019dd7aeecb2c24a4bf10",
   "main": "apps/api-worker/src/index.ts",
   "routes": [
     {
@@ -26,7 +27,7 @@
     {
       "binding": "DB",
       "database_name": "minutesbot",
-      "database_id": "replace-with-d1-database-id"
+      "database_id": "ad101cd3-8733-4171-bba4-90928adb1f4f"
     }
   ],
   "r2_buckets": [

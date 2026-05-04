@@ -42,7 +42,7 @@ wrangler secret put SESSION_SECRET
 - `pnpm test`
 - `pnpm typecheck`
 - `pnpm lint`
-- `pnpm deploy`
+- `pnpm run deploy`
 - `pnpm setup:cloudflare`
 - `pnpm check`
 

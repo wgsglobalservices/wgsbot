@@ -1,25 +1,16 @@
-/// <reference path="./workflows.d.ts" />
-
 import { createAuditLog, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, updateSummaryStatus } from "@minutesbot/db";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
 import { filterSummaryRecipients } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
 import { AppError } from "@minutesbot/shared";
 import { createEmailProvider } from "@minutesbot/email-sender";
+import { WorkflowEntrypoint } from "cloudflare:workers";
+import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string };
 
-const WorkflowBase: typeof WorkflowEntrypoint =
-  (globalThis as unknown as { WorkflowEntrypoint?: typeof WorkflowEntrypoint }).WorkflowEntrypoint ??
-  (class {
-    env: WorkflowEnv;
-    constructor(_state: unknown, env: WorkflowEnv) {
-      this.env = env;
-    }
-  } as unknown as typeof WorkflowEntrypoint);
-
-export class SummaryWorkflow extends WorkflowBase<WorkflowEnv, Params> {
+export class SummaryWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
     await generateAndSendSummary(this.env, event.payload.meetingId, step.do.bind(step));
   }

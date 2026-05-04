@@ -1,22 +1,13 @@
-/// <reference path="./workflows.d.ts" />
-
 import { AttendeeClient } from "@minutesbot/attendee-client";
 import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
 import { AppError, minutesBefore } from "@minutesbot/shared";
+import { WorkflowEntrypoint } from "cloudflare:workers";
+import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string };
 
-const WorkflowBase: typeof WorkflowEntrypoint =
-  (globalThis as unknown as { WorkflowEntrypoint?: typeof WorkflowEntrypoint }).WorkflowEntrypoint ??
-  (class {
-    env: WorkflowEnv;
-    constructor(_state: unknown, env: WorkflowEnv) {
-      this.env = env;
-    }
-  } as unknown as typeof WorkflowEntrypoint);
-
-export class MeetingWorkflow extends WorkflowBase<WorkflowEnv, Params> {
+export class MeetingWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
     const meetingId = event.payload.meetingId;
     const meeting = await step.do("load meeting", () => getMeeting(this.env.DB, meetingId));
@@ -25,7 +16,7 @@ export class MeetingWorkflow extends WorkflowBase<WorkflowEnv, Params> {
 
     const settings = await step.do("load settings", () => getSettings(this.env.DB));
     const wakeAt = minutesBefore(meeting.start_time ?? new Date().toISOString(), settings.attendee.createBotMinutesBeforeStart);
-    await step.sleep("wait until bot create buffer", wakeAt);
+    await step.sleepUntil("wait until bot create buffer", new Date(wakeAt));
     await step.do("mark waiting", () => updateMeetingStatus(this.env.DB, meetingId, "WAITING_TO_CREATE_BOT"));
     await step.do("mark queued", async () => {
       await updateMeetingStatus(this.env.DB, meetingId, "BOT_CREATE_QUEUED");

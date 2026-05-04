@@ -9,6 +9,7 @@ import { settingsRoute } from "./routes/settings";
 import { testActionsRoute } from "./routes/testActions";
 import { corsMiddleware } from "./middleware/cors";
 import { errorMiddleware } from "./middleware/errors";
+import { cleanupOldArtifacts, handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
 
 export { MeetingWorkflow } from "../../workflow-worker/src/meetingWorkflow";
 
@@ -26,4 +27,12 @@ app.route("/api/meetings", meetingsRoute);
 app.route("/api/artifacts", artifactsRoute);
 app.route("/api/webhooks/attendee", attendeeWebhookRoute);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async queue(batch, env, ctx) {
+    ctx.waitUntil(handleQueueBatch(batch, env));
+  },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(cleanupOldArtifacts(env));
+  }
+} satisfies ExportedHandler<Env>;

@@ -2,7 +2,7 @@
 
 Run `pnpm setup:cloudflare` for guided commands. The script prints commands and intentionally does not accept secrets as command-line arguments.
 
-Use `pnpm deploy` for deployments. Do not run `npx wrangler deploy` directly, because `pnpm deploy` first runs the idempotent Cloudflare queue check required by this project.
+Use `pnpm run deploy` for deployments. Do not run `npx wrangler deploy` directly, because `pnpm run deploy` first runs the idempotent Cloudflare queue check required by this project.
 
 ## Resources
 
@@ -24,7 +24,7 @@ wrangler secret put ATTENDEE_WEBHOOK_SECRET
 wrangler secret put AI_API_KEY
 wrangler secret put SESSION_SECRET
 pnpm db:migrate:remote
-pnpm deploy
+pnpm run deploy
 ```
 
 Configure Email Routing to send `notetaker@meet.company.com` to the Email Worker. Configure custom domains such as `notes.company.com`, `api.company.com`, and `meet.company.com` in Cloudflare DNS/routes.
