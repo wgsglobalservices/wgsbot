@@ -6,8 +6,8 @@ import { defaultSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
 
-const sampleInvite = `From: Alice <alice@minutes.bot>
-To: notetaker@meet.minutes.bot
+const sampleInvite = `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
 Subject: Test
 
 BEGIN:VCALENDAR
@@ -17,8 +17,8 @@ UID:test
 SUMMARY:Test
 DTSTART:20260504T150000Z
 DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@minutes.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@minutes.bot
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
 DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
 END:VEVENT
 END:VCALENDAR`;

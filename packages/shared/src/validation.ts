@@ -53,11 +53,11 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultSettings: AppSettings = {
   companyName: "Minutesbot Demo",
-  primaryDomain: "minutes.bot",
-  allowedDomains: ["minutes.bot"],
-  recorderEmail: "notetaker@meet.minutes.bot",
+  primaryDomain: "wgs.bot",
+  allowedDomains: ["wgs.bot"],
+  recorderEmail: "notetaker@wgs.bot",
   attendee: {
-    baseUrl: "https://attendee.minutes.bot",
+    baseUrl: "https://attendee.wgs.bot",
     apiKeyConfigured: false,
     webhookSecretConfigured: false,
     botName: "minutesbot",
@@ -73,7 +73,7 @@ export const defaultSettings: AppSettings = {
   },
   email: {
     provider: "mock",
-    senderEmail: "notetaker@meet.minutes.bot"
+    senderEmail: "notetaker@wgs.bot"
   },
   policy: {
     sendToAllowedDomainsOnly: true,

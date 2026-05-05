@@ -30,10 +30,10 @@ describe("email worker invite handling", () => {
     };
 
     await handleInvite(
-      { from: "alice@minutes.bot", to: "wrong@minutes.bot", setReject },
+      { from: "alice@wgs.bot", to: "wrong@wgs.bot", setReject },
       env,
-      `From: Alice <alice@minutes.bot>
-To: wrong@minutes.bot
+      `From: Alice <alice@wgs.bot>
+To: wrong@wgs.bot
 
 BEGIN:VCALENDAR
 METHOD:REQUEST
@@ -42,8 +42,8 @@ UID:test
 SUMMARY:Test
 DTSTART:20260504T150000Z
 DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@minutes.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@minutes.bot
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
 DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
 END:VEVENT
 END:VCALENDAR`
