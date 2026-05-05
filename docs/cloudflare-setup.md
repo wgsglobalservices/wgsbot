@@ -19,7 +19,7 @@ This repo is Cloudflare-first for the minutesbot control plane. The Worker serve
 
 ## Environments
 
-The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://wgs.minutes.bot` and `https://attendee.wgs.minutes.bot`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
+The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://wgs.bot` and `https://attendee.wgs.bot`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
 
 ## Commands
 

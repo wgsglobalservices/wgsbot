@@ -10,7 +10,7 @@
   },
   "routes": [
     {
-      "pattern": "attendee.wgs.minutes.bot",
+      "pattern": "attendee.wgs.bot",
       "custom_domain": true
     }
   ],
@@ -69,7 +69,7 @@
       "name": "minutesbot-attendee-staging",
       "routes": [
         {
-          "pattern": "staging-attendee.wgs.minutes.bot",
+          "pattern": "staging-attendee.wgs.bot",
           "custom_domain": true
         }
       ],

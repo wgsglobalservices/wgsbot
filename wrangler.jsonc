@@ -10,7 +10,7 @@
   },
   "routes": [
     {
-      "pattern": "wgs.minutes.bot",
+      "pattern": "wgs.bot",
       "custom_domain": true
     }
   ],
@@ -21,9 +21,9 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "APP_BASE_URL": "https://wgs.minutes.bot",
-    "API_BASE_URL": "https://wgs.minutes.bot",
-    "ATTENDEE_API_BASE_URL": "https://attendee.wgs.minutes.bot",
+    "APP_BASE_URL": "https://wgs.bot",
+    "API_BASE_URL": "https://wgs.bot",
+    "ATTENDEE_API_BASE_URL": "https://attendee.wgs.bot",
     "DEFAULT_RECORDER_EMAIL": "notetaker@meet.minutes.bot",
     "DEFAULT_SENDER_EMAIL": "notetaker@meet.minutes.bot",
     "ENVIRONMENT": "production"
@@ -71,14 +71,14 @@
       "name": "wgsbot-staging",
       "routes": [
         {
-          "pattern": "staging.wgs.minutes.bot",
+          "pattern": "staging.wgs.bot",
           "custom_domain": true
         }
       ],
       "vars": {
-        "APP_BASE_URL": "https://staging.wgs.minutes.bot",
-        "API_BASE_URL": "https://staging.wgs.minutes.bot",
-        "ATTENDEE_API_BASE_URL": "https://staging-attendee.wgs.minutes.bot",
+        "APP_BASE_URL": "https://staging.wgs.bot",
+        "API_BASE_URL": "https://staging.wgs.bot",
+        "ATTENDEE_API_BASE_URL": "https://staging-attendee.wgs.bot",
         "DEFAULT_RECORDER_EMAIL": "notetaker-staging@meet.minutes.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker-staging@meet.minutes.bot",
         "ENVIRONMENT": "staging"
@@ -126,14 +126,14 @@
       "name": "wgsbot",
       "routes": [
         {
-          "pattern": "wgs.minutes.bot",
+          "pattern": "wgs.bot",
           "custom_domain": true
         }
       ],
       "vars": {
-        "APP_BASE_URL": "https://wgs.minutes.bot",
-        "API_BASE_URL": "https://wgs.minutes.bot",
-        "ATTENDEE_API_BASE_URL": "https://attendee.wgs.minutes.bot",
+        "APP_BASE_URL": "https://wgs.bot",
+        "API_BASE_URL": "https://wgs.bot",
+        "ATTENDEE_API_BASE_URL": "https://attendee.wgs.bot",
         "DEFAULT_RECORDER_EMAIL": "notetaker@meet.minutes.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker@meet.minutes.bot",
         "ENVIRONMENT": "production"
