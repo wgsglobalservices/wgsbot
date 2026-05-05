@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildContainerEnv, missingSettings } from "./env";
+import { buildContainerEnv, missingSettings, runtimeStatus } from "./env";
 
 describe("attendee container env", () => {
   it("passes canonical upstream Attendee settings into the container", () => {
@@ -52,5 +52,33 @@ describe("attendee container env", () => {
         CREDENTIALS_ENCRYPTION_KEY: "fernet-key"
       })
     ).toEqual([]);
+  });
+
+  it("reports runtime status for missing settings", () => {
+    expect(
+      runtimeStatus({
+        DJANGO_SECRET_KEY: "django-secret",
+        CREDENTIALS_ENCRYPTION_KEY: "fernet-key"
+      })
+    ).toEqual({
+      ok: false,
+      runtime: "cloudflare-containers",
+      missing: ["DATABASE_URL", "REDIS_URL"]
+    });
+  });
+
+  it("reports runtime status ready when required settings are present", () => {
+    expect(
+      runtimeStatus({
+        DATABASE_URL: "postgres://example",
+        REDIS_URL: "redis://example",
+        DJANGO_SECRET_KEY: "django-secret",
+        CREDENTIALS_ENCRYPTION_KEY: "fernet-key"
+      })
+    ).toEqual({
+      ok: true,
+      runtime: "cloudflare-containers",
+      missing: []
+    });
   });
 });

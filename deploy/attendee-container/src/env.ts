@@ -26,6 +26,12 @@ export type AttendeeContainerSettings = {
 
 const requiredSettings = ["DATABASE_URL", "REDIS_URL", "DJANGO_SECRET_KEY", "CREDENTIALS_ENCRYPTION_KEY"] as const;
 
+export type RuntimeStatus = {
+  ok: boolean;
+  runtime: "cloudflare-containers";
+  missing: string[];
+};
+
 export function buildContainerEnv(env: AttendeeContainerSettings): Record<string, string> {
   const result: Record<string, string> = {
     DJANGO_SETTINGS_MODULE: env.DJANGO_SETTINGS_MODULE || "attendee.settings.production"
@@ -63,4 +69,13 @@ export function missingSettings(env: AttendeeContainerSettings): string[] {
     if (key === "DJANGO_SECRET_KEY") return !env.DJANGO_SECRET_KEY && !env.SECRET_KEY;
     return !env[key];
   });
+}
+
+export function runtimeStatus(env: AttendeeContainerSettings): RuntimeStatus {
+  const missing = missingSettings(env);
+  return {
+    ok: missing.length === 0,
+    runtime: "cloudflare-containers",
+    missing
+  };
 }

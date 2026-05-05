@@ -1,6 +1,6 @@
 import { Container, getContainer, getRandom } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
-import { buildContainerEnv, missingSettings, type AttendeeContainerSettings } from "./env";
+import { buildContainerEnv, runtimeStatus, type AttendeeContainerSettings } from "./env";
 
 type AttendeeContainerEnv = AttendeeContainerSettings & {
   ATTENDEE_WEB: DurableObjectNamespace<AttendeeWebContainer>;
@@ -32,21 +32,19 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/_ops/health") {
-      const missing = missingSettings(env);
-      return Response.json(
-        {
-          ok: missing.length === 0,
-          runtime: "cloudflare-containers",
-          missing
-        },
-        { status: missing.length === 0 ? 200 : 503 }
-      );
+      const status = runtimeStatus(env);
+      return Response.json(status, { status: status.ok ? 200 : 503 });
     }
 
     if (url.pathname === "/_ops/start-workers" && request.method === "POST") {
+      const status = runtimeStatus(env);
+      if (!status.ok) return Response.json(status, { status: 503 });
       await startBackgroundContainers(env);
       return Response.json({ ok: true });
     }
+
+    const status = runtimeStatus(env);
+    if (!status.ok) return Response.json(status, { status: 503 });
 
     const instances = Number.parseInt(env.ATTENDEE_WEB_INSTANCES || "1", 10);
     const web = await getRandom(env.ATTENDEE_WEB, Number.isFinite(instances) && instances > 0 ? instances : 1);
@@ -54,6 +52,11 @@ export default {
   },
 
   async scheduled(_event: ScheduledEvent, env: AttendeeContainerEnv): Promise<void> {
+    const status = runtimeStatus(env);
+    if (!status.ok) {
+      console.warn(`Skipping attendee background container startup; missing settings: ${status.missing.join(", ")}`);
+      return;
+    }
     await startBackgroundContainers(env);
   }
 };
