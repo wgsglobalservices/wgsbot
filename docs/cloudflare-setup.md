@@ -8,6 +8,17 @@ Workers Builds defaults to `npx wrangler deploy` if the deploy command is not cu
 
 This repo is Cloudflare-first for the minutesbot control plane. The Worker serves the API and the Vite admin UI through Workers Static Assets; D1, R2, Queues, Workflows, and Email Routing are the production runtime.
 
+## DNS Cutover
+
+The `wgs.bot` zone is hosted in Cloudflare. Public traffic will keep going to the previous provider until the domain registrar nameservers are changed to:
+
+```text
+abby.ns.cloudflare.com
+arvind.ns.cloudflare.com
+```
+
+If `pnpm check` returns a Vercel `DEPLOYMENT_NOT_FOUND` response, the registrar is still pointing at Vercel nameservers and Cloudflare Workers cannot serve the app yet.
+
 ## Resources
 
 - D1 database binding: `DB`

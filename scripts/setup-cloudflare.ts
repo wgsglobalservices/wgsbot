@@ -22,3 +22,4 @@ for (const command of commands) console.log(`- ${command}`);
 console.log("\nUse pnpm run deploy for minutesbot deployments so Cloudflare queues are checked before Wrangler runs.");
 console.log("Use pnpm attendee:deploy only after configuring external Postgres and Redis for Attendee.");
 console.log("Also configure Email Routing for notetaker@meet.company.com and custom domains for app/API/attendee hosts.");
+console.log("For wgs.bot, change the registrar nameservers to abby.ns.cloudflare.com and arvind.ns.cloudflare.com before expecting traffic to reach Cloudflare.");
