@@ -1,6 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "minutesbot-attendee",
+  "account_id": "5e4d29b3db4faa691c672e24b0009999",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-04",
   "compatibility_flags": ["nodejs_compat"],

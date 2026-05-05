@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { AttendeeClient } from "@minutesbot/attendee-client";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
+import { createOpenAiCompatibleProvider } from "@minutesbot/summary-engine";
 import { defaultSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
@@ -52,6 +53,30 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
     if (!c.env.ATTENDEE_API_KEY) return c.json({ ok: false, message: "ATTENDEE_API_KEY secret is not configured" }, 400);
     const client = new AttendeeClient({ baseUrl: settings.attendee.baseUrl, apiKey: c.env.ATTENDEE_API_KEY });
     return c.json({ ok: true, preview: { clientBaseUrl: settings.attendee.baseUrl, createBotPayload: { meeting_url: "<teams-url>", bot_name: settings.attendee.botName } } });
+  })
+  .post("/test-ai", async (c) => {
+    const settings = await readSettings(c.env);
+    if (!c.env.AI_API_KEY) return c.json({ ok: false, message: "AI_API_KEY secret is not configured" }, 400);
+    if (settings.ai.provider !== "openai-compatible") {
+      return c.json({ ok: false, message: "Only OpenAI-compatible AI connection tests are supported in this MVP" }, 400);
+    }
+
+    const provider = createOpenAiCompatibleProvider({
+      baseUrl: settings.ai.baseUrl || defaultSettings.ai.baseUrl || "https://api.openai.com/v1",
+      apiKey: c.env.AI_API_KEY,
+      model: settings.ai.model
+    });
+    await provider.generate("Return exactly this JSON object and no extra text: {\"ok\":true}");
+
+    return c.json({
+      ok: true,
+      message: "AI provider connection succeeded",
+      provider: {
+        type: settings.ai.provider,
+        baseUrl: settings.ai.baseUrl,
+        model: settings.ai.model
+      }
+    });
   })
   .post("/test-email", async (c) => c.json({ ok: true, message: "Outbound email provider is configured as mock unless a binding/provider is supplied" }))
   .post("/parse-sample-invite", async (c) => c.json({ ok: true, invite: parseIncomingInvite(sampleInvite) }))

@@ -67,6 +67,7 @@ export function Setup() {
           <TestActionButton path="/api/admin/test-d1" label="Test D1" />
           <TestActionButton path="/api/admin/test-r2" label="Test R2" />
           <TestActionButton path="/api/admin/test-attendee" label="Test Attendee connection" />
+          <TestActionButton path="/api/admin/test-ai" label="Test AI connection" />
           <TestActionButton path="/api/admin/test-email" label="Test outbound email" />
           <TestActionButton path="/api/admin/parse-sample-invite" label="Parse sample invite" />
           <TestActionButton path="/api/admin/send-test-summary-email" label="Send test summary email" />

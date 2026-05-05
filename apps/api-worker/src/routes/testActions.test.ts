@@ -1,0 +1,102 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultSettings } from "@minutesbot/shared";
+import { app } from "../index";
+import type { Env } from "../env";
+
+class MemoryD1 {
+  rows = new Map<string, string>();
+
+  prepare(sql: string) {
+    const db = this;
+    return {
+      values: [] as unknown[],
+      bind(...values: unknown[]) {
+        this.values = values;
+        return this;
+      },
+      async first<T>() {
+        if (sql.includes("FROM settings")) {
+          const key = this.values[0] as string;
+          const value = db.rows.get(key);
+          return value ? ({ key, value, updated_at: new Date().toISOString() } as T) : null;
+        }
+        return null;
+      },
+      async run() {
+        if (sql.startsWith("INSERT OR REPLACE INTO settings")) {
+          db.rows.set(this.values[0] as string, this.values[1] as string);
+        }
+        return { success: true };
+      }
+    };
+  }
+}
+
+function env(overrides: Partial<Env> = {}): Env {
+  return {
+    DB: new MemoryD1() as unknown as D1Database,
+    ARTIFACTS: {} as R2Bucket,
+    INVITE_QUEUE: { send: async () => undefined },
+    SUMMARY_QUEUE: { send: async () => undefined },
+    EMAIL_QUEUE: { send: async () => undefined },
+    MEETING_WORKFLOW: { create: async () => ({}) },
+    APP_BASE_URL: "https://minutesbot.example.com",
+    API_BASE_URL: "https://minutesbot.example.com",
+    ATTENDEE_API_BASE_URL: "https://attendee.example.com",
+    DEFAULT_RECORDER_EMAIL: "notetaker@example.com",
+    DEFAULT_SENDER_EMAIL: "notetaker@example.com",
+    ENVIRONMENT: "test",
+    SESSION_SECRET: "test-secret",
+    ...overrides
+  };
+}
+
+async function post(path: string, testEnv: Env) {
+  return app.request(path, { method: "POST", headers: { authorization: "Bearer test-secret" } }, testEnv);
+}
+
+describe("admin test actions", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reports when the AI API key secret is not configured", async () => {
+    const response = await post("/api/admin/test-ai", env());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      message: "AI_API_KEY secret is not configured"
+    });
+  });
+
+  it("tests the OpenAI-compatible AI provider without returning the secret", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(url), init });
+        return new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      })
+    );
+
+    const response = await post("/api/admin/test-ai", env({ AI_API_KEY: "sk-secret" }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      message: "AI provider connection succeeded",
+      provider: {
+        type: defaultSettings.ai.provider,
+        baseUrl: defaultSettings.ai.baseUrl,
+        model: defaultSettings.ai.model
+      }
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(requests[0].init?.headers).toMatchObject({ authorization: "Bearer sk-secret" });
+  });
+});
