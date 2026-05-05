@@ -5,7 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "scripts": {
-    "build": "pnpm -r --if-present build",
+    "build": "tsx scripts/build-minutesbot.ts",
+    "build:workspace": "pnpm -r --if-present build",
     "test": "vitest run",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "tsc -p tsconfig.json --noEmit",

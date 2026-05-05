@@ -4,6 +4,8 @@ Run `pnpm setup:cloudflare` for guided commands. The script prints commands and 
 
 Use `pnpm run deploy` for deployments. In Cloudflare build settings, set the deploy command to `pnpm run deploy`, not `npx wrangler deploy`, because the package script first runs the idempotent Cloudflare queue check required by this project.
 
+Workers Builds defaults to `npx wrangler deploy` if the deploy command is not customized. The root `pnpm run build` command also checks for `WORKERS_CI=1` and creates the required queues before the workspace build, so the default deploy command still has provisioned queue bindings available. Set `MINUTESBOT_DEPLOY_ENV=staging` in Workers Builds only when intentionally deploying the staging environment; otherwise production queue names are used.
+
 This repo is Cloudflare-first for the minutesbot control plane. The Worker serves the API and the Vite admin UI through Workers Static Assets; D1, R2, Queues, Workflows, and Email Routing are the production runtime.
 
 ## Resources
