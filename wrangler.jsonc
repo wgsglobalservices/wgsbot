@@ -27,7 +27,7 @@
   "vars": {
     "APP_BASE_URL": "https://admin.wgs.bot",
     "API_BASE_URL": "https://minutesbot.wgsglobal.app",
-    "ATTENDEE_API_BASE_URL": "https://attendee.wgs.bot",
+    "ATTENDEE_API_BASE_URL": "https://attendee.wgsglobal.app",
     "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
     "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
     "ENVIRONMENT": "production"
@@ -36,7 +36,7 @@
     {
       "binding": "DB",
       "database_name": "minutesbot",
-      "database_id": "ad101cd3-8733-4171-bba4-90928adb1f4f"
+      "database_id": "7ab56d3f-c56d-4530-aa57-555a317511d3"
     }
   ],
   "r2_buckets": [
@@ -82,7 +82,7 @@
       "vars": {
         "APP_BASE_URL": "https://staging.wgs.bot",
         "API_BASE_URL": "https://staging.wgs.bot",
-        "ATTENDEE_API_BASE_URL": "https://staging-attendee.wgs.bot",
+        "ATTENDEE_API_BASE_URL": "https://staging-attendee.wgsglobal.app",
         "DEFAULT_RECORDER_EMAIL": "notetaker-staging@wgs.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker-staging@wgs.bot",
         "ENVIRONMENT": "staging"
@@ -141,7 +141,7 @@
       "vars": {
         "APP_BASE_URL": "https://admin.wgs.bot",
         "API_BASE_URL": "https://minutesbot.wgsglobal.app",
-        "ATTENDEE_API_BASE_URL": "https://attendee.wgs.bot",
+        "ATTENDEE_API_BASE_URL": "https://attendee.wgsglobal.app",
         "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
         "ENVIRONMENT": "production"
@@ -150,7 +150,7 @@
         {
           "binding": "DB",
           "database_name": "minutesbot",
-          "database_id": "ad101cd3-8733-4171-bba4-90928adb1f4f"
+          "database_id": "7ab56d3f-c56d-4530-aa57-555a317511d3"
         }
       ],
       "r2_buckets": [

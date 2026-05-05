@@ -45,14 +45,14 @@ Use R2 S3 API credentials for the AWS/S3 settings if you want Attendee object st
 
 ## Operations
 
-- Health/config check: `https://attendee.wgs.bot/_ops/health`
-- Start or restart background containers: `POST https://attendee.wgs.bot/_ops/start-workers`
+- Health/config check: `https://attendee.wgsglobal.app/_ops/health`
+- Start or restart background containers: `POST https://attendee.wgsglobal.app/_ops/start-workers`
 - The cron trigger calls the same background start path every 30 minutes as a best-effort keepalive.
 
 After Attendee is reachable, set the minutesbot Worker secret/config to point at this domain:
 
 ```bash
-ATTENDEE_API_BASE_URL=https://attendee.wgs.bot
+ATTENDEE_API_BASE_URL=https://attendee.wgsglobal.app
 wrangler secret put ATTENDEE_API_KEY
 wrangler secret put ATTENDEE_WEBHOOK_SECRET
 ```

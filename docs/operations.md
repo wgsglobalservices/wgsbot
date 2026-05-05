@@ -2,7 +2,7 @@
 
 Use `/api/health` and `pnpm check` for basic health checks.
 
-Use `https://attendee.wgs.bot/_ops/health` for the Attendee Container router config check when deploying the optional Cloudflare Containers path.
+Use `https://attendee.wgsglobal.app/_ops/health` for the Attendee Container router config check when deploying the optional Cloudflare Containers path.
 
 Admins can:
 

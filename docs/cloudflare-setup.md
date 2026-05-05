@@ -30,7 +30,7 @@ If `pnpm check` returns a Vercel `DEPLOYMENT_NOT_FOUND` response, the registrar 
 
 ## Environments
 
-The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://admin.wgs.bot`, `https://minutesbot.wgsglobal.app`, and `https://attendee.wgs.bot`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
+The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://admin.wgs.bot`, `https://minutesbot.wgsglobal.app`, and `https://attendee.wgsglobal.app`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
 
 ## Commands
 

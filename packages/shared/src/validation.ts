@@ -57,7 +57,7 @@ export const defaultSettings: AppSettings = {
   allowedDomains: ["wgs.bot"],
   recorderEmail: "notetaker@wgs.bot",
   attendee: {
-    baseUrl: "https://attendee.wgs.bot",
+    baseUrl: "https://attendee.wgsglobal.app",
     apiKeyConfigured: false,
     webhookSecretConfigured: false,
     botName: "minutesbot",
