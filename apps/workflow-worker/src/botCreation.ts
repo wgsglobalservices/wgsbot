@@ -1,6 +1,6 @@
 import { ATTENDEE_WEBHOOK_TRIGGERS, AttendeeClient, AttendeeClientError, type AttendeeBot } from "@minutesbot/attendee-client";
 import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
-import { AppError, minutesBefore, recordingR2Key, resolveAttendeeBaseUrl } from "@minutesbot/shared";
+import { AppError, attendeeWebhookUrl, minutesBefore, recordingR2Key, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
 const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
@@ -49,7 +49,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
       },
       webhooks: [
         {
-          url: `${env.API_BASE_URL}/api/webhooks/attendee`,
+          url: attendeeWebhookUrl(env),
           triggers: [...ATTENDEE_WEBHOOK_TRIGGERS]
         }
       ],

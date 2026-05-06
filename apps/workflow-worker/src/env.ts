@@ -8,6 +8,7 @@ export type WorkflowEnv = {
   ATTENDEE_API_BASE_URL: string;
   ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME?: string;
   ATTENDEE_WEBHOOK_SECRET?: string;
+  ATTENDEE_WEBHOOK_BASE_URL?: string;
   API_BASE_URL: string;
   AI_API_KEY?: string;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };

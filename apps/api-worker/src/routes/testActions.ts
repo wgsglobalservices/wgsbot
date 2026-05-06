@@ -3,7 +3,7 @@ import { AttendeeClient, AttendeeClientError } from "@minutesbot/attendee-client
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
 import { createOpenAiCompatibleProvider } from "@minutesbot/summary-engine";
-import { defaultSettings } from "@minutesbot/shared";
+import { attendeeWebhookUrl, defaultSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
 
@@ -35,7 +35,7 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
         apiKeyConfigured: settings.attendee.apiKeyConfigured,
         webhookSecretConfigured: settings.attendee.webhookSecretConfigured
       },
-      webhookUrl: `${c.env.API_BASE_URL}/api/webhooks/attendee`
+      webhookUrl: attendeeWebhookUrl(c.env)
     });
   })
   .post("/test-d1", async (c) => {

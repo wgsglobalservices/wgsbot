@@ -17,7 +17,7 @@ abby.ns.cloudflare.com
 arvind.ns.cloudflare.com
 ```
 
-If `pnpm check` returns a Vercel `DEPLOYMENT_NOT_FOUND` response, the registrar is still pointing at Vercel nameservers and Cloudflare Workers cannot serve the app yet. The production Worker is served on `https://admin.wgs.bot` and `https://minutesbot.wgsglobal.app`.
+If `pnpm check` returns a Vercel `DEPLOYMENT_NOT_FOUND` response, the registrar is still pointing at Vercel nameservers and Cloudflare Workers cannot serve the app yet. The production Worker is served on `https://admin.wgs.bot`, `https://minutesbot.wgsglobal.app`, and `https://minutesbot-webhook.wgsglobal.app`.
 
 ## Resources
 
@@ -31,7 +31,7 @@ If `pnpm check` returns a Vercel `DEPLOYMENT_NOT_FOUND` response, the registrar 
 
 ## Environments
 
-The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://admin.wgs.bot`, `https://minutesbot.wgsglobal.app`, and Attendee hosted services at `https://app.attendee.dev`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
+The root `wrangler.jsonc` includes `staging` and `production` environments. Production points app/API traffic at `https://admin.wgs.bot` and `https://minutesbot.wgsglobal.app`, Attendee webhook delivery at `https://minutesbot-webhook.wgsglobal.app`, and Attendee hosted services at `https://app.attendee.dev`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
 
 ## Commands
 

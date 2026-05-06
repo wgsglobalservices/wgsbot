@@ -11,6 +11,7 @@ export type Env = {
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };
   APP_BASE_URL: string;
   API_BASE_URL: string;
+  ATTENDEE_WEBHOOK_BASE_URL?: string;
   ATTENDEE_API_BASE_URL: string;
   ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME?: string;
   DEFAULT_RECORDER_EMAIL: string;

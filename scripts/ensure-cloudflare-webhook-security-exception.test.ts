@@ -8,8 +8,8 @@ import {
 
 describe("ensureWebhookSecurityException", () => {
   it("builds the narrow Attendee webhook POST expression", () => {
-    expect(webhookSecurityExceptionExpression({ host: "minutesbot.wgsglobal.app", path: "/api/webhooks/attendee" })).toBe(
-      'http.host eq "minutesbot.wgsglobal.app" and http.request.uri.path eq "/api/webhooks/attendee" and http.request.method eq "POST"'
+    expect(webhookSecurityExceptionExpression({ host: "minutesbot-webhook.wgsglobal.app", path: "/api/webhooks/attendee" })).toBe(
+      'http.host eq "minutesbot-webhook.wgsglobal.app" and http.request.uri.path eq "/api/webhooks/attendee" and http.request.method eq "POST"'
     );
   });
 
@@ -25,7 +25,7 @@ describe("ensureWebhookSecurityException", () => {
 
     expect(rules[0]).toMatchObject({
       ref: ATTENDEE_WEBHOOK_SECURITY_EXCEPTION_REF,
-      expression: 'http.host eq "minutesbot.wgsglobal.app" and http.request.uri.path eq "/api/webhooks/attendee" and http.request.method eq "POST"',
+      expression: 'http.host eq "minutesbot-webhook.wgsglobal.app" and http.request.uri.path eq "/api/webhooks/attendee" and http.request.method eq "POST"',
       action: "skip",
       action_parameters: {
         ruleset: "current",

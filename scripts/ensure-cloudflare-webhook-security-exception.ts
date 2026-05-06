@@ -2,13 +2,13 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_ACCOUNT_ID = "5e4d29b3db4faa691c672e24b0009999";
 const DEFAULT_ZONE_NAME = "wgsglobal.app";
-const DEFAULT_WEBHOOK_HOST = "minutesbot.wgsglobal.app";
+const DEFAULT_WEBHOOK_HOST = "minutesbot-webhook.wgsglobal.app";
 const DEFAULT_WEBHOOK_PATH = "/api/webhooks/attendee";
 const FIREWALL_CUSTOM_PHASE = "http_request_firewall_custom";
 
 export const ATTENDEE_WEBHOOK_SECURITY_EXCEPTION_REF = "minutesbot_attendee_webhook_security_exception";
 export const ATTENDEE_WEBHOOK_SECURITY_EXCEPTION_EXPRESSION =
-  'http.host eq "minutesbot.wgsglobal.app" and http.request.uri.path eq "/api/webhooks/attendee" and http.request.method eq "POST"';
+  'http.host eq "minutesbot-webhook.wgsglobal.app" and http.request.uri.path eq "/api/webhooks/attendee" and http.request.method eq "POST"';
 
 type CloudflareFetch = typeof fetch;
 

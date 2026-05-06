@@ -53,6 +53,7 @@ function env(overrides: Partial<WorkflowEnv> = {}, db = new BotCreationD1()): Wo
     ATTENDEE_API_KEY: "attendee-secret",
     ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME: "minutesbot-artifacts",
     API_BASE_URL: "https://minutesbot.example.com",
+    ATTENDEE_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app",
     ...overrides
   };
 }
@@ -85,7 +86,12 @@ describe("createMeetingBot failure handling", () => {
       external_media_storage_settings: {
         bucket_name: "minutesbot-artifacts",
         recording_file_name: "recordings/mtg_1/recording.mp3"
-      }
+      },
+      webhooks: [
+        {
+          url: "https://minutesbot-webhook.wgsglobal.app/api/webhooks/attendee"
+        }
+      ]
     });
   });
 

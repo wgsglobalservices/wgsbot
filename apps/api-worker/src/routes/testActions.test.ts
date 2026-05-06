@@ -59,6 +59,22 @@ describe("admin test actions", () => {
     vi.unstubAllGlobals();
   });
 
+  it("reports the dedicated Attendee webhook URL separately from the API base URL", async () => {
+    const response = await app.request(
+      "/api/admin/status",
+      { headers: { authorization: "Bearer test-secret" } },
+      env({
+        API_BASE_URL: "https://minutesbot.example.com",
+        ATTENDEE_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app"
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      webhookUrl: "https://minutesbot-webhook.wgsglobal.app/api/webhooks/attendee"
+    });
+  });
+
   it("reports when the AI API key secret is not configured", async () => {
     const response = await post("/api/admin/test-ai", env());
 

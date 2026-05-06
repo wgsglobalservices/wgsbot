@@ -16,6 +16,10 @@
     {
       "pattern": "minutesbot.wgsglobal.app",
       "custom_domain": true
+    },
+    {
+      "pattern": "minutesbot-webhook.wgsglobal.app",
+      "custom_domain": true
     }
   ],
   "compatibility_date": "2026-05-04",
@@ -27,6 +31,7 @@
   "vars": {
     "APP_BASE_URL": "https://admin.wgs.bot",
     "API_BASE_URL": "https://minutesbot.wgsglobal.app",
+    "ATTENDEE_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
     "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
     "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
     "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
@@ -124,11 +129,16 @@
         {
           "pattern": "minutesbot.wgsglobal.app",
           "custom_domain": true
+        },
+        {
+          "pattern": "minutesbot-webhook.wgsglobal.app",
+          "custom_domain": true
         }
       ],
       "vars": {
         "APP_BASE_URL": "https://admin.wgs.bot",
         "API_BASE_URL": "https://minutesbot.wgsglobal.app",
+        "ATTENDEE_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
         "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
         "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
         "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
