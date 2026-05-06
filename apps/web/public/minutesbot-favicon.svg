@@ -1,23 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
-  <title id="title">minutes.bot logo</title>
+  <title id="title">minutes.bot favicon</title>
   <desc id="desc">A smiling robot face with a clock hand.</desc>
-  <defs>
-    <radialGradient id="background" cx="50%" cy="42%" r="68%">
-      <stop offset="0%" stop-color="#404040"/>
-      <stop offset="58%" stop-color="#2b2f36"/>
-      <stop offset="100%" stop-color="#111827"/>
-    </radialGradient>
-    <linearGradient id="line" x1="246" x2="778" y1="226" y2="786" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#e2e8f0"/>
-    </linearGradient>
-    <filter id="softInset" x="-6%" y="-6%" width="112%" height="112%">
-      <feDropShadow dx="0" dy="1" stdDeviation="1.25" flood-color="#ffffff" flood-opacity=".18"/>
-      <feDropShadow dx="0" dy="-1" stdDeviation=".85" flood-color="#000000" flood-opacity=".45"/>
-    </filter>
-  </defs>
-  <rect width="1024" height="1024" fill="url(#background)"/>
-  <g fill="none" stroke="url(#line)" stroke-linecap="round" stroke-linejoin="round" filter="url(#softInset)">
+  <g fill="none" stroke="#f8fafc" stroke-linecap="round" stroke-linejoin="round">
     <path stroke-width="40" d="M512 343c-132 0-240 82-240 183s108 183 240 183 240-82 240-183-108-183-240-183Z"/>
     <path stroke-width="40" d="M262 523c-29 0-50 22-50 51s21 50 50 50"/>
     <path stroke-width="40" d="M762 523c29 0 50 22 50 51s-21 50-50 50"/>

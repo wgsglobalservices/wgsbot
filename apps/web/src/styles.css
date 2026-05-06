@@ -43,8 +43,8 @@ button, input, select, textarea { font: inherit; }
   place-items: center;
   border-radius: 8px;
   overflow: hidden;
-  background: #e5e7eb;
-  box-shadow: 0 0 0 1px rgba(226, 232, 240, .4), 0 12px 28px rgba(0, 0, 0, .28);
+  background: #111827;
+  box-shadow: 0 0 0 1px rgba(226, 232, 240, .24), 0 12px 28px rgba(0, 0, 0, .28);
 }
 
 .brandMark img {
