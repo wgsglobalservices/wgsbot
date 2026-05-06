@@ -17,7 +17,7 @@ This repository is Cloudflare-first. The minutesbot control plane runs on Cloudf
 - Fetch-based Attendee REST client in `packages/attendee-client`.
 - Optional Cloudflare Container router for self-hosted upstream Attendee in `deploy/attendee-container`.
 
-Demo domains use `https://admin.wgs.bot` for the admin UI, `https://minutesbot.wgsglobal.app` for API callbacks, `https://minutesbot-webhook.wgsglobal.app` for Attendee webhooks, Attendee hosted services at `https://app.attendee.dev`, and `notetaker@wgs.bot`.
+Demo domains use `https://admin.wgs.bot` for the admin UI, `https://minutesbot-api.wgsglobal.app` for API callbacks, `https://minutesbot-webhook.wgsglobal.app` for Attendee webhooks, Attendee hosted services at `https://app.attendee.dev`, and `notetaker@wgs.bot`.
 
 Customer self-hosted examples use `https://notes.company.com`, `https://attendee.company.com`, and `notetaker@meet.company.com`.
 

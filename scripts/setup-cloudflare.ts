@@ -25,4 +25,4 @@ for (const command of commands) console.log(`- ${command}`);
 console.log("\nUse pnpm run deploy for minutesbot deployments so Cloudflare queues are checked before Wrangler runs.");
 console.log("Use pnpm attendee:deploy only after configuring external Postgres, Redis, and generated Attendee secrets.");
 console.log("Also configure Email Routing for notetaker@meet.company.com and custom domains for app/API/attendee hosts.");
-console.log("Production custom domains are admin.wgs.bot, minutesbot.wgsglobal.app, and minutesbot-webhook.wgsglobal.app. Keep both zones delegated to abby.ns.cloudflare.com and arvind.ns.cloudflare.com.");
+console.log("Production custom domains are admin.wgs.bot, minutesbot-api.wgsglobal.app, and minutesbot-webhook.wgsglobal.app. Keep both zones delegated to abby.ns.cloudflare.com and arvind.ns.cloudflare.com.");

@@ -100,7 +100,7 @@ describe("summary workflow", () => {
         SUMMARY_QUEUE: { send: vi.fn() },
         EMAIL_QUEUE: { send: vi.fn() },
         ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
-        API_BASE_URL: "https://minutesbot.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
         AI_API_KEY: "test-ai-key",
         SEND_EMAIL: { send }
       },

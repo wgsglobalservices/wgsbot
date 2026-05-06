@@ -154,7 +154,7 @@ function env(db: FakeD1, artifacts: { get: ReturnType<typeof vi.fn>; put: Return
     SUMMARY_QUEUE: summaryQueue,
     EMAIL_QUEUE: { send: vi.fn() },
     ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
-    API_BASE_URL: "https://minutesbot.wgsglobal.app",
+    API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
     ATTENDEE_API_KEY: "attendee-key",
     ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME: "minutesbot-artifacts",
     AI_API_KEY: "openrouter-key"

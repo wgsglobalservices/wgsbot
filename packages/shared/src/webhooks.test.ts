@@ -5,7 +5,7 @@ describe("attendeeWebhookUrl", () => {
   it("uses the dedicated Attendee webhook base URL when configured", () => {
     expect(
       attendeeWebhookUrl({
-        API_BASE_URL: "https://minutesbot.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
         ATTENDEE_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app"
       })
     ).toBe("https://minutesbot-webhook.wgsglobal.app/api/webhooks/attendee");
