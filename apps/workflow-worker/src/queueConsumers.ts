@@ -7,9 +7,9 @@ import { handleCreateBotQueueMessage } from "./botCreation";
 
 export async function handleQueueBatch(batch: MessageBatch<unknown>, env: WorkflowEnv): Promise<void> {
   for (const message of batch.messages) {
-    const body = message.body as { type?: string; meetingId?: string; botId?: string };
+    const body = message.body as { type?: string; meetingId?: string; botId?: string; forceAttendeeFetch?: boolean };
     if (body.type === "create_bot" && body.meetingId) await handleCreateBotQueueMessage(env, body.meetingId);
-    if (body.type === "fetch_transcript" && body.meetingId) await fetchAndStoreTranscript(env, body.meetingId, body.botId);
+    if (body.type === "fetch_transcript" && body.meetingId) await fetchAndStoreTranscript(env, body.meetingId, body.botId, undefined, { forceAttendeeFetch: body.forceAttendeeFetch });
     if (body.type === "summarize" && body.meetingId) await generateAndSendSummary(env, body.meetingId);
     message.ack();
   }

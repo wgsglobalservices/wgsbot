@@ -39,8 +39,11 @@ export class AttendeeClient {
     return this.request<AttendeeBot>(`/api/v1/bots/${encodeURIComponent(botId)}`);
   }
 
-  async getBotTranscript(botId: string): Promise<AttendeeTranscriptSegment[]> {
-    return this.request<AttendeeTranscriptSegment[]>(`/api/v1/bots/${encodeURIComponent(botId)}/transcript`);
+  async getBotTranscript(botId: string, options: { force?: boolean } = {}): Promise<AttendeeTranscriptSegment[]> {
+    const params = new URLSearchParams();
+    if (options.force) params.set("force", "true");
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return this.request<AttendeeTranscriptSegment[]>(`/api/v1/bots/${encodeURIComponent(botId)}/transcript${query}`);
   }
 
   async getBotRecording(botId: string): Promise<AttendeeRecording> {

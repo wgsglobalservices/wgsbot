@@ -51,6 +51,30 @@ describe("AttendeeClient", () => {
     expect(new Uint8Array(recording.data)).toEqual(new Uint8Array([1, 2, 3]));
   });
 
+  it("can force Attendee transcript retrieval", async () => {
+    const fetcher = vi.fn(async () => Response.json([]));
+    const client = new AttendeeClient({ baseUrl: "https://attendee.company.com", apiKey: "secret", fetcher });
+
+    await client.getBotTranscript("bot_1", { force: true });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://attendee.company.com/api/v1/bots/bot_1/transcript?force=true",
+      expect.objectContaining({ headers: expect.objectContaining({ authorization: "Token secret" }) })
+    );
+  });
+
+  it("does not force transcript retrieval by default", async () => {
+    const fetcher = vi.fn(async () => Response.json([]));
+    const client = new AttendeeClient({ baseUrl: "https://attendee.company.com", apiKey: "secret", fetcher });
+
+    await client.getBotTranscript("bot_1");
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://attendee.company.com/api/v1/bots/bot_1/transcript",
+      expect.objectContaining({ headers: expect.objectContaining({ authorization: "Token secret" }) })
+    );
+  });
+
   it("rejects JSON recording responses as unavailable media", async () => {
     const fetcher = vi.fn(async () => Response.json({ detail: "Recording is not available yet" }));
     const client = new AttendeeClient({ baseUrl: "https://attendee.company.com", apiKey: "secret", fetcher });

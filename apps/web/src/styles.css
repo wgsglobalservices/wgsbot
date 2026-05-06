@@ -77,6 +77,19 @@ section {
 }
 h2 { margin: 0; font-size: 18px; }
 
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionMeta {
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -234,6 +247,39 @@ th, td {
 }
 th { background: #182235; color: #cbd5e1; font-weight: 650; }
 tr:hover td { background: rgba(45, 212, 191, .04); }
+
+.compactTable th, .compactTable td {
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.compactTable .pathCell {
+  max-width: 520px;
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifactType {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(45, 212, 191, .13);
+  color: #99f6e4;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.artifactType.warning {
+  background: rgba(251, 191, 36, .14);
+  color: #fde68a;
+}
+
+.mutedRow td {
+  color: #64748b;
+}
 
 .badge {
   display: inline-flex;

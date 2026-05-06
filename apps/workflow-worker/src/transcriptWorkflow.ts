@@ -6,11 +6,11 @@ import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
-type Params = { meetingId: string; botId?: string };
+type Params = { meetingId: string; botId?: string; forceAttendeeFetch?: boolean };
 
 export class TranscriptWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
-    await fetchAndStoreTranscript(this.env, event.payload.meetingId, event.payload.botId, step.do.bind(step));
+    await fetchAndStoreTranscript(this.env, event.payload.meetingId, event.payload.botId, step.do.bind(step), { forceAttendeeFetch: event.payload.forceAttendeeFetch });
   }
 }
 
@@ -18,7 +18,8 @@ export async function fetchAndStoreTranscript(
   env: WorkflowEnv,
   meetingId: string,
   botId?: string,
-  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T> = (_name, callback) => callback()
+  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T> = (_name, callback) => callback(),
+  options: { forceAttendeeFetch?: boolean } = {}
 ): Promise<void> {
   const meeting = await runStep("load meeting", () => getMeeting(env.DB, meetingId));
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
@@ -29,7 +30,9 @@ export async function fetchAndStoreTranscript(
 
   const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY });
   try {
-    const attendeeTranscript = await runStep("fetch Attendee transcript", () => client.getBotTranscript(attendeeBotId));
+    const attendeeTranscript = await runStep("fetch Attendee transcript", () =>
+      options.forceAttendeeFetch ? client.getBotTranscript(attendeeBotId, { force: true }) : client.getBotTranscript(attendeeBotId)
+    );
     const attendeeText = await storeAttendeeTranscriptSegments(env.DB, meetingId, attendeeBotId, attendeeTranscript);
     const recording = await fetchAndStoreRecording(env, meetingId, client, attendeeBotId, attendeeText.length > 0, runStep);
     const transcription = attendeeText.length > 0 ? { source: "attendee", model: null, text: attendeeText, usage: null } : await transcribeStoredRecording(env, settings, recording, runStep);

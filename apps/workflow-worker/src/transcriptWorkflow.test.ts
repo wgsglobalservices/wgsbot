@@ -156,6 +156,32 @@ describe("transcript workflow", () => {
     expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
   });
 
+  it("forces Attendee transcript retrieval when requested", async () => {
+    const db = new FakeD1();
+    getBotTranscript.mockResolvedValue([{ speaker_name: "Alex", transcription: "Forced from Attendee." }]);
+    getBotRecording.mockRejectedValue(new Error("Recording is not available yet"));
+
+    await fetchAndStoreTranscript(
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot.wgsglobal.app",
+        ATTENDEE_API_KEY: "attendee-key",
+        AI_API_KEY: "openrouter-key"
+      },
+      "mtg_1",
+      undefined,
+      undefined,
+      { forceAttendeeFetch: true }
+    );
+
+    expect(getBotTranscript).toHaveBeenCalledWith("bot_1", { force: true });
+  });
+
   it("marks transcript failed when transcript fetching and OpenRouter transcription fail", async () => {
     const db = new FakeD1();
     getBotTranscript.mockResolvedValue([]);

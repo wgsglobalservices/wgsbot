@@ -43,6 +43,25 @@ describe("api worker", () => {
     expect(entrypoint).toHaveProperty("MeetingWorkflow");
   });
 
+  it("queues manual transcript fetches as forced Attendee requests", async () => {
+    const send = vi.fn(async () => undefined);
+    const response = await app.request(
+      "/api/meetings/mtg_1/fetch-transcript",
+      { method: "POST", headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: new FakeD1() as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1", forceAttendeeFetch: true });
+  });
+
   it("handles inbound email on the deployed worker entrypoint", async () => {
     const raw = `From: Alice <alice@wgs.bot>
 To: Alice <alice@wgs.bot>

@@ -37,7 +37,7 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
     return c.json({ ok: true });
   })
   .post("/:id/fetch-transcript", async (c) => {
-    await c.env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: c.req.param("id") });
+    await c.env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: c.req.param("id"), forceAttendeeFetch: true });
     return c.json({ ok: true });
   })
   .post("/:id/delete-attendee-data", async (c) => {
