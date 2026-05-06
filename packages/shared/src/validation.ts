@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const legacySelfHostedAttendeeBaseUrl = "https://attendee.wgsglobal.app";
+
 const domainSchema = z
   .string()
   .trim()
@@ -57,7 +59,7 @@ export const defaultSettings: AppSettings = {
   allowedDomains: ["wgs.bot"],
   recorderEmail: "notetaker@wgs.bot",
   attendee: {
-    baseUrl: "https://attendee.wgsglobal.app",
+    baseUrl: "https://app.attendee.dev",
     apiKeyConfigured: false,
     webhookSecretConfigured: false,
     botName: "minutesbot",
@@ -104,4 +106,9 @@ export function parseSettings(input: unknown): AppSettings {
       testRecipient: parsed.email.testRecipient ? parsed.email.testRecipient.toLowerCase() : undefined
     }
   };
+}
+
+export function resolveAttendeeBaseUrl(settingsBaseUrl: string, envBaseUrl?: string): string {
+  if (settingsBaseUrl === legacySelfHostedAttendeeBaseUrl && envBaseUrl) return envBaseUrl;
+  return settingsBaseUrl || envBaseUrl || defaultSettings.attendee.baseUrl;
 }

@@ -47,6 +47,19 @@ describe("AttendeeClient", () => {
 
     await expect(client.getBot("bot_1")).resolves.toMatchObject({ id: "bot_1" });
   });
+
+  it("uses an authenticated bot lookup as hosted Attendee health preflight", async () => {
+    const fetcher = vi.fn(async () => new Response("not found", { status: 404 }));
+    const client = new AttendeeClient({ baseUrl: "https://app.attendee.dev", apiKey: "secret", fetcher });
+
+    await expect(client.checkHealth()).resolves.toEqual({ ok: true, runtime: "attendee-hosted", missing: [] });
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://app.attendee.dev/api/v1/bots/minutesbot-preflight",
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: "Token secret" })
+      })
+    );
+  });
 });
 
 describe("webhook verification", () => {

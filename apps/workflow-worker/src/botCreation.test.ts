@@ -114,6 +114,13 @@ describe("createMeetingBot failure handling", () => {
 
   it("stores a visible failure when Attendee health reports missing runtime settings", async () => {
     const db = new BotCreationD1();
+    db.settings = {
+      ...defaultSettings,
+      attendee: {
+        ...defaultSettings.attendee,
+        baseUrl: "https://attendee.wgsglobal.app"
+      }
+    };
     const requests: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -126,7 +133,9 @@ describe("createMeetingBot failure handling", () => {
       })
     );
 
-    await expect(createMeetingBot(env({}, db), "mtg_1")).rejects.toMatchObject({ code: "ATTENDEE_UNHEALTHY" });
+    await expect(createMeetingBot(env({ ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app" }, db), "mtg_1")).rejects.toMatchObject({
+      code: "ATTENDEE_UNHEALTHY"
+    });
 
     expect(requests).toEqual(["https://attendee.wgsglobal.app/_ops/health"]);
     expect(db.statusUpdates.at(-1)).toEqual({

@@ -26,6 +26,10 @@ export class AttendeeClient {
   }
 
   async checkHealth(): Promise<AttendeeHealth> {
+    if (isHostedAttendee(this.baseUrl)) {
+      return this.checkHostedHealth();
+    }
+
     const health = await this.request<AttendeeHealth>("/_ops/health", {}, mapHealthError);
     if (!health.ok) throw new AttendeeClientError(healthFailureMessage(health), 503, true, "ATTENDEE_UNHEALTHY");
     return health;
@@ -63,6 +67,19 @@ export class AttendeeClient {
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
+
+  private async checkHostedHealth(): Promise<AttendeeHealth> {
+    try {
+      await this.getBot("minutesbot-preflight");
+    } catch (error) {
+      if (error instanceof AttendeeClientError && error.code === "ATTENDEE_NOT_FOUND") {
+        return { ok: true, runtime: "attendee-hosted", missing: [] };
+      }
+      throw error;
+    }
+
+    return { ok: true, runtime: "attendee-hosted", missing: [] };
+  }
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {
@@ -80,6 +97,10 @@ function mapStatus(status: number): string {
 
 function mapHealthError(_status: number): string {
   return "ATTENDEE_UNHEALTHY";
+}
+
+function isHostedAttendee(baseUrl: string): boolean {
+  return new URL(baseUrl).hostname === "app.attendee.dev";
 }
 
 async function readHealthResponse(response: Response): Promise<Partial<AttendeeHealth>> {

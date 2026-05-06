@@ -2,7 +2,7 @@
 
 minutesbot is an open-source, self-hosted, single-tenant Microsoft Teams meeting notetaker control plane. It coordinates meeting invites, scheduling, Attendee bot creation, Attendee webhooks, transcript artifact storage, AI summaries, recipient filtering, email delivery, retention, and audit visibility.
 
-minutesbot does not directly record Teams meetings. The separate self-hosted Attendee backend joins meetings and performs recording/transcription.
+minutesbot does not directly record Teams meetings. Attendee joins meetings and performs recording/transcription, either through Attendee hosted services or a separate self-hosted Attendee backend.
 
 This repository is Cloudflare-first. The minutesbot control plane runs on Cloudflare Workers, Workers Static Assets, D1, R2, Queues, Workflows, and Email Routing. Attendee itself cannot be rewritten into Workers/D1/R2 without a separate product rewrite; the supported Cloudflare-hosted option is upstream Attendee on Cloudflare Containers with external Postgres and Redis-compatible services.
 
@@ -15,9 +15,9 @@ This repository is Cloudflare-first. The minutesbot control plane runs on Cloudf
 - Cloudflare R2 for raw invites, transcript files, summaries, and artifacts.
 - Cloudflare Queues and Workflows for durable bot creation, transcript finalization, summaries, email, and cleanup.
 - Fetch-based Attendee REST client in `packages/attendee-client`.
-- Optional Cloudflare Container router for upstream Attendee in `deploy/attendee-container`.
+- Optional Cloudflare Container router for self-hosted upstream Attendee in `deploy/attendee-container`.
 
-Demo domains use `https://admin.wgs.bot` for the admin UI, `https://minutesbot.wgsglobal.app` for API callbacks, `https://attendee.wgsglobal.app` for Attendee, and `notetaker@wgs.bot`.
+Demo domains use `https://admin.wgs.bot` for the admin UI, `https://minutesbot.wgsglobal.app` for API callbacks, Attendee hosted services at `https://app.attendee.dev`, and `notetaker@wgs.bot`.
 
 Customer self-hosted examples use `https://notes.company.com`, `https://attendee.company.com`, and `notetaker@meet.company.com`.
 

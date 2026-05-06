@@ -30,7 +30,7 @@ If `pnpm check` returns a Vercel `DEPLOYMENT_NOT_FOUND` response, the registrar 
 
 ## Environments
 
-The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://admin.wgs.bot`, `https://minutesbot.wgsglobal.app`, and `https://attendee.wgsglobal.app`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
+The root `wrangler.jsonc` includes `staging` and `production` environments. Production points at `https://admin.wgs.bot`, `https://minutesbot.wgsglobal.app`, and Attendee hosted services at `https://app.attendee.dev`. Staging uses separate route/resource names and must have its placeholder D1 database id replaced before use.
 
 ## Commands
 
@@ -59,7 +59,7 @@ Protect the admin UI with Cloudflare Access for the MVP.
 
 ## Attendee Boundary
 
-Attendee is not a Worker-native application. Use `deploy/attendee-container` to run upstream Attendee on Cloudflare Containers, backed by external Postgres and Redis-compatible services. Then set `ATTENDEE_API_BASE_URL` to the Attendee Container domain and configure the webhook URL in Attendee:
+By default, minutesbot calls Attendee hosted services at `https://app.attendee.dev`. If self-hosting Attendee instead, use `deploy/attendee-container` to run upstream Attendee on Cloudflare Containers, backed by external Postgres and Redis-compatible services. Then set `ATTENDEE_API_BASE_URL` to the Attendee Container domain and configure the webhook URL in Attendee:
 
 ```text
 https://<api-domain>/api/webhooks/attendee

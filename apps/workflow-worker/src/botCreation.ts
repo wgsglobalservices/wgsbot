@@ -1,6 +1,6 @@
 import { AttendeeClient, AttendeeClientError, type AttendeeBot } from "@minutesbot/attendee-client";
 import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
-import { AppError, minutesBefore } from "@minutesbot/shared";
+import { AppError, minutesBefore, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
 const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
@@ -34,7 +34,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
   let bot: AttendeeBot;
   try {
     if (!env.ATTENDEE_API_KEY) throw new AppError("ATTENDEE_API_KEY_MISSING", "ATTENDEE_API_KEY secret is not configured", 500);
-    const client = new AttendeeClient({ baseUrl: settings.attendee.baseUrl || env.ATTENDEE_API_BASE_URL, apiKey: env.ATTENDEE_API_KEY });
+    const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY });
     await client.checkHealth();
     bot = await client.createBot({
       meetingUrl: meeting.teams_join_url ?? "",

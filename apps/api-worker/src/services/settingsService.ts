@@ -1,5 +1,5 @@
 import { getSettings, saveSettings } from "@minutesbot/db";
-import { parseSettings, type AppSettings } from "@minutesbot/shared";
+import { parseSettings, resolveAttendeeBaseUrl, type AppSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 
 export async function readSettings(env: Env): Promise<AppSettings> {
@@ -8,6 +8,7 @@ export async function readSettings(env: Env): Promise<AppSettings> {
     ...settings,
     attendee: {
       ...settings.attendee,
+      baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL),
       apiKeyConfigured: Boolean(env.ATTENDEE_API_KEY) || settings.attendee.apiKeyConfigured,
       webhookSecretConfigured: Boolean(env.ATTENDEE_WEBHOOK_SECRET) || settings.attendee.webhookSecretConfigured
     },

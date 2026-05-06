@@ -106,7 +106,7 @@ describe("admin test actions", () => {
       vi
         .fn(async (url: string | URL | Request, init?: RequestInit) => {
           requests.push({ url: String(url), init });
-          if (String(url).endsWith("/_ops/health")) return Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] });
+          if (String(url).endsWith("/minutesbot-preflight")) return new Response("not found", { status: 404 });
           return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/test", state: "ready" });
         })
     );
@@ -122,7 +122,7 @@ describe("admin test actions", () => {
       }
     });
     expect(requests).toHaveLength(2);
-    expect(requests[0].url).toBe(`${defaultSettings.attendee.baseUrl}/_ops/health`);
+    expect(requests[0].url).toBe(`${defaultSettings.attendee.baseUrl}/api/v1/bots/minutesbot-preflight`);
     expect(requests[1].url).toBe(`${defaultSettings.attendee.baseUrl}/api/v1/bots/minutesbot-preflight`);
     expect(requests[1].init?.headers).toMatchObject({ authorization: "Token attendee-secret" });
   });
@@ -156,7 +156,20 @@ describe("admin test actions", () => {
       )
     );
 
-    const response = await post("/api/admin/test-attendee", env({ ATTENDEE_API_KEY: "attendee-secret" }));
+    const testEnv = env({ ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app", ATTENDEE_API_KEY: "attendee-secret" });
+    await testEnv.DB.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)").bind(
+      "app",
+      JSON.stringify({
+        ...defaultSettings,
+        attendee: {
+          ...defaultSettings.attendee,
+          baseUrl: "https://attendee.wgsglobal.app"
+        }
+      }),
+      new Date().toISOString()
+    ).run();
+
+    const response = await post("/api/admin/test-attendee", testEnv);
 
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({

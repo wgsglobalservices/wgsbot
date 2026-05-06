@@ -1,6 +1,6 @@
 import { AttendeeClient } from "@minutesbot/attendee-client";
 import { createArtifact, createAuditLog, getMeeting, getSettings, insertTranscriptSegment, updateTranscriptStatus } from "@minutesbot/db";
-import { AppError } from "@minutesbot/shared";
+import { AppError, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
@@ -26,7 +26,7 @@ export async function fetchAndStoreTranscript(
   if (!attendeeBotId) throw new AppError("BOT_ID_MISSING", "Meeting has no Attendee bot ID", 400);
   if (!env.ATTENDEE_API_KEY) throw new AppError("ATTENDEE_API_KEY_MISSING", "ATTENDEE_API_KEY secret is not configured", 500);
 
-  const client = new AttendeeClient({ baseUrl: settings.attendee.baseUrl || env.ATTENDEE_API_BASE_URL, apiKey: env.ATTENDEE_API_KEY });
+  const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY });
   const transcript = await runStep("fetch transcript", () => client.getBotTranscript(attendeeBotId));
   if (transcript.length === 0) {
     await updateTranscriptStatus(env.DB, meetingId, "unavailable", "NO_TRANSCRIPT_AVAILABLE");

@@ -1,16 +1,30 @@
 # Attendee Setup
 
-Deploy Attendee separately. Do not fork or vendor Attendee into the minutesbot Worker bundle.
+Use Attendee hosted services or deploy Attendee separately. Do not fork or vendor Attendee into the minutesbot Worker bundle.
 
 Strict Cloudflare-only Attendee hosting is not feasible today. Upstream Attendee is a Dockerized Django/Celery application with Chrome/ChromeDriver, PulseAudio, ffmpeg, native Linux packages, Postgres, Redis, and long-running worker process requirements. It cannot run on Workers/D1/R2 alone.
 
-The supported Cloudflare-hosted option is:
+The default hosted option is:
+
+```text
+minutesbot on Cloudflare Workers + Attendee hosted services at https://app.attendee.dev
+```
+
+Example:
+
+```bash
+ATTENDEE_API_BASE_URL=https://app.attendee.dev
+wrangler secret put ATTENDEE_API_KEY
+wrangler secret put ATTENDEE_WEBHOOK_SECRET
+```
+
+The supported Cloudflare self-hosted option is:
 
 ```text
 minutesbot on Cloudflare Workers + Attendee on Cloudflare Containers + external Postgres/Redis
 ```
 
-Example:
+Self-hosted example:
 
 ```bash
 ATTENDEE_API_BASE_URL=https://attendee.company.com
