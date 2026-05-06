@@ -1,12 +1,15 @@
+import { meetingRecapTypeLabels } from "@minutesbot/summary-engine";
 import type { RenderedEmail, SummaryEmailInput } from "./types";
 
 export function renderSummaryEmail(input: SummaryEmailInput): RenderedEmail {
   const sections = resolveSections(input);
+  const meetingTypeLabel = meetingRecapTypeLabels[input.summary.meetingType ?? "general"];
   const text = [
     "Meeting",
     input.subject,
     input.date ?? "",
     input.recap?.introText ?? "",
+    `Meeting type\n${meetingTypeLabel}\n`,
     "",
     ...sections.map((section) => sectionText(section.label, section.items)),
     sectionText("Not sent to external attendees", input.excludedRecipients ?? [])
@@ -14,7 +17,7 @@ export function renderSummaryEmail(input: SummaryEmailInput): RenderedEmail {
     .filter(Boolean)
     .join("\n");
 
-  const html = `<main>${heading("Meeting")}${paragraph(input.subject)}${input.date ? paragraph(input.date) : ""}${input.recap?.introText ? paragraph(input.recap.introText) : ""}${sections.map((section) => sectionHtml(section.label, section.items)).join("")}${sectionHtml("Not sent to external attendees", input.excludedRecipients ?? [])}</main>`;
+  const html = `<main>${heading("Meeting")}${paragraph(input.subject)}${input.date ? paragraph(input.date) : ""}${input.recap?.introText ? paragraph(input.recap.introText) : ""}${heading("Meeting type")}${paragraph(meetingTypeLabel)}${sections.map((section) => sectionHtml(section.label, section.items)).join("")}${sectionHtml("Not sent to external attendees", input.excludedRecipients ?? [])}</main>`;
   return { subject: `${input.recap?.subjectPrefix ?? "Meeting summary"}: ${input.subject}`, text, html };
 }
 

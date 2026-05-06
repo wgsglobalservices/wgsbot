@@ -1,4 +1,6 @@
+export * from "./classifyMeeting";
 export * from "./chunkTranscript";
+export * from "./meetingTypes";
 export * from "./promptTemplates";
 export * from "./providers/openAiCompatible";
 export * from "./providers/openRouterTranscription";

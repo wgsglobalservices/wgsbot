@@ -4,7 +4,14 @@ import { generateAndSendSummary } from "./summaryWorkflow";
 
 vi.mock("@minutesbot/summary-engine", () => ({
   createOpenAiCompatibleProvider: vi.fn(() => ({})),
+  meetingRecapTypeLabels: {
+    weekly_spqrc: "Weekly SPQRC",
+    weekly_sales: "Weekly Sales",
+    plant_meeting: "Individual Plant Meeting",
+    general: "General"
+  },
   summarizeTranscript: vi.fn(async () => ({
+    meetingType: "general",
     summary: ["Summary ready."],
     decisions: [],
     actionItems: [],

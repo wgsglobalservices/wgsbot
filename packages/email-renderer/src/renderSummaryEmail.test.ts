@@ -6,9 +6,10 @@ describe("email renderer", () => {
     const rendered = renderSummaryEmail({
       subject: "Project sync",
       summary: {
+        meetingType: "general",
         summary: ["Discussed launch."],
         decisions: [],
-        actionItems: [{ owner: "Alex", task: "Ship release notes" }],
+        actionItems: [{ owner: "Alex", task: "Ship release notes", dueDate: "TBD" }],
         openQuestions: [],
         risks: [],
         followUps: []
@@ -20,6 +21,9 @@ describe("email renderer", () => {
     expect(rendered.text).toMatchInlineSnapshot(`
       "Meeting
       Project sync
+      Meeting type
+      General
+
       Summary
       - Discussed launch.
 
@@ -27,7 +31,7 @@ describe("email renderer", () => {
       - None
 
       Action items
-      - Alex - Ship release notes
+      - Alex - Ship release notes - TBD
 
       Open questions
       - None
@@ -43,6 +47,7 @@ describe("email renderer", () => {
       "
     `);
     expect(rendered.html).toContain("<li>vendor@example.com</li>");
+    expect(rendered.html).toContain("<h2>Meeting type</h2><p>General</p>");
   });
 
   it("renders organizer-only failure notices", () => {
@@ -53,9 +58,10 @@ describe("email renderer", () => {
     const rendered = renderSummaryEmail({
       subject: "Project sync",
       summary: {
+        meetingType: "general",
         summary: ["Discussed launch."],
         decisions: ["Launch Friday."],
-        actionItems: [{ owner: "Alex", task: "Ship release notes" }],
+        actionItems: [{ owner: "Alex", task: "Ship release notes", dueDate: "TBD" }],
         openQuestions: ["Who owns training?"],
         risks: ["Schedule compression."],
         followUps: ["Review launch checklist."]
@@ -76,5 +82,35 @@ describe("email renderer", () => {
     expect(rendered.text).toContain("Here is the meeting recap.");
     expect(rendered.text).not.toContain("Schedule compression.");
     expect(rendered.html).toContain("<p>Here is the meeting recap.</p>");
+  });
+
+  it("renders meeting type in plain text and html and treats legacy summaries as general", () => {
+    const typed = renderSummaryEmail({
+      subject: "Weekly Sales",
+      summary: {
+        meetingType: "weekly_sales",
+        summary: ["Meeting type: Weekly Sales", "Sales forecast/pipeline: Forecast moved up."],
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        risks: [],
+        followUps: []
+      }
+    });
+    const legacy = renderSummaryEmail({
+      subject: "Old summary",
+      summary: {
+        summary: ["Discussed launch."],
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        risks: [],
+        followUps: []
+      }
+    });
+
+    expect(typed.text).toContain("Meeting type\nWeekly Sales");
+    expect(typed.html).toContain("<h2>Meeting type</h2><p>Weekly Sales</p>");
+    expect(legacy.text).toContain("Meeting type\nGeneral");
   });
 });

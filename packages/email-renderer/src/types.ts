@@ -1,10 +1,14 @@
-import type { MeetingSummary } from "@minutesbot/summary-engine";
+import type { MeetingRecapType, MeetingSummary } from "@minutesbot/summary-engine";
 import type { RecapSectionKey } from "@minutesbot/shared";
+
+export type SummaryEmailSummary = Omit<MeetingSummary, "meetingType"> & {
+  meetingType?: MeetingRecapType;
+};
 
 export type SummaryEmailInput = {
   subject: string;
   date?: string;
-  summary: MeetingSummary;
+  summary: SummaryEmailSummary;
   excludedRecipients?: string[];
   recap?: {
     subjectPrefix?: string;

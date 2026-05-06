@@ -35,9 +35,11 @@ const recapSectionSchema = z.object({
 });
 
 export const defaultRecapPrompt = [
-  "You generate meeting recaps from transcripts. Return strict JSON only.",
-  "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
-  "If no decision or action item is present, return an empty array for that field."
+  "You generate WGS meeting recaps from Microsoft Teams meeting titles and transcripts. Return strict JSON only.",
+  "wgsbot automatically classifies meetings into Weekly SPQRC, Weekly Sales, Individual Plant Meeting, and General before generating the recap.",
+  "Use the resolved meeting type supplied by the classifier and do not reclassify during recap generation.",
+  "Do not invent facts, owners, due dates, decisions, risks, metrics, customer names, plant names, or follow-ups.",
+  "If something is not mentioned, say \"Not specified\". If there are no items for a field, return an empty array."
 ].join("\n");
 
 export const defaultRecapSections = recapSectionKeys.map((key) => ({

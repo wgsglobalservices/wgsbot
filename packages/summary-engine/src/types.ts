@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { meetingRecapTypeSchema, type MeetingRecapType } from "./meetingTypes";
 
 export type SummaryInput = {
   meetingSubject: string;
@@ -7,22 +8,28 @@ export type SummaryInput = {
   attendees: Array<{ name?: string; email: string }>;
   transcriptText: string;
   prompt?: string;
+  meetingType?: MeetingRecapType;
 };
 
-export const meetingSummarySchema = z.object({
-  summary: z.array(z.string()),
-  decisions: z.array(z.string()),
-  actionItems: z.array(
-    z.object({
-      owner: z.string().optional(),
-      task: z.string(),
-      dueDate: z.string().optional()
-    })
-  ),
-  openQuestions: z.array(z.string()),
-  risks: z.array(z.string()),
-  followUps: z.array(z.string())
-});
+export const meetingSummarySchema = z
+  .object({
+    meetingType: meetingRecapTypeSchema,
+    summary: z.array(z.string()),
+    decisions: z.array(z.string()),
+    actionItems: z.array(
+      z
+        .object({
+          owner: z.string(),
+          task: z.string(),
+          dueDate: z.string()
+        })
+        .strict()
+    ),
+    openQuestions: z.array(z.string()),
+    risks: z.array(z.string()),
+    followUps: z.array(z.string())
+  })
+  .strict();
 
 export type MeetingSummary = z.infer<typeof meetingSummarySchema>;
 
