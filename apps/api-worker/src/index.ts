@@ -42,8 +42,8 @@ app.route("/api/webhooks/attendee", attendeeWebhookRoute);
 export default {
   fetch: app.fetch,
   email: emailWorker.email,
-  async queue(batch, env, ctx) {
-    ctx.waitUntil(handleQueueBatch(batch, env));
+  async queue(batch, env) {
+    await handleQueueBatch(batch, env);
   },
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(cleanupOldArtifacts(env));
