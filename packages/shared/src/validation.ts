@@ -42,6 +42,19 @@ export const defaultRecapPrompt = [
   "If something is not mentioned, say \"Not specified\". If there are no items for a field, return an empty array."
 ].join("\n");
 
+const legacyDefaultRecapPrompts = new Set([
+  [
+    "You generate meeting recaps from transcripts. Return strict JSON only.",
+    "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
+    "If no decision or action item is present, return an empty array for that field."
+  ].join("\n"),
+  [
+    "You generate meeting notes from transcripts. Return strict JSON only.",
+    "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
+    "If no decision or action item is present, return an empty array for that field."
+  ].join("\n")
+]);
+
 export const defaultRecapSections = recapSectionKeys.map((key) => ({
   key,
   label: recapSectionLabels[key],
@@ -196,6 +209,7 @@ function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap
     ...recap,
     language: recap.language ?? "",
     introText: recap.introText ?? "",
+    prompt: legacyDefaultRecapPrompts.has(recap.prompt) ? defaultRecapPrompt : recap.prompt,
     sections: ordered.map((key) => {
       const section = provided.get(key);
       return section ?? { key, label: recapSectionLabels[key], enabled: true };

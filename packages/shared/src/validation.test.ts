@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultSettings, parseSettings } from "./validation";
+import { defaultRecapPrompt, defaultSettings, parseSettings } from "./validation";
 
 describe("settings validation", () => {
   it("normalizes domains and emails", () => {
@@ -103,5 +103,27 @@ describe("settings validation", () => {
         }
       })
     ).toThrow();
+  });
+
+  it("upgrades the legacy built-in recap prompt but preserves custom prompts", () => {
+    const legacyPrompt = [
+      "You generate meeting recaps from transcripts. Return strict JSON only.",
+      "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
+      "If no decision or action item is present, return an empty array for that field."
+    ].join("\n");
+    const customPrompt = "Use our internal recap format. Keep concise notes for leadership.";
+
+    expect(
+      parseSettings({
+        ...defaultSettings,
+        recap: { ...defaultSettings.recap, prompt: legacyPrompt }
+      }).recap.prompt
+    ).toBe(defaultRecapPrompt);
+    expect(
+      parseSettings({
+        ...defaultSettings,
+        recap: { ...defaultSettings.recap, prompt: customPrompt }
+      }).recap.prompt
+    ).toBe(customPrompt);
   });
 });
