@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const legacySelfHostedAttendeeBaseUrls = new Set(["https://attendee.wgsglobal.app", "https://attendee.wgs.bot"]);
+const defaultTimeZone = "UTC";
 
 const domainSchema = z
   .string()
@@ -8,6 +9,12 @@ const domainSchema = z
   .min(1)
   .regex(/^(?!-)[a-z0-9.-]+(?<!-)$/i, "Invalid domain")
   .transform((value) => value.toLowerCase());
+
+const timeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => isValidTimeZone(value), "Invalid time zone");
 
 export const recapSectionKeys = ["summary", "decisions", "actionItems", "openQuestions", "risks", "followUps"] as const;
 export type RecapSectionKey = (typeof recapSectionKeys)[number];
@@ -42,6 +49,7 @@ export const defaultRecapSections = recapSectionKeys.map((key) => ({
 export const appSettingsSchema = z.object({
   companyName: z.string().trim().min(1),
   primaryDomain: domainSchema,
+  timeZone: timeZoneSchema.optional().default(defaultTimeZone),
   allowedDomains: z.array(domainSchema).min(1),
   recorderEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
   attendee: z.object({
@@ -104,6 +112,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultSettings: AppSettings = {
   companyName: "Minutesbot Demo",
   primaryDomain: "wgs.bot",
+  timeZone: defaultTimeZone,
   allowedDomains: ["wgs.bot"],
   recorderEmail: "notetaker@wgs.bot",
   attendee: {
@@ -155,6 +164,7 @@ export function parseSettings(input: unknown): AppSettings {
     ...parsed,
     allowedDomains: Array.from(new Set(parsed.allowedDomains.map((domain) => domain.toLowerCase()))),
     primaryDomain: parsed.primaryDomain.toLowerCase(),
+    timeZone: parsed.timeZone,
     recorderEmail: parsed.recorderEmail.toLowerCase(),
     email: {
       ...parsed.email,
@@ -163,6 +173,15 @@ export function parseSettings(input: unknown): AppSettings {
     },
     recap: normalizeRecapSettings(parsed.recap)
   };
+}
+
+function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap"] {

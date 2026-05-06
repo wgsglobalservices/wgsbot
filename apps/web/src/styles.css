@@ -139,6 +139,23 @@ input::placeholder, textarea::placeholder {
   line-height: 1.35;
 }
 
+.timeZoneField {
+  min-width: 0;
+}
+
+.timeZoneControl {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.currentTime {
+  color: #94a3b8;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .check {
   grid-template-columns: auto 1fr;
   align-items: center;
@@ -371,4 +388,6 @@ pre {
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
   .content { padding: 20px; }
+  .timeZoneControl { grid-template-columns: 1fr; }
+  .currentTime { white-space: normal; }
 }

@@ -12,6 +12,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "dev": "pnpm --filter @minutesbot/web dev",
     "cloudflare:ensure": "tsx scripts/ensure-cloudflare-resources.ts",
+    "cloudflare:ensure-webhook-bypass": "tsx scripts/ensure-cloudflare-webhook-security-exception.ts",
     "deploy": "pnpm deploy:production",
     "deploy:staging": "tsx scripts/deploy-minutesbot.ts --env staging",
     "deploy:production": "tsx scripts/deploy-minutesbot.ts --env production",

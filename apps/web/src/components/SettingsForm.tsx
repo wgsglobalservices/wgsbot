@@ -1,6 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
 import type { AppSettings } from "@minutesbot/shared";
 
 export function SettingsForm({ value, onChange }: { value: AppSettings; onChange: (settings: AppSettings) => void }) {
+  const timeZoneOptions = useMemo(() => getTimeZoneOptions(value.timeZone), [value.timeZone]);
   const update = (path: string, next: unknown) => {
     const clone = structuredClone(value) as AppSettings;
     const parts = path.split(".");
@@ -14,6 +16,7 @@ export function SettingsForm({ value, onChange }: { value: AppSettings; onChange
     <form className="formGrid">
       <Field label="Company name" value={value.companyName} onChange={(v) => update("companyName", v)} />
       <Field label="Primary domain" value={value.primaryDomain} onChange={(v) => update("primaryDomain", v)} />
+      <TimeZoneField value={value.timeZone} options={timeZoneOptions} onChange={(v) => update("timeZone", v)} />
       <TextAreaField
         className="allowedDomainsField"
         help="Enter one domain per line, or separate domains with commas."
@@ -52,11 +55,52 @@ export function parseAllowedDomains(value: string): string[] {
     .filter(Boolean);
 }
 
+export function getTimeZoneOptions(currentTimeZone: string): string[] {
+  const supportedValuesOf = (Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] }).supportedValuesOf;
+  const options = supportedValuesOf ? supportedValuesOf("timeZone") : fallbackTimeZones;
+  return Array.from(new Set(["UTC", currentTimeZone, ...options])).sort((a, b) => a.localeCompare(b));
+}
+
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label>
       <span>{label}</span>
       <input value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function TimeZoneField({
+  value,
+  options,
+  onChange
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <label className="timeZoneField">
+      <span>Time zone</span>
+      <div className="timeZoneControl">
+        <select value={value} onChange={(event) => onChange(event.target.value)}>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <span className="currentTime" aria-live="polite">
+          {formatCurrentTime(now, value)}
+        </span>
+      </div>
     </label>
   );
 }
@@ -124,3 +168,29 @@ function Select({ label, value, options, onChange }: { label: string; value: str
     </label>
   );
 }
+
+function formatCurrentTime(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone,
+    timeZoneName: "short"
+  }).format(date);
+}
+
+const fallbackTimeZones = [
+  "UTC",
+  "America/Detroit",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Phoenix",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "Europe/London",
+  "Europe/Paris",
+  "Asia/Tokyo",
+  "Australia/Sydney"
+];

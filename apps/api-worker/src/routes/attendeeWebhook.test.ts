@@ -82,6 +82,74 @@ describe("Attendee webhook route", () => {
     expect(response.status).toBe(200);
     expect(summaryQueue.send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1", botId: "bot_1" });
   });
+
+  it("accepts signed chat message update webhooks", async () => {
+    const db = new WebhookD1();
+    const summaryQueue = { send: vi.fn(async () => undefined) };
+    const payload = {
+      idempotency_key: "wh_chat_1",
+      bot_id: "bot_1",
+      bot_metadata: { minutesbot_meeting_id: "mtg_1", calendar_uid: "teams-link-1" },
+      trigger: "chat_messages.update",
+      data: {
+        message: "Can you share the deck?",
+        sender_name: "Peter Gustafson"
+      }
+    };
+
+    const response = await app.request(
+      "/api/webhooks/attendee",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-webhook-signature": await signWebhook(payload)
+        },
+        body: JSON.stringify(payload)
+      },
+      env(db, summaryQueue)
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, duplicate: false, meetingId: "mtg_1" });
+    expect(summaryQueue.send).not.toHaveBeenCalled();
+    expect(db.webhookEvents).toHaveLength(1);
+  });
+
+  it("returns Worker JSON for malformed signed webhook bodies", async () => {
+    const db = new WebhookD1();
+    const rawBody = "{bad-json";
+
+    const response = await app.request(
+      "/api/webhooks/attendee",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-webhook-signature": "not-a-valid-signature"
+        },
+        body: rawBody
+      },
+      env(db, { send: vi.fn(async () => undefined) })
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toMatchObject({ error: { code: "INVALID_WEBHOOK_SIGNATURE" } });
+  });
+
+  it("keeps protected admin APIs behind the admin token", async () => {
+    const response = await app.request(
+      "/api/settings",
+      {
+        method: "GET"
+      },
+      env(new WebhookD1(), { send: vi.fn(async () => undefined) })
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+  });
 });
 
 function postProcessingPayload(idempotencyKey: string) {
@@ -112,8 +180,13 @@ function env(db: WebhookD1, summaryQueue: { send: ReturnType<typeof vi.fn> }) {
 }
 
 async function signWebhook(payload: unknown): Promise<string> {
+  return signRawWebhook(JSON.stringify(payload));
+}
+
+async function signRawWebhook(rawBody: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", Buffer.from(webhookSecret(), "base64"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(stableStringify(payload)));
+  const canonical = stableStringify(JSON.parse(rawBody));
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
   return Buffer.from(digest).toString("base64");
 }
 

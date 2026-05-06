@@ -49,7 +49,8 @@ export class AttendeeClient {
   async getBotTranscript(botId: string, options: { force?: boolean } = {}): Promise<AttendeeTranscriptSegment[]> {
     const params = new URLSearchParams();
     if (options.force) params.set("force", "true");
-    const query = params.size > 0 ? `?${params.toString()}` : "";
+    const serializedParams = params.toString();
+    const query = serializedParams ? `?${serializedParams}` : "";
     return this.request<AttendeeTranscriptSegment[]>(`/api/v1/bots/${encodeURIComponent(botId)}/transcript${query}`);
   }
 

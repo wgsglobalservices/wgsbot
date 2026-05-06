@@ -7,13 +7,14 @@ import {
   updateMeetingBotState,
   updateMeetingStatus
 } from "@minutesbot/db";
+import type { AttendeeWebhookTrigger } from "@minutesbot/attendee-client";
 import type { Env } from "../env";
 
 export type AttendeeWebhookPayload = {
   idempotency_key?: string;
   bot_id: string;
   bot_metadata?: { minutesbot_meeting_id?: string; calendar_uid?: string };
-  trigger: "bot.state_change" | "transcript.update" | "bot_logs.update" | "participant_events.join_leave";
+  trigger: AttendeeWebhookTrigger;
   data: Record<string, unknown>;
 };
 

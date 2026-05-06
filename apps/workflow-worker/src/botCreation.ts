@@ -1,4 +1,4 @@
-import { AttendeeClient, AttendeeClientError, type AttendeeBot } from "@minutesbot/attendee-client";
+import { ATTENDEE_WEBHOOK_TRIGGERS, AttendeeClient, AttendeeClientError, type AttendeeBot } from "@minutesbot/attendee-client";
 import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
 import { AppError, minutesBefore, recordingR2Key, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
@@ -50,7 +50,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
       webhooks: [
         {
           url: `${env.API_BASE_URL}/api/webhooks/attendee`,
-          triggers: ["bot.state_change", "transcript.update", "bot_logs.update", "participant_events.join_leave"]
+          triggers: [...ATTENDEE_WEBHOOK_TRIGGERS]
         }
       ],
       metadata: { minutesbot_meeting_id: meeting.id, calendar_uid: meeting.calendar_uid }

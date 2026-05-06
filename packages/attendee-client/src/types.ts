@@ -1,10 +1,13 @@
-export type AttendeeWebhookTrigger =
-  | "bot.state_change"
-  | "transcript.update"
-  | "chat_messages.update"
-  | "participant_events.join_leave"
-  | "participant_events.speech_start_stop"
-  | "bot_logs.update";
+export const ATTENDEE_WEBHOOK_TRIGGERS = [
+  "bot.state_change",
+  "transcript.update",
+  "chat_messages.update",
+  "participant_events.join_leave",
+  "participant_events.speech_start_stop",
+  "bot_logs.update"
+] as const;
+
+export type AttendeeWebhookTrigger = (typeof ATTENDEE_WEBHOOK_TRIGGERS)[number];
 
 export type CreateAttendeeBotInput = {
   meetingUrl: string;

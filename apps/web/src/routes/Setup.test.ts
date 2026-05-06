@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSettings, type AppSettings } from "@minutesbot/shared";
-import { parseAllowedDomains } from "../components/SettingsForm";
+import { getTimeZoneOptions, parseAllowedDomains } from "../components/SettingsForm";
 import { saveSetupSettings } from "./Setup";
 
 describe("setup save status", () => {
@@ -31,5 +31,11 @@ describe("allowed domains parsing", () => {
       "subsidiary.example",
       "partner.example"
     ]);
+  });
+});
+
+describe("time zone options", () => {
+  it("keeps the configured time zone selectable", () => {
+    expect(getTimeZoneOptions("America/Detroit")).toContain("America/Detroit");
   });
 });

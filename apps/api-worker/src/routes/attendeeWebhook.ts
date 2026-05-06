@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { verifyAttendeeWebhookSignature } from "@minutesbot/attendee-client";
+import { ATTENDEE_WEBHOOK_TRIGGERS, verifyAttendeeWebhookSignature } from "@minutesbot/attendee-client";
 import { AppError } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { processAttendeeWebhook } from "../services/meetingService";
@@ -10,7 +10,7 @@ const payloadSchema = z.object({
   idempotency_key: z.string().optional(),
   bot_id: z.string(),
   bot_metadata: z.object({ minutesbot_meeting_id: z.string().optional(), calendar_uid: z.string().optional() }).optional(),
-  trigger: z.enum(["bot.state_change", "transcript.update", "bot_logs.update", "participant_events.join_leave"]),
+  trigger: z.enum(ATTENDEE_WEBHOOK_TRIGGERS),
   data: z.record(z.unknown())
 });
 

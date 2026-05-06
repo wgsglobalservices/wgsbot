@@ -17,6 +17,15 @@ describe("settings validation", () => {
     expect(settings.email.senderEmail).toBe("notes@acme.com");
   });
 
+  it("defaults legacy settings to UTC and validates configured time zones", () => {
+    const legacySettings: Partial<typeof defaultSettings> = { ...defaultSettings };
+    delete legacySettings.timeZone;
+
+    expect(parseSettings(legacySettings).timeZone).toBe("UTC");
+    expect(parseSettings({ ...defaultSettings, timeZone: "America/Detroit" }).timeZone).toBe("America/Detroit");
+    expect(() => parseSettings({ ...defaultSettings, timeZone: "Eastern" })).toThrow();
+  });
+
   it("rejects invalid domains, emails, and urls", () => {
     expect(() =>
       parseSettings({

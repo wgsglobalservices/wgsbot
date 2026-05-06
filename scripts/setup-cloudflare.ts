@@ -2,6 +2,7 @@ const commands = [
   "wrangler d1 create minutesbot",
   "wrangler r2 bucket create minutesbot-artifacts",
   "pnpm cloudflare:ensure",
+  "CLOUDFLARE_API_TOKEN=... pnpm cloudflare:ensure-webhook-bypass",
   "wrangler secret put ATTENDEE_API_KEY",
   "wrangler secret put ATTENDEE_WEBHOOK_SECRET",
   "wrangler secret put AI_API_KEY",
