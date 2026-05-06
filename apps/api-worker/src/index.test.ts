@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as entrypoint from "./index";
 import { app } from "./index";
+import type { Env } from "./env";
 
 class FakeD1 {
   prepare() {
@@ -41,6 +42,52 @@ describe("api worker", () => {
 
   it("exports the configured meeting workflow entrypoint", () => {
     expect(entrypoint).toHaveProperty("MeetingWorkflow");
+  });
+
+  it("serves admin UI assets only from APP_BASE_URL host", async () => {
+    const assetsFetch = vi.fn(async () => new Response("<html>admin</html>", { headers: { "content-type": "text/html" } }));
+    const env = {
+      APP_BASE_URL: "https://minutesbot-admin.wgsglobal.app",
+      ASSETS: { fetch: assetsFetch }
+    } as unknown as Env;
+
+    const adminResponse = await entrypoint.handleFetch(new Request("https://minutesbot-admin.wgsglobal.app/"), env);
+    const apiHostResponse = await entrypoint.handleFetch(new Request("https://minutesbot-api.wgsglobal.app/"), env);
+    const webhookHostResponse = await entrypoint.handleFetch(new Request("https://minutesbot-webhook.wgsglobal.app/"), env);
+
+    expect(adminResponse.status).toBe(200);
+    expect(await adminResponse.text()).toBe("<html>admin</html>");
+    expect(apiHostResponse.status).toBe(404);
+    expect(webhookHostResponse.status).toBe(404);
+    expect(assetsFetch).toHaveBeenCalledOnce();
+  });
+
+  it("still routes API requests on non-admin hosts through the Worker", async () => {
+    const response = await entrypoint.handleFetch(
+      new Request("https://minutesbot-api.wgsglobal.app/api/health"),
+      {
+        APP_BASE_URL: "https://minutesbot-admin.wgsglobal.app"
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it("blocks protected admin API routes on non-admin hosts", async () => {
+    const env = {
+      APP_BASE_URL: "https://minutesbot-admin.wgsglobal.app"
+    } as unknown as Env;
+
+    const blocked = await entrypoint.handleFetch(
+      new Request("https://minutesbot-api.wgsglobal.app/api/settings"),
+      env
+    );
+    const allowed = await entrypoint.handleFetch(new Request("https://minutesbot-admin.wgsglobal.app/api/settings"), env);
+
+    expect(blocked.status).toBe(404);
+    expect(allowed.status).toBe(503);
+    await expect(allowed.json()).resolves.toMatchObject({ error: { code: "AUTH_NOT_CONFIGURED" } });
   });
 
   it("queues manual transcript fetches as R2 recording processing requests", async () => {

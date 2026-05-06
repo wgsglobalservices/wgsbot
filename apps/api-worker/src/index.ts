@@ -10,7 +10,7 @@ import { settingsRoute } from "./routes/settings";
 import { testActionsRoute } from "./routes/testActions";
 import { corsMiddleware } from "./middleware/cors";
 import { errorMiddleware } from "./middleware/errors";
-import { adminTokenAuthMiddleware } from "./middleware/auth";
+import { adminTokenAuthMiddleware, isPublicApiPath } from "./middleware/auth";
 import { cleanupOldArtifacts, handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
 import emailWorker from "../../email-worker/src/index";
 
@@ -41,7 +41,9 @@ app.route("/api/webhooks/attendee", attendeeWebhookRoute);
 app.route("/api/webhooks/attendee/", attendeeWebhookRoute);
 
 export default {
-  fetch: app.fetch,
+  async fetch(request, env, ctx) {
+    return handleFetch(request, env, ctx);
+  },
   email: emailWorker.email,
   async queue(batch, env) {
     await handleQueueBatch(batch, env);
@@ -50,3 +52,19 @@ export default {
     ctx.waitUntil(cleanupOldArtifacts(env));
   }
 } satisfies ExportedHandler<Env>;
+
+export async function handleFetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/")) {
+    if (!isPublicApiPath(url.pathname) && url.hostname !== new URL(env.APP_BASE_URL).hostname) {
+      return new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=UTF-8" } });
+    }
+    return app.fetch(request, env, ctx);
+  }
+
+  if (url.hostname !== new URL(env.APP_BASE_URL).hostname) {
+    return new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=UTF-8" } });
+  }
+
+  return env.ASSETS ? env.ASSETS.fetch(request) : app.fetch(request, env, ctx);
+}

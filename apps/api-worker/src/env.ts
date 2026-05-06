@@ -9,6 +9,7 @@ export type Env = {
   SUMMARY_QUEUE: QueueBinding;
   EMAIL_QUEUE: QueueBinding;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };
+  ASSETS?: Fetcher;
   APP_BASE_URL: string;
   API_BASE_URL: string;
   ATTENDEE_WEBHOOK_BASE_URL?: string;
