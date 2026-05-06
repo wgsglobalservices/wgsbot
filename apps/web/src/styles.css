@@ -160,6 +160,32 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   gap: 12px;
 }
 
+.recapLayout {
+  display: grid;
+  gap: 24px;
+}
+
+.promptField {
+  max-width: 920px;
+}
+
+.recapSections {
+  display: grid;
+  gap: 10px;
+  max-width: 920px;
+}
+
+.recapSectionRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.compactCheck {
+  padding-top: 0;
+}
+
 .testAction, .metric {
   background: rgba(15, 23, 42, .86);
   border: 1px solid #253247;

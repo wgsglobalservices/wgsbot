@@ -4,9 +4,10 @@ import { AttendeeStatus } from "./routes/AttendeeStatus";
 import { Logs } from "./routes/Logs";
 import { MeetingDetail } from "./routes/MeetingDetail";
 import { Meetings } from "./routes/Meetings";
+import { Recap } from "./routes/Recap";
 import { Setup } from "./routes/Setup";
 
-export type RouteName = "setup" | "attendee" | "meetings" | "meeting" | "logs";
+export type RouteName = "setup" | "recap" | "attendee" | "meetings" | "meeting" | "logs";
 
 export function App() {
   const [route, setRoute] = useState(() => parseHash());
@@ -19,6 +20,7 @@ export function App() {
   return (
     <Layout route={route.name}>
       {route.name === "setup" && <Setup />}
+      {route.name === "recap" && <Recap />}
       {route.name === "attendee" && <AttendeeStatus />}
       {route.name === "meetings" && <Meetings />}
       {route.name === "meeting" && <MeetingDetail id={route.id ?? ""} />}
@@ -31,7 +33,7 @@ export function parseHash(hashValue = window.location.hash): { name: RouteName; 
   const hash = hashValue.replace(/^#\/?/, "");
   const [name, id] = hash.split("/");
   if (name === "settings") return { name: "setup" };
-  if (name === "attendee" || name === "meetings" || name === "logs" || name === "setup") return { name };
+  if (name === "attendee" || name === "meetings" || name === "logs" || name === "setup" || name === "recap") return { name };
   if (name === "meeting") return { name: "meeting", id };
   return { name: "setup" };
 }

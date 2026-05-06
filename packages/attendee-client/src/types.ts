@@ -25,6 +25,12 @@ export type AttendeeBot = {
   recording_state?: string;
 };
 
+export type AttendeeRecording = {
+  data: ArrayBuffer;
+  contentType: string;
+  sizeBytes?: number;
+};
+
 export type AttendeeHealth = {
   ok: boolean;
   runtime?: string;

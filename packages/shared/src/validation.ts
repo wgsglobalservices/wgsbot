@@ -9,6 +9,36 @@ const domainSchema = z
   .regex(/^(?!-)[a-z0-9.-]+(?<!-)$/i, "Invalid domain")
   .transform((value) => value.toLowerCase());
 
+export const recapSectionKeys = ["summary", "decisions", "actionItems", "openQuestions", "risks", "followUps"] as const;
+export type RecapSectionKey = (typeof recapSectionKeys)[number];
+
+const recapSectionLabels: Record<RecapSectionKey, string> = {
+  summary: "Summary",
+  decisions: "Decisions",
+  actionItems: "Action items",
+  openQuestions: "Open questions",
+  risks: "Risks",
+  followUps: "Follow-ups"
+};
+
+const recapSectionSchema = z.object({
+  key: z.enum(recapSectionKeys),
+  label: z.string().trim().min(1).max(80),
+  enabled: z.boolean()
+});
+
+export const defaultRecapPrompt = [
+  "You generate meeting recaps from transcripts. Return strict JSON only.",
+  "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
+  "If no decision or action item is present, return an empty array for that field."
+].join("\n");
+
+export const defaultRecapSections = recapSectionKeys.map((key) => ({
+  key,
+  label: recapSectionLabels[key],
+  enabled: true
+}));
+
 export const appSettingsSchema = z.object({
   companyName: z.string().trim().min(1),
   primaryDomain: domainSchema,
@@ -48,7 +78,25 @@ export const appSettingsSchema = z.object({
     summaryDays: z.number().int().min(1).max(3650),
     auditLogDays: z.number().int().min(1).max(3650),
     attendeeDeleteDataAfterDays: z.number().int().min(0).max(3650)
-  })
+  }),
+  recap: z
+    .object({
+      transcriptionModel: z.string().trim().min(1),
+      language: z.string().trim().max(12).optional().or(z.literal("")),
+      prompt: z.string().trim().min(20).max(8000),
+      subjectPrefix: z.string().trim().min(1).max(80),
+      introText: z.string().trim().max(1000).optional().or(z.literal("")),
+      sections: z.array(recapSectionSchema).min(1)
+    })
+    .optional()
+    .default({
+      transcriptionModel: "openai/whisper-large-v3",
+      language: "",
+      prompt: defaultRecapPrompt,
+      subjectPrefix: "Meeting recap",
+      introText: "",
+      sections: defaultRecapSections
+    })
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -90,6 +138,14 @@ export const defaultSettings: AppSettings = {
     summaryDays: 365,
     auditLogDays: 365,
     attendeeDeleteDataAfterDays: 0
+  },
+  recap: {
+    transcriptionModel: "openai/whisper-large-v3",
+    language: "",
+    prompt: defaultRecapPrompt,
+    subjectPrefix: "Meeting recap",
+    introText: "",
+    sections: defaultRecapSections
   }
 };
 
@@ -104,7 +160,25 @@ export function parseSettings(input: unknown): AppSettings {
       ...parsed.email,
       senderEmail: parsed.email.senderEmail.toLowerCase(),
       testRecipient: parsed.email.testRecipient ? parsed.email.testRecipient.toLowerCase() : undefined
-    }
+    },
+    recap: normalizeRecapSettings(parsed.recap)
+  };
+}
+
+function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap"] {
+  const provided = new Map(recap.sections.map((section) => [section.key, section]));
+  const ordered = recap.sections.map((section) => section.key);
+  for (const key of recapSectionKeys) {
+    if (!ordered.includes(key)) ordered.push(key);
+  }
+  return {
+    ...recap,
+    language: recap.language ?? "",
+    introText: recap.introText ?? "",
+    sections: ordered.map((key) => {
+      const section = provided.get(key);
+      return section ?? { key, label: recapSectionLabels[key], enabled: true };
+    })
   };
 }
 

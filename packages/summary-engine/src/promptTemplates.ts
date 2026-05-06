@@ -2,9 +2,11 @@ import type { SummaryInput } from "./types";
 
 export function buildSummaryPrompt(input: SummaryInput): string {
   return [
-    "You generate meeting notes from transcripts. Return strict JSON only.",
-    "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
-    "If no decision or action item is present, return an empty array for that field.",
+    input.prompt ?? [
+      "You generate meeting notes from transcripts. Return strict JSON only.",
+      "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
+      "If no decision or action item is present, return an empty array for that field."
+    ].join("\n"),
     `Meeting: ${input.meetingSubject}`,
     input.meetingStartTime ? `Start time: ${input.meetingStartTime}` : "",
     input.organizerEmail ? `Organizer: ${input.organizerEmail}` : "",

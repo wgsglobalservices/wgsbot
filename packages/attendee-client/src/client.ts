@@ -1,5 +1,5 @@
 import { AttendeeClientError, retryableStatus } from "./errors";
-import type { AttendeeBot, AttendeeClientOptions, AttendeeHealth, AttendeeTranscriptSegment, CreateAttendeeBotInput } from "./types";
+import type { AttendeeBot, AttendeeClientOptions, AttendeeHealth, AttendeeRecording, AttendeeTranscriptSegment, CreateAttendeeBotInput } from "./types";
 
 export class AttendeeClient {
   private readonly baseUrl: string;
@@ -43,11 +43,27 @@ export class AttendeeClient {
     return this.request<AttendeeTranscriptSegment[]>(`/api/v1/bots/${encodeURIComponent(botId)}/transcript`);
   }
 
+  async getBotRecording(botId: string): Promise<AttendeeRecording> {
+    const response = await this.rawRequest(`/api/v1/bots/${encodeURIComponent(botId)}/recording`);
+    return {
+      data: await response.arrayBuffer(),
+      contentType: response.headers.get("content-type") ?? "application/octet-stream",
+      sizeBytes: numberHeader(response.headers.get("content-length"))
+    };
+  }
+
   async deleteBotData(botId: string): Promise<void> {
     await this.request<unknown>(`/api/v1/bots/${encodeURIComponent(botId)}/delete_data`, { method: "POST" });
   }
 
   private async request<T>(path: string, init: RequestInit = {}, errorMapper = mapStatus): Promise<T> {
+    const response = await this.rawRequest(path, init, errorMapper);
+
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  }
+
+  private async rawRequest(path: string, init: RequestInit = {}, errorMapper = mapStatus): Promise<Response> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
@@ -64,8 +80,7 @@ export class AttendeeClient {
       throw new AttendeeClientError(message, response.status, retryable, errorMapper(response.status));
     }
 
-    if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    return response;
   }
 
   private async checkHostedHealth(): Promise<AttendeeHealth> {
@@ -80,6 +95,12 @@ export class AttendeeClient {
 
     return { ok: true, runtime: "attendee-hosted", missing: [] };
   }
+}
+
+function numberHeader(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {

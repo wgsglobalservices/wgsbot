@@ -1,5 +1,6 @@
 import { AttendeeClient } from "@minutesbot/attendee-client";
-import { createArtifact, createAuditLog, getMeeting, getSettings, insertTranscriptSegment, updateTranscriptStatus } from "@minutesbot/db";
+import { createArtifact, createAuditLog, getMeeting, getSettings, updateTranscriptStatus } from "@minutesbot/db";
+import { createOpenRouterTranscriptionProvider } from "@minutesbot/summary-engine";
 import { AppError, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
@@ -27,37 +28,71 @@ export async function fetchAndStoreTranscript(
   if (!env.ATTENDEE_API_KEY) throw new AppError("ATTENDEE_API_KEY_MISSING", "ATTENDEE_API_KEY secret is not configured", 500);
 
   const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY });
-  const transcript = await runStep("fetch transcript", () => client.getBotTranscript(attendeeBotId));
-  if (transcript.length === 0) {
-    await updateTranscriptStatus(env.DB, meetingId, "unavailable", "NO_TRANSCRIPT_AVAILABLE");
-    await createAuditLog(env.DB, { eventType: "transcript.unavailable", resourceType: "meeting", resourceId: meetingId });
-    return;
-  }
-  const plainText = transcript.map((segment) => `${segment.speaker_name ?? "Speaker"}: ${typeof segment.transcription === "string" ? segment.transcription : segment.transcription.transcript ?? ""}`).join("\n");
-  const jsonKey = `transcripts/${meetingId}/transcript.json`;
-  const textKey = `transcripts/${meetingId}/transcript.txt`;
-  await env.ARTIFACTS.put(jsonKey, JSON.stringify(transcript), { httpMetadata: { contentType: "application/json" } });
-  await env.ARTIFACTS.put(textKey, plainText, { httpMetadata: { contentType: "text/plain" } });
-  await createArtifact(env.DB, { meeting_id: meetingId, type: "transcript_json", r2_key: jsonKey, content_type: "application/json", size_bytes: JSON.stringify(transcript).length, deleted_at: null });
-  await createArtifact(env.DB, { meeting_id: meetingId, type: "transcript_text", r2_key: textKey, content_type: "text/plain", size_bytes: plainText.length, deleted_at: null });
-  for (const segment of transcript) {
-    const text = typeof segment.transcription === "string" ? segment.transcription : segment.transcription.transcript ?? "";
-    if (text) {
-      await insertTranscriptSegment(env.DB, {
-        meeting_id: meetingId,
-        attendee_bot_id: attendeeBotId,
-        speaker_name: segment.speaker_name ?? null,
-        speaker_uuid: segment.speaker_uuid ?? null,
-        speaker_user_uuid: segment.speaker_user_uuid ?? null,
-        timestamp_ms: segment.timestamp_ms ?? null,
-        duration_ms: segment.duration_ms ?? null,
-        text,
-        source: "fetch"
-      });
+  try {
+    if (!env.AI_API_KEY) throw new AppError("AI_API_KEY_MISSING", "AI_API_KEY secret is not configured", 500);
+    const recording = await runStep("fetch recording", () => client.getBotRecording(attendeeBotId));
+    const recordingKey = `recordings/${meetingId}/recording.${recordingExtension(recording.contentType)}`;
+    await env.ARTIFACTS.put(recordingKey, recording.data, { httpMetadata: { contentType: recording.contentType } });
+    await createArtifact(env.DB, {
+      meeting_id: meetingId,
+      type: "recording",
+      r2_key: recordingKey,
+      content_type: recording.contentType,
+      size_bytes: recording.sizeBytes ?? recording.data.byteLength,
+      deleted_at: null
+    });
+
+    const transcriber = createOpenRouterTranscriptionProvider({
+      baseUrl: openRouterBaseUrl(settings.ai.baseUrl),
+      apiKey: env.AI_API_KEY,
+      model: settings.recap.transcriptionModel,
+      language: settings.recap.language || undefined
+    });
+    const transcription = await runStep("transcribe recording", () => transcriber.transcribe(recording.data, recording.contentType));
+    const plainText = transcription.text.trim();
+    if (!plainText) {
+      await updateTranscriptStatus(env.DB, meetingId, "unavailable", "NO_TRANSCRIPT_AVAILABLE");
+      await createAuditLog(env.DB, { eventType: "transcript.unavailable", resourceType: "meeting", resourceId: meetingId });
+      return;
     }
+
+    const jsonBody = JSON.stringify({ source: "openrouter", model: settings.recap.transcriptionModel, text: plainText, usage: transcription.usage ?? null });
+    const jsonKey = `transcripts/${meetingId}/transcript.json`;
+    const textKey = `transcripts/${meetingId}/transcript.txt`;
+    await env.ARTIFACTS.put(textKey, plainText, { httpMetadata: { contentType: "text/plain" } });
+    await env.ARTIFACTS.put(jsonKey, jsonBody, { httpMetadata: { contentType: "application/json" } });
+    await createArtifact(env.DB, { meeting_id: meetingId, type: "transcript_text", r2_key: textKey, content_type: "text/plain", size_bytes: byteLength(plainText), deleted_at: null });
+    await createArtifact(env.DB, { meeting_id: meetingId, type: "transcript_json", r2_key: jsonKey, content_type: "application/json", size_bytes: byteLength(jsonBody), deleted_at: null });
+    await updateTranscriptStatus(env.DB, meetingId, "complete", "TRANSCRIPT_AVAILABLE");
+    await createAuditLog(env.DB, { eventType: "transcript.fetched", resourceType: "meeting", resourceId: meetingId, metadata: { source: "openrouter", model: settings.recap.transcriptionModel } });
+    await env.SUMMARY_QUEUE.send({ type: "summarize", meetingId });
+    if (settings.attendee.deleteAttendeeDataAfterTranscriptFetch) await client.deleteBotData(attendeeBotId);
+  } catch (error) {
+    await updateTranscriptStatus(env.DB, meetingId, "failed", "FAILED");
+    await createAuditLog(env.DB, {
+      eventType: "transcript.failed",
+      resourceType: "meeting",
+      resourceId: meetingId,
+      metadata: { reason: error instanceof Error ? error.message : String(error) }
+    });
+    throw error;
   }
-  await updateTranscriptStatus(env.DB, meetingId, "complete", "TRANSCRIPT_AVAILABLE");
-  await createAuditLog(env.DB, { eventType: "transcript.fetched", resourceType: "meeting", resourceId: meetingId });
-  await env.SUMMARY_QUEUE.send({ type: "summarize", meetingId });
-  if (settings.attendee.deleteAttendeeDataAfterTranscriptFetch) await client.deleteBotData(attendeeBotId);
+}
+
+function recordingExtension(contentType: string): string {
+  const type = contentType.split(";")[0]?.trim().toLowerCase();
+  if (type === "audio/mpeg") return "mp3";
+  if (type === "audio/mp4" || type === "audio/x-m4a") return "mp4";
+  if (type === "audio/wav" || type === "audio/wave") return "wav";
+  if (type === "audio/webm") return "webm";
+  if (type === "audio/ogg") return "ogg";
+  return "bin";
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function openRouterBaseUrl(configuredBaseUrl?: string): string {
+  return configuredBaseUrl && new URL(configuredBaseUrl).hostname === "openrouter.ai" ? configuredBaseUrl : "https://openrouter.ai/api/v1";
 }

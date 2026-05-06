@@ -40,4 +40,54 @@ describe("settings validation", () => {
     expect(settings.ai.apiKeyConfigured).toBe(true);
     expect(JSON.stringify(settings)).not.toContain("sk-");
   });
+
+  it("includes default recap settings with configurable transcription and ordered sections", () => {
+    const settings = parseSettings(defaultSettings);
+
+    expect(settings.recap.transcriptionModel).toBe("openai/whisper-large-v3");
+    expect(settings.recap.language).toBe("");
+    expect(settings.recap.subjectPrefix).toBe("Meeting recap");
+    expect(settings.recap.sections.map((section) => section.key)).toEqual([
+      "summary",
+      "decisions",
+      "actionItems",
+      "openQuestions",
+      "risks",
+      "followUps"
+    ]);
+    expect(settings.recap.sections.every((section) => section.enabled)).toBe(true);
+    expect(settings.recap.prompt).toContain("Return strict JSON only");
+  });
+
+  it("normalizes recap section order and rejects unknown recap sections", () => {
+    const settings = parseSettings({
+      ...defaultSettings,
+      recap: {
+        ...defaultSettings.recap,
+        sections: [
+          { key: "actionItems", label: "Action items", enabled: true },
+          { key: "summary", label: "Summary", enabled: false }
+        ]
+      }
+    });
+
+    expect(settings.recap.sections.map((section) => section.key)).toEqual([
+      "actionItems",
+      "summary",
+      "decisions",
+      "openQuestions",
+      "risks",
+      "followUps"
+    ]);
+    expect(settings.recap.sections.find((section) => section.key === "summary")?.enabled).toBe(false);
+    expect(() =>
+      parseSettings({
+        ...defaultSettings,
+        recap: {
+          ...defaultSettings.recap,
+          sections: [{ key: "madeUp", label: "Made up", enabled: true }]
+        }
+      })
+    ).toThrow();
+  });
 });

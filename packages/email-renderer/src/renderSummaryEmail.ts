@@ -1,24 +1,43 @@
 import type { RenderedEmail, SummaryEmailInput } from "./types";
 
 export function renderSummaryEmail(input: SummaryEmailInput): RenderedEmail {
+  const sections = resolveSections(input);
   const text = [
     "Meeting",
     input.subject,
     input.date ?? "",
+    input.recap?.introText ?? "",
     "",
-    sectionText("Summary", input.summary.summary),
-    sectionText("Decisions", input.summary.decisions),
-    sectionText("Action items", input.summary.actionItems.map((item) => [item.owner, item.task, item.dueDate].filter(Boolean).join(" - "))),
-    sectionText("Open questions", input.summary.openQuestions),
-    sectionText("Risks", input.summary.risks),
-    sectionText("Follow-ups", input.summary.followUps),
+    ...sections.map((section) => sectionText(section.label, section.items)),
     sectionText("Not sent to external attendees", input.excludedRecipients ?? [])
   ]
     .filter(Boolean)
     .join("\n");
 
-  const html = `<main>${heading("Meeting")}${paragraph(input.subject)}${input.date ? paragraph(input.date) : ""}${sectionHtml("Summary", input.summary.summary)}${sectionHtml("Decisions", input.summary.decisions)}${sectionHtml("Action items", input.summary.actionItems.map((item) => [item.owner, item.task, item.dueDate].filter(Boolean).join(" - ")))}${sectionHtml("Open questions", input.summary.openQuestions)}${sectionHtml("Risks", input.summary.risks)}${sectionHtml("Follow-ups", input.summary.followUps)}${sectionHtml("Not sent to external attendees", input.excludedRecipients ?? [])}</main>`;
-  return { subject: `Meeting summary: ${input.subject}`, text, html };
+  const html = `<main>${heading("Meeting")}${paragraph(input.subject)}${input.date ? paragraph(input.date) : ""}${input.recap?.introText ? paragraph(input.recap.introText) : ""}${sections.map((section) => sectionHtml(section.label, section.items)).join("")}${sectionHtml("Not sent to external attendees", input.excludedRecipients ?? [])}</main>`;
+  return { subject: `${input.recap?.subjectPrefix ?? "Meeting summary"}: ${input.subject}`, text, html };
+}
+
+function resolveSections(input: SummaryEmailInput): Array<{ label: string; items: string[] }> {
+  const values = {
+    summary: input.summary.summary,
+    decisions: input.summary.decisions,
+    actionItems: input.summary.actionItems.map((item) => [item.owner, item.task, item.dueDate].filter(Boolean).join(" - ")),
+    openQuestions: input.summary.openQuestions,
+    risks: input.summary.risks,
+    followUps: input.summary.followUps
+  };
+  const defaultSections: NonNullable<SummaryEmailInput["recap"]>["sections"] = [
+    { key: "summary", label: "Summary", enabled: true },
+    { key: "decisions", label: "Decisions", enabled: true },
+    { key: "actionItems", label: "Action items", enabled: true },
+    { key: "openQuestions", label: "Open questions", enabled: true },
+    { key: "risks", label: "Risks", enabled: true },
+    { key: "followUps", label: "Follow-ups", enabled: true }
+  ];
+  return (input.recap?.sections ?? defaultSections)
+    .filter((section) => section.enabled)
+    .map((section) => ({ label: section.label, items: values[section.key] }));
 }
 
 function sectionText(title: string, items: string[]): string {

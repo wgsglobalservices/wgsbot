@@ -35,6 +35,22 @@ describe("AttendeeClient", () => {
     await expect(client.getBot("bot_1")).rejects.toMatchObject({ code: "ATTENDEE_RATE_LIMITED", retryable: true });
   });
 
+  it("retrieves bot recordings with content metadata", async () => {
+    const audio = new Uint8Array([1, 2, 3]).buffer;
+    const fetcher = vi.fn(async () => new Response(audio, { headers: { "content-type": "audio/mp4", "content-length": "3" } }));
+    const client = new AttendeeClient({ baseUrl: "https://attendee.company.com", apiKey: "secret", fetcher });
+
+    const recording = await client.getBotRecording("bot_1");
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://attendee.company.com/api/v1/bots/bot_1/recording",
+      expect.objectContaining({ headers: expect.objectContaining({ authorization: "Token secret" }) })
+    );
+    expect(recording.contentType).toBe("audio/mp4");
+    expect(recording.sizeBytes).toBe(3);
+    expect(new Uint8Array(recording.data)).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
   it("calls default global fetch with a valid host receiver", async () => {
     vi.stubGlobal(
       "fetch",

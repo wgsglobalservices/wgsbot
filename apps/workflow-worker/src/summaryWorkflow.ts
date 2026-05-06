@@ -45,7 +45,8 @@ export async function generateAndSendSummary(
         meetingStartTime: meeting.start_time ?? undefined,
         organizerEmail: meeting.organizer_email ?? undefined,
         attendees: attendees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
-        transcriptText
+        transcriptText,
+        prompt: settings.recap.prompt
       },
       provider
     )
@@ -72,7 +73,12 @@ export async function generateAndSendSummary(
     subject: meeting.subject ?? "Untitled meeting",
     date: meeting.start_time ?? undefined,
     summary,
-    excludedRecipients: filtered.excluded.map((recipient) => recipient.email)
+    excludedRecipients: filtered.excluded.map((recipient) => recipient.email),
+    recap: {
+      subjectPrefix: settings.recap.subjectPrefix,
+      introText: settings.recap.introText,
+      sections: settings.recap.sections
+    }
   });
   const sender = createEmailProvider({ provider: settings.email.provider, sendEmailBinding: env.SEND_EMAIL });
   let sentCount = 0;

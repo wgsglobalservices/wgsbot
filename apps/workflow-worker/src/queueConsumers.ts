@@ -19,6 +19,7 @@ export async function cleanupOldArtifacts(env: WorkflowEnv): Promise<void> {
   const settings = await getSettings(env.DB);
   const thresholds = {
     raw_invite: daysAgoIso(settings.retention.rawInviteDays),
+    recording: daysAgoIso(settings.retention.transcriptDays),
     transcript_text: daysAgoIso(settings.retention.transcriptDays),
     transcript_json: daysAgoIso(settings.retention.transcriptDays),
     summary: daysAgoIso(settings.retention.summaryDays)

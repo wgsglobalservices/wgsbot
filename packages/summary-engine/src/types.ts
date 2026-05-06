@@ -6,6 +6,7 @@ export type SummaryInput = {
   organizerEmail?: string;
   attendees: Array<{ name?: string; email: string }>;
   transcriptText: string;
+  prompt?: string;
 };
 
 export const meetingSummarySchema = z.object({
@@ -27,4 +28,13 @@ export type MeetingSummary = z.infer<typeof meetingSummarySchema>;
 
 export type SummaryProvider = {
   generate(prompt: string): Promise<unknown>;
+};
+
+export type TranscriptionResult = {
+  text: string;
+  usage?: Record<string, unknown>;
+};
+
+export type TranscriptionProvider = {
+  transcribe(audio: ArrayBuffer, contentType: string): Promise<TranscriptionResult>;
 };
