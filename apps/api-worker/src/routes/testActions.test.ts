@@ -103,10 +103,12 @@ describe("admin test actions", () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-        requests.push({ url: String(url), init });
-        return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/test", state: "ready" });
-      })
+      vi
+        .fn(async (url: string | URL | Request, init?: RequestInit) => {
+          requests.push({ url: String(url), init });
+          if (String(url).endsWith("/_ops/health")) return Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] });
+          return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/test", state: "ready" });
+        })
     );
 
     const response = await post("/api/admin/test-attendee", env({ ATTENDEE_API_KEY: "attendee-secret" }));
@@ -119,13 +121,20 @@ describe("admin test actions", () => {
         baseUrl: defaultSettings.attendee.baseUrl
       }
     });
-    expect(requests).toHaveLength(1);
-    expect(requests[0].url).toBe(`${defaultSettings.attendee.baseUrl}/api/v1/bots/minutesbot-preflight`);
-    expect(requests[0].init?.headers).toMatchObject({ authorization: "Token attendee-secret" });
+    expect(requests).toHaveLength(2);
+    expect(requests[0].url).toBe(`${defaultSettings.attendee.baseUrl}/_ops/health`);
+    expect(requests[1].url).toBe(`${defaultSettings.attendee.baseUrl}/api/v1/bots/minutesbot-preflight`);
+    expect(requests[1].init?.headers).toMatchObject({ authorization: "Token attendee-secret" });
   });
 
   it("returns a redacted Attendee auth failure", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope attendee-secret", { status: 401 })));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] }))
+        .mockResolvedValueOnce(new Response("nope attendee-secret", { status: 401 }))
+    );
 
     const response = await post("/api/admin/test-attendee", env({ ATTENDEE_API_KEY: "attendee-secret" }));
 
@@ -133,6 +142,26 @@ describe("admin test actions", () => {
     await expect(response.json()).resolves.toEqual({
       ok: false,
       message: "ATTENDEE_AUTH_FAILED: Attendee request failed with 401"
+    });
+  });
+
+  it("returns Attendee health failures with missing runtime settings", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ ok: false, runtime: "cloudflare-containers", missing: ["DATABASE_URL", "REDIS_URL"] }), {
+          status: 503,
+          headers: { "content-type": "application/json" }
+        })
+      )
+    );
+
+    const response = await post("/api/admin/test-attendee", env({ ATTENDEE_API_KEY: "attendee-secret" }));
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      message: "ATTENDEE_UNHEALTHY: Attendee health check failed: missing DATABASE_URL, REDIS_URL"
     });
   });
 });

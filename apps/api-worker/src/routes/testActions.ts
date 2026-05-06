@@ -53,6 +53,7 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
     if (!c.env.ATTENDEE_API_KEY) return c.json({ ok: false, message: "ATTENDEE_API_KEY secret is not configured" }, 400);
     const client = new AttendeeClient({ baseUrl: settings.attendee.baseUrl, apiKey: c.env.ATTENDEE_API_KEY });
     try {
+      await client.checkHealth();
       await client.getBot("minutesbot-preflight");
     } catch (error) {
       if (!(error instanceof AttendeeClientError && error.code === "ATTENDEE_NOT_FOUND")) {

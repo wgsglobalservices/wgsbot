@@ -1,5 +1,5 @@
 import { AttendeeClientError, retryableStatus } from "./errors";
-import type { AttendeeBot, AttendeeClientOptions, AttendeeTranscriptSegment, CreateAttendeeBotInput } from "./types";
+import type { AttendeeBot, AttendeeClientOptions, AttendeeHealth, AttendeeTranscriptSegment, CreateAttendeeBotInput } from "./types";
 
 export class AttendeeClient {
   private readonly baseUrl: string;
@@ -25,6 +25,12 @@ export class AttendeeClient {
     });
   }
 
+  async checkHealth(): Promise<AttendeeHealth> {
+    const health = await this.request<AttendeeHealth>("/_ops/health", {}, mapHealthError);
+    if (!health.ok) throw new AttendeeClientError(healthFailureMessage(health), 503, true, "ATTENDEE_UNHEALTHY");
+    return health;
+  }
+
   async getBot(botId: string): Promise<AttendeeBot> {
     return this.request<AttendeeBot>(`/api/v1/bots/${encodeURIComponent(botId)}`);
   }
@@ -37,7 +43,7 @@ export class AttendeeClient {
     await this.request<unknown>(`/api/v1/bots/${encodeURIComponent(botId)}/delete_data`, { method: "POST" });
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, errorMapper = mapStatus): Promise<T> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
@@ -49,7 +55,9 @@ export class AttendeeClient {
 
     if (!response.ok) {
       const retryable = retryableStatus(response.status);
-      throw new AttendeeClientError(`Attendee request failed with ${response.status}`, response.status, retryable, mapStatus(response.status));
+      let message = `Attendee request failed with ${response.status}`;
+      if (path === "/_ops/health") message = healthFailureMessage(await readHealthResponse(response));
+      throw new AttendeeClientError(message, response.status, retryable, errorMapper(response.status));
     }
 
     if (response.status === 204) return undefined as T;
@@ -68,4 +76,17 @@ function mapStatus(status: number): string {
   if (status === 429) return "ATTENDEE_RATE_LIMITED";
   if (status >= 500) return "ATTENDEE_UPSTREAM_ERROR";
   return "ATTENDEE_REQUEST_FAILED";
+}
+
+function mapHealthError(_status: number): string {
+  return "ATTENDEE_UNHEALTHY";
+}
+
+async function readHealthResponse(response: Response): Promise<Partial<AttendeeHealth>> {
+  return ((await response.clone().json().catch(() => ({}))) ?? {}) as Partial<AttendeeHealth>;
+}
+
+function healthFailureMessage(health: Partial<AttendeeHealth>): string {
+  const missing = Array.isArray(health.missing) && health.missing.length > 0 ? `: missing ${health.missing.join(", ")}` : "";
+  return `Attendee health check failed${missing}`;
 }

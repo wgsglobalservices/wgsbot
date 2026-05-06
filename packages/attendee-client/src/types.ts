@@ -25,6 +25,12 @@ export type AttendeeBot = {
   recording_state?: string;
 };
 
+export type AttendeeHealth = {
+  ok: boolean;
+  runtime?: string;
+  missing?: string[];
+};
+
 export type AttendeeTranscriptSegment = {
   speaker_name?: string;
   speaker_uuid?: string;

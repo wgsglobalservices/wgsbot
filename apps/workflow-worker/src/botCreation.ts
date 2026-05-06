@@ -35,6 +35,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
   try {
     if (!env.ATTENDEE_API_KEY) throw new AppError("ATTENDEE_API_KEY_MISSING", "ATTENDEE_API_KEY secret is not configured", 500);
     const client = new AttendeeClient({ baseUrl: settings.attendee.baseUrl || env.ATTENDEE_API_BASE_URL, apiKey: env.ATTENDEE_API_KEY });
+    await client.checkHealth();
     bot = await client.createBot({
       meetingUrl: meeting.teams_join_url ?? "",
       botName: settings.attendee.botName,

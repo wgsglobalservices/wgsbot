@@ -95,7 +95,13 @@ describe("createMeetingBot failure handling", () => {
 
   it("stores a visible failure when Attendee rejects bot creation", async () => {
     const db = new BotCreationD1();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("bad auth", { status: 401 })));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] }))
+        .mockResolvedValueOnce(new Response("bad auth", { status: 401 }))
+    );
 
     await expect(createMeetingBot(env({}, db), "mtg_1")).rejects.toMatchObject({ code: "ATTENDEE_AUTH_FAILED" });
 
@@ -104,5 +110,32 @@ describe("createMeetingBot failure handling", () => {
       latestError: "ATTENDEE_AUTH_FAILED: Attendee request failed with 401"
     });
     expect(db.auditLogs.at(-1)).toMatchObject({ eventType: "bot.fatal_error" });
+  });
+
+  it("stores a visible failure when Attendee health reports missing runtime settings", async () => {
+    const db = new BotCreationD1();
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        requests.push(String(url));
+        return new Response(JSON.stringify({ ok: false, runtime: "cloudflare-containers", missing: ["DATABASE_URL", "REDIS_URL"] }), {
+          status: 503,
+          headers: { "content-type": "application/json" }
+        });
+      })
+    );
+
+    await expect(createMeetingBot(env({}, db), "mtg_1")).rejects.toMatchObject({ code: "ATTENDEE_UNHEALTHY" });
+
+    expect(requests).toEqual(["https://attendee.wgsglobal.app/_ops/health"]);
+    expect(db.statusUpdates.at(-1)).toEqual({
+      status: "FAILED",
+      latestError: "ATTENDEE_UNHEALTHY: Attendee health check failed: missing DATABASE_URL, REDIS_URL"
+    });
+    expect(db.auditLogs.at(-1)).toMatchObject({
+      eventType: "bot.fatal_error",
+      metadata: { code: "ATTENDEE_UNHEALTHY" }
+    });
   });
 });
