@@ -42,9 +42,15 @@ button, input, select, textarea { font: inherit; }
   height: 32px;
   place-items: center;
   border-radius: 8px;
-  background: #2dd4bf;
-  color: #042f2e;
-  box-shadow: 0 0 0 1px rgba(45, 212, 191, .32), 0 12px 28px rgba(45, 212, 191, .16);
+  overflow: hidden;
+  background: #333;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, .22), 0 12px 28px rgba(0, 0, 0, .24);
+}
+
+.brandMark img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 nav { display: grid; gap: 6px; }

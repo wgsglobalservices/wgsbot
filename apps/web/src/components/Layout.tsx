@@ -14,8 +14,10 @@ export function Layout({ children, route }: { children: ReactNode; route: RouteN
     <div className="shell">
       <aside className="sidebar">
         <a className="brand" href="#/setup">
-          <span className="brandMark">m</span>
-          <span>minutesbot</span>
+          <span className="brandMark" aria-hidden="true">
+            <img src="/minutesbot-logo.svg" alt="" />
+          </span>
+          <span>minutes.bot</span>
         </a>
         <nav>
           {nav.map((item) => (
