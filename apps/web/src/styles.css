@@ -265,6 +265,11 @@ th, td {
 th { background: #182235; color: #cbd5e1; font-weight: 650; }
 tr:hover td { background: rgba(45, 212, 191, .04); }
 
+.timeCell {
+  min-width: 210px;
+  white-space: nowrap;
+}
+
 .compactTable th, .compactTable td {
   padding: 8px 10px;
   white-space: nowrap;
