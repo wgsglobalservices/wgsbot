@@ -18,6 +18,10 @@ const timeZoneSchema = z
 
 export const recapSectionKeys = ["summary", "decisions", "actionItems", "openQuestions", "risks", "followUps"] as const;
 export type RecapSectionKey = (typeof recapSectionKeys)[number];
+export const recapTemplateKeys = ["weekly_spqrc", "weekly_sales", "plant_meeting", "general"] as const;
+export const defaultRecapTemplateKeys = ["auto", ...recapTemplateKeys] as const;
+export type RecapTemplateKey = (typeof recapTemplateKeys)[number];
+export type DefaultRecapTemplateKey = (typeof defaultRecapTemplateKeys)[number];
 
 const recapSectionLabels: Record<RecapSectionKey, string> = {
   summary: "Summary",
@@ -34,12 +38,27 @@ const recapSectionSchema = z.object({
   enabled: z.boolean()
 });
 
+const defaultRecapConfig = {
+  transcriptionModel: "openai/whisper-large-v3-turbo",
+  language: "",
+  subjectPrefix: "Meeting recap",
+  introText: "",
+  classificationEnabled: true,
+  defaultTemplate: "auto" as const,
+  enabledTemplates: [...recapTemplateKeys]
+};
+
 export const defaultRecapPrompt = [
   "You generate WGS meeting recaps from Microsoft Teams meeting titles and transcripts. Return strict JSON only.",
   "wgsbot automatically classifies meetings into Weekly SPQRC, Weekly Sales, Individual Plant Meeting, and General before generating the recap.",
   "Use the resolved meeting type supplied by the classifier and do not reclassify during recap generation.",
   "Do not invent facts, owners, due dates, decisions, risks, metrics, customer names, plant names, or follow-ups.",
-  "If something is not mentioned, say \"Not specified\". If there are no items for a field, return an empty array."
+  "If something is unclear, say \"Unclear\". If something is not mentioned, say \"Not specified\". If there are no items for a field, return an empty array.",
+  "Action items must include owner, task, and dueDate. Use owner \"Unassigned\" and dueDate \"TBD\" when not specified.",
+  "Only include confirmed decisions, agreements, approvals, rejected options, committed plans, or direction changes.",
+  "Capture blockers, delays, safety, quality, delivery, cost, customer, revenue, staffing, equipment, material, and dependency risks.",
+  "Capture unresolved questions, missing information, unclear ownership, unclear deadlines, pending customer answers, and pending plant data.",
+  "Capture planned future meetings, customer follow-ups, plant check-ins, internal reviews, reports to prepare, data to validate, and next-week topics."
 ].join("\n");
 
 const legacyDefaultRecapPrompts = new Set([
@@ -109,15 +128,21 @@ export const appSettingsSchema = z.object({
       prompt: z.string().trim().min(20).max(8000),
       subjectPrefix: z.string().trim().min(1).max(80),
       introText: z.string().trim().max(1000).optional().or(z.literal("")),
+      classificationEnabled: z.boolean().optional().default(defaultRecapConfig.classificationEnabled),
+      defaultTemplate: z.enum(defaultRecapTemplateKeys).optional().default(defaultRecapConfig.defaultTemplate),
+      enabledTemplates: z.array(z.enum(recapTemplateKeys)).optional().default(defaultRecapConfig.enabledTemplates),
       sections: z.array(recapSectionSchema).min(1)
     })
     .optional()
     .default({
-      transcriptionModel: "openai/whisper-large-v3-turbo",
-      language: "",
+      transcriptionModel: defaultRecapConfig.transcriptionModel,
+      language: defaultRecapConfig.language,
       prompt: defaultRecapPrompt,
-      subjectPrefix: "Meeting recap",
-      introText: "",
+      subjectPrefix: defaultRecapConfig.subjectPrefix,
+      introText: defaultRecapConfig.introText,
+      classificationEnabled: defaultRecapConfig.classificationEnabled,
+      defaultTemplate: defaultRecapConfig.defaultTemplate,
+      enabledTemplates: defaultRecapConfig.enabledTemplates,
       sections: defaultRecapSections
     })
 });
@@ -164,11 +189,14 @@ export const defaultSettings: AppSettings = {
     attendeeDeleteDataAfterDays: 0
   },
   recap: {
-    transcriptionModel: "openai/whisper-large-v3-turbo",
-    language: "",
+    transcriptionModel: defaultRecapConfig.transcriptionModel,
+    language: defaultRecapConfig.language,
     prompt: defaultRecapPrompt,
-    subjectPrefix: "Meeting recap",
-    introText: "",
+    subjectPrefix: defaultRecapConfig.subjectPrefix,
+    introText: defaultRecapConfig.introText,
+    classificationEnabled: defaultRecapConfig.classificationEnabled,
+    defaultTemplate: defaultRecapConfig.defaultTemplate,
+    enabledTemplates: defaultRecapConfig.enabledTemplates,
     sections: defaultRecapSections
   }
 };
@@ -209,12 +237,20 @@ function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap
     ...recap,
     language: recap.language ?? "",
     introText: recap.introText ?? "",
+    classificationEnabled: recap.classificationEnabled ?? defaultRecapConfig.classificationEnabled,
+    defaultTemplate: recap.defaultTemplate ?? defaultRecapConfig.defaultTemplate,
+    enabledTemplates: normalizeEnabledTemplates(recap.enabledTemplates),
     prompt: legacyDefaultRecapPrompts.has(recap.prompt) ? defaultRecapPrompt : recap.prompt,
     sections: ordered.map((key) => {
       const section = provided.get(key);
       return section ?? { key, label: recapSectionLabels[key], enabled: true };
     })
   };
+}
+
+function normalizeEnabledTemplates(templates: AppSettings["recap"]["enabledTemplates"] | undefined): AppSettings["recap"]["enabledTemplates"] {
+  const enabled = new Set(templates && templates.length > 0 ? templates : defaultRecapConfig.enabledTemplates);
+  return recapTemplateKeys.filter((key) => enabled.has(key));
 }
 
 export function resolveAttendeeBaseUrl(settingsBaseUrl: string, envBaseUrl?: string): string {

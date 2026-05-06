@@ -9,6 +9,8 @@ export type SummaryInput = {
   transcriptText: string;
   prompt?: string;
   meetingType?: MeetingRecapType;
+  classificationEnabled?: boolean;
+  defaultTemplate?: MeetingRecapType | "auto";
 };
 
 export const meetingSummarySchema = z

@@ -17,11 +17,17 @@ export type MeetingClassification = z.infer<typeof meetingClassificationSchema>;
 export function buildMeetingClassificationPrompt(input: SummaryInput): string {
   return [
     "Classify the Microsoft Teams meeting using the meeting title, metadata, and transcript chunk.",
+    "Review the transcript content provided for this chunk and return the best structured classification result.",
     "Return strict JSON only. Do not return markdown, code fences, prose, comments, or extra keys.",
     "Use only these meetingType values: weekly_spqrc, weekly_sales, plant_meeting, general.",
-    "weekly_spqrc: recurring SPQRC/SQPRC/operations/KPI/scorecard reviews focused on Safety, People, Quality, Responsiveness or delivery, and Cost.",
-    "weekly_sales: recurring sales, commercial, pipeline, forecast, CRM, quote, customer, account, or revenue reviews.",
-    "plant_meeting: one specific plant, site, facility, operating location, production meeting, or facility review.",
+    "weekly_spqrc: recurring SPQRC/SQPRC/operations/KPI/scorecard reviews focused on Safety, People, Quality, Responsiveness or Delivery, and Cost.",
+    "Strong weekly_spqrc title signals: SPQRC, SQPRC, weekly operations, weekly KPI, scorecard, safety quality delivery cost, operations review.",
+    "weekly_spqrc transcript signals: safety incidents, staffing or people updates, quality defects, scrap or rework, customer complaints, delivery performance, responsiveness, backlog, on-time delivery, cost performance, overtime, corrective actions, plant KPI review, operating metrics, escalations.",
+    "weekly_sales: recurring sales, commercial, pipeline, forecast, CRM, quote, customer, account, business development, or revenue reviews.",
+    "Strong weekly_sales title signals: weekly sales, sales meeting, pipeline, forecast, CRM, quotes, customer review, account review, business development, commercial review.",
+    "weekly_sales transcript signals: opportunities, prospects, quotes, pricing, margin, customers, accounts, revenue, forecast, wins, losses, customer follow-ups, sales activity, deal stage, CRM updates.",
+    "plant_meeting: one specific plant, site, facility, operating location, production meeting, operations meeting, facility review, or a named plant/site/facility.",
+    "plant_meeting transcript signals: local staffing, production schedule, shipments, equipment downtime, maintenance, safety, quality, materials, inventory, customer orders, plant-specific action items, plant-specific production issues.",
     "general: meetings that do not clearly fit the other types or have low confidence.",
     "Tie-breaking: SPQRC structure beats plant-specific context. Sales/customer/pipeline purpose beats plant/service issues. Use general for low confidence.",
     "JSON shape: {\"meetingType\":\"weekly_spqrc\"|\"weekly_sales\"|\"plant_meeting\"|\"general\",\"confidence\":0.0,\"signals\":[\"string\"],\"reason\":\"string\"}",
@@ -104,7 +110,7 @@ function detectSignals(text: string): SignalDetection {
   const strong = {
     weekly_spqrc: contains(["spqrc", "sqprc", "weekly operations", "weekly kpi", "scorecard", "safety quality delivery cost", "operations review"]),
     weekly_sales: contains(["weekly sales", "sales meeting", "pipeline", "forecast", "crm", "quotes", "customer review", "account review", "business development", "commercial review"]),
-    plant_meeting: contains(["plant meeting", "site meeting", "facility meeting", "production meeting", "operations meeting", "facility review"]),
+    plant_meeting: contains(["plant meeting", "site meeting", "facility meeting", "production meeting", "operations meeting", "facility review", "plant review", "site review"]),
     general: false
   };
   const weak = {
@@ -123,11 +129,12 @@ function detectSignals(text: string): SignalDetection {
       "overtime",
       "corrective actions",
       "plant kpi",
+      "plant kpi review",
       "operating metrics",
       "escalations"
     ]),
-    weekly_sales: contains(["opportunities", "prospects", "pricing", "margin", "customers", "accounts", "revenue", "wins", "losses", "customer follow-ups", "sales activity", "deal stage", "crm updates"]),
-    plant_meeting: contains(["local staffing", "production schedule", "shipments", "equipment downtime", "maintenance", "materials", "inventory", "customer orders", "plant-specific"]),
+    weekly_sales: contains(["opportunities", "prospects", "quotes", "pricing", "margin", "customers", "accounts", "revenue", "forecast", "wins", "losses", "customer follow-ups", "sales activity", "deal stage", "crm updates"]),
+    plant_meeting: contains(["local staffing", "production schedule", "shipments", "equipment downtime", "maintenance", "safety", "quality", "materials", "inventory", "customer orders", "plant-specific", "production issues"]),
     general: false
   };
   const signals = Object.entries({ ...strong, ...weak })

@@ -1,6 +1,7 @@
 import { defaultSettings } from "@minutesbot/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateAndSendSummary } from "./summaryWorkflow";
+import { summarizeTranscript } from "@minutesbot/summary-engine";
 
 vi.mock("@minutesbot/summary-engine", () => ({
   createOpenAiCompatibleProvider: vi.fn(() => ({})),
@@ -110,5 +111,32 @@ describe("summary workflow", () => {
     expect(send.mock.calls.map(([message]) => (message as { to: string }).to)).toEqual(["owner@wgs.bot", "alex@team.wgs.bot", "casey@partner.com"]);
     expect(db.emailDeliveries.map((values) => values[2])).toEqual(["owner@wgs.bot", "alex@team.wgs.bot", "casey@partner.com"]);
     expect(db.emailDeliveries.every((values) => values[4] === "sent")).toBe(true);
+  });
+
+  it("passes recap classification defaults into summary generation", async () => {
+    const db = new FakeD1();
+
+    await generateAndSendSummary(
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {
+          get: vi.fn(async () => ({ text: async () => "Alex: hello" })),
+          put: vi.fn(async () => undefined)
+        } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        AI_API_KEY: "test-ai-key",
+        SEND_EMAIL: { send: vi.fn(async () => ({ id: "msg-1" })) }
+      },
+      "mtg_1"
+    );
+
+    expect(vi.mocked(summarizeTranscript).mock.calls[0][0]).toMatchObject({
+      classificationEnabled: true,
+      defaultTemplate: "auto"
+    });
   });
 });

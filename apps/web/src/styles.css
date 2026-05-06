@@ -199,6 +199,238 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   max-width: 920px;
 }
 
+.recapTemplatePage {
+  display: grid;
+  gap: 18px;
+}
+
+.recapSettingsStrip {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, .55fr) minmax(160px, .8fr) minmax(240px, 1.3fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .72);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .14);
+}
+
+.recapSettingsStrip textarea {
+  min-height: 42px;
+}
+
+.recapTemplateGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.recapCard {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .86);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .16);
+}
+
+.templateLibrary,
+.automationPanel {
+  position: sticky;
+  top: 18px;
+}
+
+.segmentedControl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: #0b1220;
+}
+
+.segmentedControl button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.segmentedControl button.active,
+.segmentedControl button:hover {
+  background: #182235;
+  color: #f8fafc;
+}
+
+.templateList {
+  display: grid;
+  gap: 8px;
+}
+
+.templateListItem {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: #0b1220;
+  color: #e2e8f0;
+  text-align: left;
+  font-weight: 650;
+}
+
+.templateListItem small {
+  color: #94a3b8;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.templateListItem.active {
+  border-color: rgba(45, 212, 191, .72);
+  background: rgba(20, 184, 166, .1);
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, .16);
+}
+
+.previewHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.previewHeader h2 {
+  margin-bottom: 6px;
+  font-size: 22px;
+}
+
+.previewHeader p,
+.mutedText {
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.previewSection {
+  display: grid;
+  gap: 10px;
+}
+
+.previewSection h3 {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+.classificationGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.logicCard {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: #0b1220;
+}
+
+.logicCard span {
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.structureList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.structureList span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: rgba(2, 6, 23, .42);
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.promptPreview {
+  min-height: 210px;
+  max-height: 360px;
+  overflow: auto;
+  resize: vertical;
+}
+
+.automationFacts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.automationFacts div {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #253247;
+}
+
+.automationFacts dt {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.automationFacts dd {
+  margin: 0;
+  color: #e2e8f0;
+  font-weight: 650;
+}
+
+.automationToggle {
+  padding: 10px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: #0b1220;
+}
+
+.layoutChecks,
+.compactList {
+  display: grid;
+  gap: 8px;
+}
+
+.compactList {
+  margin: 0;
+  padding-left: 18px;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.secondaryButton {
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #cbd5e1;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: #182235;
+  color: #f8fafc;
+}
+
 .recapSections {
   display: grid;
   gap: 10px;
@@ -395,4 +627,29 @@ pre {
   .content { padding: 20px; }
   .timeZoneControl { grid-template-columns: 1fr; }
   .currentTime { white-space: normal; }
+  .recapSettingsStrip,
+  .recapTemplateGrid,
+  .classificationGrid {
+    grid-template-columns: 1fr;
+  }
+  .templateLibrary,
+  .automationPanel {
+    position: static;
+  }
+  .previewHeader {
+    display: grid;
+  }
+}
+
+@media (min-width: 821px) and (max-width: 1180px) {
+  .recapSettingsStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .recapTemplateGrid {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  }
+  .automationPanel {
+    position: static;
+    grid-column: 1 / -1;
+  }
 }

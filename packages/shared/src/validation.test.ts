@@ -56,6 +56,9 @@ describe("settings validation", () => {
     expect(settings.recap.transcriptionModel).toBe("openai/whisper-large-v3-turbo");
     expect(settings.recap.language).toBe("");
     expect(settings.recap.subjectPrefix).toBe("Meeting recap");
+    expect(settings.recap.classificationEnabled).toBe(true);
+    expect(settings.recap.defaultTemplate).toBe("auto");
+    expect(settings.recap.enabledTemplates).toEqual(["weekly_spqrc", "weekly_sales", "plant_meeting", "general"]);
     expect(settings.recap.sections.map((section) => section.key)).toEqual([
       "summary",
       "decisions",
@@ -103,6 +106,24 @@ describe("settings validation", () => {
         }
       })
     ).toThrow();
+  });
+
+  it("adds recap template defaults to legacy recap settings", () => {
+    const settings = parseSettings({
+      ...defaultSettings,
+      recap: {
+        transcriptionModel: "openai/whisper-large-v3-turbo",
+        language: "",
+        prompt: defaultRecapPrompt,
+        subjectPrefix: "Meeting recap",
+        introText: "",
+        sections: defaultSettings.recap.sections
+      }
+    });
+
+    expect(settings.recap.classificationEnabled).toBe(true);
+    expect(settings.recap.defaultTemplate).toBe("auto");
+    expect(settings.recap.enabledTemplates).toEqual(["weekly_spqrc", "weekly_sales", "plant_meeting", "general"]);
   });
 
   it("upgrades the legacy built-in recap prompt but preserves custom prompts", () => {

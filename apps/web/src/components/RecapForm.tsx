@@ -1,49 +1,319 @@
-import type { AppSettings, RecapSectionKey } from "@minutesbot/shared";
+import { useMemo, useState } from "react";
+import { defaultRecapPrompt, type AppSettings, type RecapSectionKey } from "@minutesbot/shared";
 
 type RecapSettings = AppSettings["recap"];
+export type RecapTemplateId = "auto" | "weekly_spqrc" | "weekly_sales" | "plant_meeting" | "general";
 
-export function RecapForm({ value, onChange }: { value: RecapSettings; onChange: (recap: RecapSettings) => void }) {
+type RecapTemplate = {
+  id: RecapTemplateId;
+  title: string;
+  description: string;
+  badge?: string;
+  structure: string[];
+  prompt: string;
+};
+
+const autoPromptPreview = [
+  "Classifier prompt: review the Teams meeting title and full transcript, classify each chunk when needed, and reduce to one final meeting type.",
+  "Generator prompt: use the resolved meeting type, do not reclassify, return strict JSON only, do not invent facts, and apply the selected WGS recap structure."
+].join("\n\n");
+
+export const recapTemplates: RecapTemplate[] = [
+  {
+    id: "auto",
+    title: "Auto-classified WGS recap",
+    badge: "ACTIVE DEFAULT",
+    description: "Automatically selects the best recap format from the Teams title and full transcript.",
+    structure: ["Meeting type", "Summary based on selected template", "Decisions", "Action items with owner and due date", "Open questions", "Risks", "Follow-ups"],
+    prompt: autoPromptPreview
+  },
+  {
+    id: "weekly_spqrc",
+    title: "Weekly SPQRC",
+    description: "Safety, People, Quality, Responsiveness/Delivery, Cost, decisions, risks, and actions.",
+    structure: [
+      "Meeting type: Weekly SPQRC",
+      "Safety",
+      "People",
+      "Quality",
+      "Responsiveness/Delivery",
+      "Cost",
+      "Top priorities before next meeting",
+      "Decisions",
+      "Action items",
+      "Open questions",
+      "Risks",
+      "Follow-ups"
+    ],
+    prompt: "Use the Weekly SPQRC structure: Safety, People, Quality, Responsiveness/Delivery, Cost, top priorities, decisions, action items, open questions, risks, and follow-ups."
+  },
+  {
+    id: "weekly_sales",
+    title: "Weekly Sales",
+    description: "Pipeline, forecast, customers, quotes, wins/losses, revenue risks, and actions.",
+    structure: [
+      "Meeting type: Weekly Sales",
+      "Sales forecast/pipeline",
+      "Customer/account updates",
+      "Quotes/pricing",
+      "Wins/losses",
+      "Risks to revenue",
+      "Top priorities before next meeting",
+      "Decisions",
+      "Action items",
+      "Open questions",
+      "Risks",
+      "Follow-ups"
+    ],
+    prompt: "Use the Weekly Sales structure: sales forecast/pipeline, customer/account updates, quotes/pricing, wins/losses, revenue risks, top priorities, decisions, action items, open questions, risks, and follow-ups."
+  },
+  {
+    id: "plant_meeting",
+    title: "Individual Plant Meeting",
+    description: "Plant/site operations, production, safety, quality, maintenance, materials, and actions.",
+    structure: [
+      "Meeting type: Individual Plant Meeting",
+      "Plant/site",
+      "Operating status",
+      "Safety/people",
+      "Production/schedule",
+      "Quality/customer issues",
+      "Maintenance/materials",
+      "Top priorities before next meeting",
+      "Decisions",
+      "Action items",
+      "Open questions",
+      "Risks",
+      "Follow-ups"
+    ],
+    prompt: "Use the Individual Plant Meeting structure: plant/site, operating status, safety/people, production/schedule, quality/customer issues, maintenance/materials, top priorities, decisions, action items, open questions, risks, and follow-ups."
+  },
+  {
+    id: "general",
+    title: "General",
+    description: "Default recap for meetings that do not match SPQRC, sales, or plant templates.",
+    structure: [
+      "Meeting type: General",
+      "Purpose",
+      "Key discussion",
+      "Current status",
+      "Key outcomes",
+      "Top priorities before next meeting",
+      "Decisions",
+      "Action items",
+      "Open questions",
+      "Risks",
+      "Follow-ups"
+    ],
+    prompt: "Use the General structure: purpose, key discussion, current status, key outcomes, top priorities, decisions, action items, open questions, risks, and follow-ups."
+  }
+];
+
+const classificationLogic = [
+  ["Weekly SPQRC", "Safety, People, Quality, Responsiveness/Delivery, and Cost review."],
+  ["Weekly Sales", "Pipeline, forecast, customers, quotes, wins/losses, and revenue risks."],
+  ["Individual Plant Meeting", "Plant/site operations, production, safety, quality, maintenance, and materials."],
+  ["General", "Fallback recap for all other meeting types."]
+] as const;
+
+export function RecapForm({
+  value,
+  onChange,
+  onSave,
+  saving = false
+}: {
+  value: RecapSettings;
+  onChange: (recap: RecapSettings) => void;
+  onSave?: () => void | Promise<void>;
+  saving?: boolean;
+}) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState<RecapTemplateId>("auto");
+  const [libraryTab, setLibraryTab] = useState<"suggested" | "custom">("suggested");
+  const [copyMessage, setCopyMessage] = useState("");
+  const selectedTemplate = useMemo(() => getTemplateById(selectedTemplateId), [selectedTemplateId]);
   const update = <K extends keyof RecapSettings>(key: K, next: RecapSettings[K]) => onChange({ ...value, [key]: next });
+  const promptPreview = getPromptPreview(selectedTemplate.id, value.prompt);
 
   return (
-    <form className="recapLayout">
-      <section className="formGrid">
+    <form className="recapTemplatePage">
+      <section className="recapSettingsStrip" aria-label="Recap settings">
         <Field label="Whisper model" value={value.transcriptionModel} onChange={(next) => update("transcriptionModel", next)} />
         <Field label="Language" value={value.language ?? ""} placeholder="Auto-detect" onChange={(next) => update("language", next)} />
         <Field label="Subject prefix" value={value.subjectPrefix} onChange={(next) => update("subjectPrefix", next)} />
-        <TextAreaField label="Intro text" value={value.introText ?? ""} rows={3} onChange={(next) => update("introText", next)} />
+        <TextAreaField label="Intro text" value={value.introText ?? ""} rows={2} onChange={(next) => update("introText", next)} />
       </section>
-      <section>
-        <h2>Layout</h2>
-        <div className="recapSections">
-          {value.sections.map((section, index) => (
-            <div className="recapSectionRow" key={section.key}>
-              <label className="check compactCheck">
-                <input
-                  type="checkbox"
-                  checked={section.enabled}
-                  onChange={(event) => update("sections", updateSection(value.sections, section.key, { enabled: event.target.checked }))}
-                />
-                <span>{sectionLabel(section.key)}</span>
-              </label>
-              <input
-                aria-label={`${sectionLabel(section.key)} label`}
-                value={section.label}
-                onChange={(event) => update("sections", updateSection(value.sections, section.key, { label: event.target.value }))}
-              />
-              <button type="button" disabled={index === 0} onClick={() => update("sections", moveSection(value.sections, index, -1))}>
-                Up
-              </button>
-              <button type="button" disabled={index === value.sections.length - 1} onClick={() => update("sections", moveSection(value.sections, index, 1))}>
-                Down
-              </button>
+
+      <div className="recapTemplateGrid">
+        <aside className="recapCard templateLibrary">
+          <div className="sectionHeader">
+            <h2>Templates</h2>
+          </div>
+          <div className="segmentedControl" role="tablist" aria-label="Template library">
+            <button type="button" className={libraryTab === "suggested" ? "active" : ""} onClick={() => setLibraryTab("suggested")}>
+              Suggested
+            </button>
+            <button type="button" className={libraryTab === "custom" ? "active" : ""} onClick={() => setLibraryTab("custom")}>
+              Custom
+            </button>
+          </div>
+          {libraryTab === "suggested" ? (
+            <div className="templateList">
+              {recapTemplates.map((template) => (
+                <button
+                  type="button"
+                  key={template.id}
+                  className={`templateListItem ${selectedTemplateId === template.id ? "active" : ""}`}
+                  onClick={() => setSelectedTemplateId(template.id)}
+                >
+                  <span>{template.title}</span>
+                  <small>{template.description}</small>
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
-      <TextAreaField className="promptField" label="AI recap prompt" value={value.prompt} rows={10} onChange={(next) => update("prompt", next)} />
+          ) : (
+            <p className="mutedText">Custom templates are not available yet.</p>
+          )}
+        </aside>
+
+        <section className="recapCard templatePreview">
+          <div className="previewHeader">
+            <div>
+              <h2>{selectedTemplate.title}</h2>
+              <p>{selectedTemplate.id === "auto" ? "Automatically reviews the Teams meeting title and full transcript, classifies the meeting, and applies the best recap structure." : selectedTemplate.description}</p>
+            </div>
+            {selectedTemplate.badge && <span className="badge good">{selectedTemplate.badge}</span>}
+          </div>
+
+          {selectedTemplate.id === "auto" && (
+            <section className="previewSection">
+              <h3>Classification logic</h3>
+              <div className="classificationGrid">
+                {classificationLogic.map(([title, description]) => (
+                  <div className="logicCard" key={title}>
+                    <strong>{title}</strong>
+                    <span>{description}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="previewSection">
+            <h3>Notes structure preview</h3>
+            <div className="structureList">
+              {selectedTemplate.structure.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          </section>
+
+          <section className="previewSection">
+            <h3>Prompt preview</h3>
+            <textarea className="promptPreview" readOnly rows={10} value={promptPreview} />
+          </section>
+
+          <div className="actions">
+            <button type="button" className="secondaryButton" onClick={() => update("prompt", defaultRecapPrompt)}>
+              Reset to WGS default
+            </button>
+            <button
+              type="button"
+              className="secondaryButton"
+              onClick={async () => setCopyMessage(await copyPromptText(promptPreview, typeof navigator === "undefined" ? undefined : navigator.clipboard))}
+            >
+              Copy prompt
+            </button>
+            <button type="button" disabled={saving} onClick={onSave}>
+              {saving ? "Saving..." : "Save recap"}
+            </button>
+            {copyMessage && <span className="fieldHelp">{copyMessage}</span>}
+          </div>
+        </section>
+
+        <aside className="recapCard automationPanel">
+          <h2>Automation</h2>
+          <dl className="automationFacts">
+            <div>
+              <dt>Status</dt>
+              <dd>{value.classificationEnabled ? "Automatic classification enabled" : "Automatic classification disabled"}</dd>
+            </div>
+            <div>
+              <dt>Classifier input</dt>
+              <dd>Teams title + full transcript</dd>
+            </div>
+            <div>
+              <dt>Default behavior</dt>
+              <dd>Apply to all meetings</dd>
+            </div>
+          </dl>
+
+          <label className="check compactCheck automationToggle">
+            <input type="checkbox" checked={value.classificationEnabled} onChange={(event) => update("classificationEnabled", event.target.checked)} />
+            <span>Automatic classification enabled</span>
+          </label>
+
+          <section className="previewSection">
+            <h3>Meeting types</h3>
+            <ul className="compactList">
+              <li>Weekly SPQRC</li>
+              <li>Weekly Sales</li>
+              <li>Individual Plant Meeting</li>
+              <li>General fallback</li>
+            </ul>
+          </section>
+
+          <section className="previewSection">
+            <h3>Recap email layout</h3>
+            <div className="layoutChecks">
+              {value.sections.map((section) => (
+                <label className="check compactCheck" key={section.key}>
+                  <input
+                    type="checkbox"
+                    checked={section.enabled}
+                    onChange={(event) => update("sections", updateSection(value.sections, section.key, { enabled: event.target.checked }))}
+                  />
+                  <span>{sectionLabel(section.key)}</span>
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="previewSection">
+            <h3>Generation rules</h3>
+            <ul className="compactList">
+              <li>Strict JSON only</li>
+              <li>No invented facts</li>
+              <li>Owners and due dates captured when stated</li>
+              <li>Missing details marked as Not specified, Unclear, or TBD</li>
+            </ul>
+          </section>
+
+          <button type="button" disabled={saving} onClick={onSave}>
+            {saving ? "Saving..." : "Save recap"}
+          </button>
+        </aside>
+      </div>
     </form>
   );
+}
+
+export function getTemplateById(id: RecapTemplateId): RecapTemplate {
+  return recapTemplates.find((template) => template.id === id) ?? recapTemplates[0];
+}
+
+export function getPromptPreview(templateId: RecapTemplateId, savedPrompt: string): string {
+  const template = getTemplateById(templateId);
+  if (templateId === "auto") return `${template.prompt}\n\nCurrent saved prompt:\n${savedPrompt}`;
+  return `${template.prompt}\n\nCurrent saved prompt:\n${savedPrompt}`;
+}
+
+export async function copyPromptText(
+  prompt: string,
+  clipboard?: Pick<Clipboard, "writeText">
+): Promise<"Prompt copied" | "Clipboard unavailable"> {
+  if (!clipboard?.writeText) return "Clipboard unavailable";
+  await clipboard.writeText(prompt);
+  return "Prompt copied";
 }
 
 export function updateSection(
@@ -94,20 +364,18 @@ function Field({
 }
 
 function TextAreaField({
-  className,
   label,
   rows,
   value,
   onChange
 }: {
-  className?: string;
   label: string;
   rows: number;
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className={className}>
+    <label>
       <span>{label}</span>
       <textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>

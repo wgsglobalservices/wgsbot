@@ -6,14 +6,21 @@ import { meetingSummarySchema, type MeetingSummary, type SummaryInput, type Summ
 
 export async function summarizeTranscript(input: SummaryInput, provider: SummaryProvider): Promise<MeetingSummary> {
   const chunks = chunkTranscript(input.transcriptText);
-  const classification = await classifyMeetingAcrossTranscript(input, provider);
-  const meetingType = classification.meetingType;
+  const meetingType = await resolveSummaryMeetingType(input, provider);
   const partials: MeetingSummary[] = [];
   for (const chunk of chunks) {
     const result = await provider.generate(buildSummaryPrompt({ ...input, transcriptText: chunk, meetingType }));
     partials.push({ ...meetingSummarySchema.parse(result), meetingType });
   }
   return combineSummaries(partials, meetingType);
+}
+
+async function resolveSummaryMeetingType(input: SummaryInput, provider: SummaryProvider): Promise<MeetingRecapType> {
+  if (input.classificationEnabled === false) {
+    return input.defaultTemplate && input.defaultTemplate !== "auto" ? input.defaultTemplate : "general";
+  }
+  const classification = await classifyMeetingAcrossTranscript(input, provider);
+  return classification.meetingType;
 }
 
 function combineSummaries(summaries: MeetingSummary[], meetingType: MeetingRecapType): MeetingSummary {

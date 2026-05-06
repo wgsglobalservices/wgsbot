@@ -109,6 +109,24 @@ describe("summary engine", () => {
     expect(lowConfidence.meetingType).toBe("general");
   });
 
+  it("falls back to general when classification provider output is invalid", async () => {
+    const result = await classifyMeetingAcrossTranscript(
+      {
+        meetingSubject: "Touch base",
+        attendees: [],
+        transcriptText: "The team reviewed a general status update."
+      },
+      {
+        async generate() {
+          return { meetingType: "unknown", confidence: 2, signals: [], reason: "bad payload" };
+        }
+      }
+    );
+
+    expect(result.meetingType).toBe("general");
+    expect(result.signals).toContain("classification_failed");
+  });
+
   it("prefers SPQRC over plant meeting when plant-specific SPQRC structure is clear", () => {
     const result = resolveMeetingType(
       [
@@ -226,6 +244,36 @@ describe("summary engine", () => {
     );
 
     expect(call).toBeGreaterThan(2);
+    expect(summary.meetingType).toBe("weekly_sales");
+    expect(summary.summary[0]).toBe("Meeting type: Weekly Sales");
+  });
+
+  it("uses the configured default template when classification is disabled", async () => {
+    const summary = await summarizeTranscript(
+      {
+        meetingSubject: "Weekly Sales",
+        attendees: [],
+        transcriptText: "Pipeline and quotes were discussed.",
+        classificationEnabled: false,
+        defaultTemplate: "weekly_sales"
+      },
+      {
+        async generate(prompt) {
+          expect(prompt).not.toContain("Classify the Microsoft Teams meeting");
+          expect(prompt).toContain("Resolved meeting type: weekly_sales");
+          return {
+            meetingType: "general",
+            summary: ["Meeting type: General", "Sales forecast/pipeline: Pipeline moved forward."],
+            decisions: [],
+            actionItems: [],
+            openQuestions: [],
+            risks: [],
+            followUps: []
+          };
+        }
+      }
+    );
+
     expect(summary.meetingType).toBe("weekly_sales");
     expect(summary.summary[0]).toBe("Meeting type: Weekly Sales");
   });

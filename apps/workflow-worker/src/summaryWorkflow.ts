@@ -46,7 +46,9 @@ export async function generateAndSendSummary(
         organizerEmail: meeting.organizer_email ?? undefined,
         attendees: attendees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
         transcriptText,
-        prompt: settings.recap.prompt
+        prompt: settings.recap.prompt,
+        classificationEnabled: settings.recap.classificationEnabled,
+        defaultTemplate: settings.recap.defaultTemplate
       },
       provider
     )

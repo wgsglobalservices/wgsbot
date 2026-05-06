@@ -36,7 +36,12 @@ function buildBaseInstructions(customPrompt?: string): string {
     "Avoid verbatim quotes unless the exact wording is critical.",
     "Use plain business language suitable for an email recap.",
     "Action items must be concrete and execution-focused. Each action item must include owner, task, and dueDate. Use owner \"Unassigned\" and dueDate \"TBD\" when not specified.",
-    "Only include confirmed decisions. Capture risks, open questions, and follow-ups separately."
+    "Capture action items related to safety follow-up, quality issue closure, delivery or customer response, cost reduction, sales or customer follow-up, quote or pricing work, plant operational improvements, open issues, and data or reporting needed before the next meeting.",
+    "Do not convert general discussion into action items unless an action was clearly assigned or strongly implied.",
+    "Only include confirmed decisions, agreements, approvals, rejected options, committed plans, or direction changes. Do not treat discussion as a decision unless there was clear agreement.",
+    "Risks must capture blockers, delays, safety risks, quality risks, delivery risks, cost risks, customer or revenue risks, staffing risks, equipment or material constraints, and dependencies.",
+    "Open questions must capture unresolved questions, missing information, unclear ownership, unclear deadlines, pending customer answers, pending plant data, or unanswered operational concerns.",
+    "Follow-ups must capture planned future meetings, customer follow-ups, plant check-ins, internal reviews, reports to prepare, data to validate, or topics to revisit in the next weekly meeting."
   ]
     .filter(Boolean)
     .join("\n");

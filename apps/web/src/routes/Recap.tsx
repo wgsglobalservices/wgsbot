@@ -35,29 +35,22 @@ export function Recap() {
   }
 
   if (!settings) return <p>{message || "Loading recap settings..."}</p>;
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage("Saving...");
+    const result = await saveRecapSettings(settings);
+    setSettings(result.settings);
+    setMessage(result.message);
+    setSaving(false);
+  };
   return (
     <div className="page">
       <header>
-        <h1>Recap</h1>
-        <p>Configure transcription, the AI recap prompt, and the layout of the recap email sent after a meeting.</p>
+        <h1>Recap templates</h1>
+        <p>Configure transcription, automatic meeting classification, AI recap prompts, and the layout of recap emails sent after meetings.</p>
       </header>
-      <RecapForm value={settings.recap} onChange={(recap) => setSettings({ ...settings, recap })} />
-      <div className="actions">
-        <button
-          disabled={saving}
-          onClick={async () => {
-            setSaving(true);
-            setMessage("Saving...");
-            const result = await saveRecapSettings(settings);
-            setSettings(result.settings);
-            setMessage(result.message);
-            setSaving(false);
-          }}
-        >
-          {saving ? "Saving..." : "Save recap"}
-        </button>
-        {message && <span>{message}</span>}
-      </div>
+      <RecapForm value={settings.recap} onChange={(recap) => setSettings({ ...settings, recap })} onSave={handleSave} saving={saving} />
+      {message && <span className="fieldHelp">{message}</span>}
     </div>
   );
 }
