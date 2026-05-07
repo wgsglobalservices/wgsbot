@@ -57,6 +57,8 @@ const defaultRecapConfig = {
   shortMeetingDurationThresholdMinutes: 2
 };
 
+export const defaultSampleRecapRecipient = "it@wgsglobalservices.com";
+
 export const defaultRecapPrompt = [
   "You generate WGS meeting recaps from Microsoft Teams meeting titles and transcripts. Return strict JSON only.",
   "Generate a Microsoft Teams-style AI meeting recap with topic-grouped Meeting notes and structured Follow-up tasks.",
@@ -188,7 +190,8 @@ export const defaultSettings: AppSettings = {
   },
   email: {
     provider: "mock",
-    senderEmail: "notetaker@wgs.bot"
+    senderEmail: "notetaker@wgs.bot",
+    testRecipient: defaultSampleRecapRecipient
   },
   policy: {
     sendToAllowedDomainsOnly: true,

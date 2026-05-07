@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultRecapPrompt, defaultSettings, parseSettings } from "./validation";
+import { defaultRecapPrompt, defaultSampleRecapRecipient, defaultSettings, parseSettings } from "./validation";
 
 describe("settings validation", () => {
   it("normalizes domains and emails", () => {
@@ -48,6 +48,11 @@ describe("settings validation", () => {
     expect(settings.attendee.webhookSecretConfigured).toBe(true);
     expect(settings.ai.apiKeyConfigured).toBe(true);
     expect(JSON.stringify(settings)).not.toContain("sk-");
+  });
+
+  it("uses the WGS IT mailbox as the default sample recap recipient", () => {
+    expect(defaultSettings.email.testRecipient).toBe(defaultSampleRecapRecipient);
+    expect(parseSettings(defaultSettings).email.testRecipient).toBe("it@wgsglobalservices.com");
   });
 
   it("keeps bot image storage metadata without storing image bytes in settings", () => {

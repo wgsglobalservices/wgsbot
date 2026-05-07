@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppSettings } from "@minutesbot/shared";
+import { defaultSampleRecapRecipient, type AppSettings } from "@minutesbot/shared";
 import { apiPost } from "../lib/api";
 import { TestActionButton } from "./TestActionButton";
 
@@ -91,7 +91,7 @@ export function SettingsForm({
         </div>
         <div className="inlineActions">
           <TestActionButton path="/api/admin/test-email" label="Test outbound email" variant="secondary" />
-          <SendSampleRecapEmail initialRecipient={value.email.testRecipient ?? ""} />
+          <SendSampleRecapEmail initialRecipient={resolveSampleRecapRecipient(value.email.testRecipient)} />
         </div>
       </SettingsSection>
 
@@ -157,6 +157,10 @@ export function getTimeZoneOptions(currentTimeZone: string): string[] {
 
 export function configuredLabel(configured: boolean): "Configured" | "Missing" {
   return configured ? "Configured" : "Missing";
+}
+
+export function resolveSampleRecapRecipient(value: string | undefined): string {
+  return value ?? defaultSampleRecapRecipient;
 }
 
 function configuredTone(configured: boolean): "good" | "bad" {

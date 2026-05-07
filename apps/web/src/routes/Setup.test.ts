@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { defaultSettings, type AppSettings } from "@minutesbot/shared";
-import { configuredLabel, getTimeZoneOptions, parseAllowedDomains } from "../components/SettingsForm";
+import { defaultSampleRecapRecipient, defaultSettings, type AppSettings } from "@minutesbot/shared";
+import { configuredLabel, getTimeZoneOptions, parseAllowedDomains, resolveSampleRecapRecipient } from "../components/SettingsForm";
 import { fileToBotImageUpload, saveSetupSettings } from "./Setup";
 
 describe("setup save status", () => {
@@ -44,6 +44,16 @@ describe("setup status labels", () => {
   it("labels configured and missing secrets without exposing values", () => {
     expect(configuredLabel(true)).toBe("Configured");
     expect(configuredLabel(false)).toBe("Missing");
+  });
+});
+
+describe("sample recap recipient", () => {
+  it("defaults missing saved settings to the WGS IT recipient", () => {
+    expect(resolveSampleRecapRecipient(undefined)).toBe(defaultSampleRecapRecipient);
+  });
+
+  it("keeps an explicitly configured sample recipient", () => {
+    expect(resolveSampleRecapRecipient("reviewer@example.com")).toBe("reviewer@example.com");
   });
 });
 
