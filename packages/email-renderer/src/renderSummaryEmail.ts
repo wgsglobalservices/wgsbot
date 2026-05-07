@@ -52,26 +52,29 @@ function renderText(input: SummaryEmailInput & { summary: ReturnType<typeof norm
 function renderHtml(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string, recapDepthLabel: string): string {
   const secondarySections = resolveSecondarySections(input, isLegacyOnly(input.summary));
   return [
-    '<div style="margin:0;padding:18px;background:#111827;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#f8fafc;">',
-    '<div style="max-width:720px;margin:0 auto;background:#0b1120;border-radius:10px;overflow:hidden;">',
-    '<div style="height:4px;background:#2dd4bf;"></div>',
-    '<div style="padding:22px 24px 18px;">',
-    '<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#5eead4;font-weight:800;">WGS / minutesbot</div>',
-    '<h1 style="margin:7px 0 4px;font-size:25px;line-height:1.2;color:#ffffff;">Meeting recap</h1>',
-    paragraph(input.subject, "margin:0 0 4px;font-size:17px;line-height:1.42;color:#e5e7eb;font-weight:800;"),
-    input.date ? paragraph(input.date, "margin:0 0 12px;font-size:14px;line-height:1.35;color:#cbd5e1;") : "",
-    `<div style="display:block;margin:12px 0 0;">${badge(meetingTypeLabel)}${input.summary.recapDepth === "brief" ? badge("Brief recap", "#172554", "#bfdbfe") : ""}</div>`,
-    input.transcriptDownloadUrl ? `<p style="margin:12px 0 0;font-size:14px;"><a href="${escapeAttribute(input.transcriptDownloadUrl)}" style="color:#67e8f9;font-weight:800;text-decoration:underline;">Download raw transcript</a></p>` : "",
+    '<meta name="color-scheme" content="light dark">',
+    '<meta name="supported-color-schemes" content="light dark">',
+    "<style>:root { color-scheme: light dark; supported-color-schemes: light dark; }</style>",
+    '<div style="margin:0;padding:18px;background:#ffffff;font-family:Inter,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;">',
+    '<div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #ddd6fe;border-radius:10px;overflow:hidden;">',
+    '<div style="height:4px;background:#6d28d9;"></div>',
+    '<div style="padding:24px 24px 20px;background:#ffffff;">',
+    '<div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#6d28d9;font-weight:800;">WGS / minutesbot</div>',
+    '<h1 style="margin:8px 0 5px;font-size:27px;line-height:1.22;color:#111827;">Meeting recap</h1>',
+    paragraph(input.subject, "margin:0 0 5px;font-size:18px;line-height:1.45;color:#111827;font-weight:800;"),
+    input.date ? paragraph(input.date, "margin:0 0 14px;font-size:15px;line-height:1.45;color:#374151;") : "",
+    `<div style="display:block;margin:14px 0 0;">${badge(meetingTypeLabel)}${input.summary.recapDepth === "brief" ? badge("Brief recap", "#ede9fe", "#5b21b6") : ""}</div>`,
+    input.transcriptDownloadUrl ? `<p style="margin:13px 0 0;font-size:15px;line-height:1.45;"><a href="${escapeAttribute(input.transcriptDownloadUrl)}" style="color:#5b21b6;font-weight:800;text-decoration:underline;">Download raw transcript</a></p>` : "",
     callout(aiDisclaimer),
-    input.summary.recapDepth === "brief" ? callout("Brief meeting detected<br><span style=\"font-weight:600;\">This recap is simplified because the meeting or captured transcript was very short.</span>", "#083344", "#22d3ee") : "",
-    input.recap?.introText ? paragraph(input.recap.introText, "margin:14px 0 0;font-size:14px;line-height:1.5;color:#d1d5db;") : "",
+    input.summary.recapDepth === "brief" ? callout("Brief meeting detected<br><span style=\"font-weight:650;\">This recap is simplified because the meeting or captured transcript was very short.</span>", "#f5f3ff", "#6d28d9", "#4c1d95") : "",
+    input.recap?.introText ? paragraph(input.recap.introText, "margin:15px 0 0;font-size:15px;line-height:1.55;color:#374151;") : "",
     sectionHeading("Meeting notes"),
     renderMeetingNotesHtml(input.summary.meetingNotes),
     sectionHeading("Follow-up tasks"),
     renderFollowUpTasksHtml(input.summary.followUpTasks),
     secondarySections.map((section) => renderBulletSection(section.label, section.items)).join(""),
     input.excludedRecipients?.length ? renderBulletSection("Not sent to external attendees", input.excludedRecipients) : "",
-    '<div style="margin-top:20px;padding-top:12px;border-top:1px solid #334155;color:#cbd5e1;font-size:12px;line-height:1.45;">Sent by minutesbot<br>This recap was generated from the meeting transcript and may require human review.</div>',
+    '<div style="margin-top:22px;padding-top:13px;border-top:1px solid #ddd6fe;color:#374151;font-size:13px;line-height:1.5;">Sent by minutesbot<br>This recap was generated from the meeting transcript and may require human review.</div>',
     "</div></div></div>"
   ].join("");
 }
@@ -98,15 +101,15 @@ function renderFollowUpTasksText(tasks: ReturnType<typeof normalizeSummary>["fol
 }
 
 function renderMeetingNotesHtml(notes: ReturnType<typeof normalizeSummary>["meetingNotes"]): string {
-  if (notes.length === 0) return paragraph("None captured.", "margin:0 0 12px;font-size:14px;color:#cbd5e1;");
+  if (notes.length === 0) return paragraph("None captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;");
   return notes
     .map(
       (note) =>
-        `<div style="margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid #1f2937;">` +
-        `<h3 style="margin:0 0 6px;font-size:16px;color:#ffffff;">${escapeHtml(note.heading)}</h3>` +
-        (note.overview ? paragraph(note.overview, "margin:0 0 10px;font-size:14px;line-height:1.5;color:#d1d5db;") : "") +
+        `<div style="margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid #ede9fe;">` +
+        `<h3 style="margin:0 0 7px;font-size:17px;line-height:1.35;color:#111827;">${escapeHtml(note.heading)}</h3>` +
+        (note.overview ? paragraph(note.overview, "margin:0 0 11px;font-size:15px;line-height:1.55;color:#374151;") : "") +
         note.items
-          .map((item) => `<p style="margin:8px 0 3px;font-size:14px;color:#f8fafc;"><strong>${escapeHtml(item.title)}</strong></p>${paragraph(item.detail, "margin:0;font-size:14px;line-height:1.5;color:#d1d5db;")}`)
+          .map((item) => `<p style="margin:9px 0 4px;font-size:15px;line-height:1.45;color:#111827;"><strong>${escapeHtml(item.title)}</strong></p>${paragraph(item.detail, "margin:0;font-size:15px;line-height:1.55;color:#374151;")}`)
           .join("") +
         "</div>"
     )
@@ -114,15 +117,15 @@ function renderMeetingNotesHtml(notes: ReturnType<typeof normalizeSummary>["meet
 }
 
 function renderFollowUpTasksHtml(tasks: ReturnType<typeof normalizeSummary>["followUpTasks"]): string {
-  if (tasks.length === 0) return paragraph("No follow-up tasks captured.", "margin:0 0 12px;font-size:14px;color:#cbd5e1;");
+  if (tasks.length === 0) return paragraph("No follow-up tasks captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;");
   return tasks
     .map(
       (task) =>
-        `<div style="margin:0 0 10px;padding:0 0 0 10px;border-left:3px solid #2dd4bf;">` +
-        `<p style="margin:0 0 4px;font-size:14px;color:#f8fafc;"><strong>${escapeHtml(task.title)}</strong></p>` +
-        paragraph(task.description, "margin:0 0 6px;font-size:14px;line-height:1.5;color:#d1d5db;") +
-        paragraph(`Owner: ${formatOwners(task.owners)}`, "margin:0 0 3px;font-size:13px;color:#cbd5e1;") +
-        paragraph(`Due: ${task.dueDate}`, "margin:0;font-size:13px;color:#cbd5e1;") +
+        `<div style="margin:0 0 12px;padding:11px 12px 11px 13px;border-left:4px solid #6d28d9;background:#f5f3ff;">` +
+        `<p style="margin:0 0 5px;font-size:15px;line-height:1.45;color:#111827;"><strong>${escapeHtml(task.title)}</strong></p>` +
+        paragraph(task.description, "margin:0 0 7px;font-size:15px;line-height:1.55;color:#374151;") +
+        paragraph(`Owner: ${formatOwners(task.owners)}`, "margin:0 0 3px;font-size:13px;line-height:1.45;color:#4b5563;") +
+        paragraph(`Due: ${task.dueDate}`, "margin:0;font-size:13px;line-height:1.45;color:#4b5563;") +
         "</div>"
     )
     .join("");
@@ -164,19 +167,19 @@ function sectionText(title: string, items: string[]): string {
 function renderBulletSection(title: string, items: string[]): string {
   if (items.length === 0) return "";
   const listItems = items.map((item) => `<li style="margin:0 0 5px;">${escapeHtml(item)}</li>`).join("");
-  return `${sectionHeading(title)}<ul style="margin:0 0 12px 20px;padding:0;font-size:14px;line-height:1.5;color:#d1d5db;">${listItems}</ul>`;
+  return `${sectionHeading(title)}<ul style="margin:0 0 12px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${listItems}</ul>`;
 }
 
 function sectionHeading(value: string): string {
-  return `<h2 style="margin:22px 0 10px;padding-bottom:6px;border-bottom:1px solid #334155;font-size:18px;line-height:1.3;color:#ffffff;">${escapeHtml(value)}</h2>`;
+  return `<h2 style="margin:23px 0 11px;padding-bottom:7px;border-bottom:1px solid #ddd6fe;font-size:19px;line-height:1.35;color:#111827;">${escapeHtml(value)}</h2>`;
 }
 
-function badge(value: string, background = "#134e4a", color = "#ccfbf1"): string {
-  return `<span style="display:inline-block;margin:0 6px 6px 0;padding:4px 9px;border-radius:999px;background:${background};color:${color};font-size:12px;font-weight:800;">${escapeHtml(value)}</span>`;
+function badge(value: string, background = "#f5f3ff", color = "#5b21b6"): string {
+  return `<span style="display:inline-block;margin:0 6px 6px 0;padding:5px 10px;border-radius:999px;background:${background};color:${color};font-size:13px;font-weight:800;">${escapeHtml(value)}</span>`;
 }
 
-function callout(value: string, background = "#422006", border = "#facc15"): string {
-  return `<div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid ${border};background:${background};font-size:14px;line-height:1.45;color:#fef3c7;font-weight:800;">${value}</div>`;
+function callout(value: string, background = "#fffbeb", border = "#f59e0b", color = "#78350f"): string {
+  return `<div style="margin:15px 0 0;padding:11px 13px;border-left:4px solid ${border};background:${background};font-size:15px;line-height:1.5;color:${color};font-weight:800;">${value}</div>`;
 }
 
 function paragraph(value: string, style: string): string {

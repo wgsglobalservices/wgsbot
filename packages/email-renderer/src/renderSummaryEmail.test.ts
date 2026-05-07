@@ -46,8 +46,21 @@ describe("email renderer", () => {
     expect(rendered.html).toContain("Key Discussion Topics:");
     expect(rendered.html).toContain("<strong>Launch Readiness:</strong>");
     expect(rendered.html).toContain("Follow-up tasks");
-    expect(rendered.html).toContain("background:#0b1120");
-    expect(rendered.html).toContain("border-left:3px solid #2dd4bf");
+    expect(rendered.html).toContain('<meta name="color-scheme" content="light dark">');
+    expect(rendered.html).toContain('<meta name="supported-color-schemes" content="light dark">');
+    expect(rendered.html).toContain("supported-color-schemes: light dark");
+    expect(rendered.html).toContain("background:#ffffff");
+    expect(rendered.html).toContain("#6d28d9");
+    expect(rendered.html).toContain("#f5f3ff");
+    expect(rendered.html).toContain("#5b21b6");
+    expect(rendered.html).toContain("#fffbeb");
+    expect(rendered.html).toContain("#78350f");
+    expect(rendered.html).toContain("border-left:4px solid #6d28d9");
+    expect(rendered.html).not.toContain("background:#111827");
+    expect(rendered.html).not.toContain("background:#0b1120");
+    expect(rendered.html).not.toContain("#334155");
+    expect(rendered.html).not.toContain("#cbd5e1");
+    expect(rendered.html).not.toContain("font-size:12px");
     expect(rendered.html).not.toContain("border:1px solid #dbe6ea");
   });
 

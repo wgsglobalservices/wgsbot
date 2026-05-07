@@ -768,8 +768,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   align-items: center;
   min-height: 22px;
   padding-left: 8px;
-  border-left: 2px solid #2dd4bf;
-  color: #e2e8f0;
+  border-left: 2px solid #8b5cf6;
+  color: #ede9fe;
   font-size: 13px;
 }
 
@@ -783,48 +783,45 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .teamsRecap h3,
 .teamsRecap h4 {
   margin: 0;
-  color: #f8fafc;
+  color: #ffffff;
 }
 
 .teamsPreviewBlock {
   display: grid;
   gap: 6px;
-  padding: 0 0 10px;
-  border: 0;
-  border-bottom: 1px solid #334155;
-  border-radius: 0;
-  background: transparent;
+  padding: 12px;
+  border: 1px solid rgba(139, 92, 246, .32);
+  border-radius: 8px;
+  background: rgba(245, 243, 255, .08);
 }
 
 .teamsPreviewBlock strong {
-  color: #f8fafc;
+  color: #ffffff;
 }
 
 .teamsPreviewBlock p {
   margin: 0;
-  color: #e2e8f0;
-  line-height: 1.45;
+  color: #ede9fe;
+  line-height: 1.55;
 }
 
 .teamsTaskBlock {
-  padding-left: 10px;
-  border-bottom: 0;
-  border-left: 3px solid #2dd4bf;
+  border-left: 4px solid #8b5cf6;
 }
 
 .aiDisclaimer {
   margin: 0;
   color: #fef3c7;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
 }
 
 .briefPreviewCallout {
   margin: 0;
-  padding: 2px 0 2px 10px;
-  border-left: 3px solid #2dd4bf;
-  background: transparent;
-  color: #f8fafc;
+  padding: 8px 10px;
+  border-left: 4px solid #8b5cf6;
+  background: rgba(245, 243, 255, .1);
+  color: #ffffff;
   font-weight: 700;
 }
 
