@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppSettings } from "@minutesbot/shared";
+import { apiPost } from "../lib/api";
 import { TestActionButton } from "./TestActionButton";
 
 export function SettingsForm({
@@ -90,7 +91,7 @@ export function SettingsForm({
         </div>
         <div className="inlineActions">
           <TestActionButton path="/api/admin/test-email" label="Test outbound email" variant="secondary" />
-          <TestActionButton path="/api/admin/send-test-summary-email" label="Send test summary email" variant="secondary" />
+          <SendSampleRecapEmail initialRecipient={value.email.testRecipient ?? ""} />
         </div>
       </SettingsSection>
 
@@ -275,6 +276,44 @@ function NumberWithUnit({ label, unit, value, onChange }: { label: string; unit:
         <span>{unit}</span>
       </span>
     </label>
+  );
+}
+
+function SendSampleRecapEmail({ initialRecipient }: { initialRecipient: string }) {
+  const [recipient, setRecipient] = useState(initialRecipient);
+  const [result, setResult] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setRecipient(initialRecipient);
+  }, [initialRecipient]);
+
+  return (
+    <div className="testAction sampleRecapEmailAction">
+      <label className="setupField fieldWidth-medium">
+        <span>Sample recap recipient</span>
+        <input type="email" value={recipient} onChange={(event) => setRecipient(event.target.value)} />
+      </label>
+      <button
+        className="secondaryButton"
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const response = await apiPost<unknown>("/api/admin/send-test-summary-email", { to: recipient });
+            setResult(JSON.stringify(response, null, 2));
+          } catch (error) {
+            setResult(error instanceof Error ? error.message : "Failed");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Sending..." : "Send sample recap"}
+      </button>
+      {result && <pre>{result}</pre>}
+    </div>
   );
 }
 
