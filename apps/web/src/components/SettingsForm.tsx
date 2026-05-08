@@ -386,7 +386,7 @@ function BotImageField({ value, onUpload }: { value: AppSettings; onUpload?: (fi
     <label className="setupField fieldWidth-wide">
       <span>Bot background image</span>
       <input
-        accept="image/png,image/jpeg"
+        accept="image/*"
         disabled={!onUpload || uploading}
         type="file"
         onChange={async (event) => {
@@ -405,7 +405,7 @@ function BotImageField({ value, onUpload }: { value: AppSettings; onUpload?: (fi
         }}
       />
       <span className="fieldHelp">
-        {uploading ? "Uploading..." : botImage ? `${botImage.fileName ?? "Uploaded image"} will be sent with new Teams bots.` : "Upload a PNG or JPEG for new Teams bots."}
+        {uploading ? "Optimizing..." : botImage ? `${botImage.fileName ?? "Uploaded image"} will be sent with new Teams bots.` : "Upload an image file. It will be optimized as a crisp 16:9 video background."}
       </span>
       {error && <span className="fieldError">{error}</span>}
     </label>

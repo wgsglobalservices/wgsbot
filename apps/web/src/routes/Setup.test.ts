@@ -80,13 +80,18 @@ describe("sample recap recipient", () => {
 });
 
 describe("bot image upload", () => {
-  it("converts uploaded PNG files into base64 API input", async () => {
+  it("compresses uploaded bot background images into optimized JPEG API input", async () => {
     const file = new File([new Uint8Array([1, 2, 3])], "wgsbot.png", { type: "image/png" });
 
-    await expect(fileToBotImageUpload(file)).resolves.toEqual({
-      contentType: "image/png",
-      data: "AQID",
-      fileName: "wgsbot.png"
+    await expect(
+      fileToBotImageUpload(file, async (uploaded) => {
+        expect(uploaded).toBe(file);
+        return new File([new Uint8Array([4, 5, 6])], "wgsbot-optimized.jpg", { type: "image/jpeg" });
+      })
+    ).resolves.toEqual({
+      contentType: "image/jpeg",
+      data: "BAUG",
+      fileName: "wgsbot-optimized.jpg"
     });
   });
 });
