@@ -18,9 +18,37 @@ describe("invite parser", () => {
     expect(invite.rawRecipient).toBe("notetaker@meet.company.com");
     expect(invite.attendees).toEqual([
       { email: "alex@company.com", name: "Alex", role: "required" },
-      { email: "vendor@example.net", name: "Vendor", role: "optional" }
+      { email: "vendor@example.net", name: "Vendor", role: "optional" },
+      { email: "notetaker@meet.company.com", name: "minutesbot", role: undefined }
     ]);
     expect(invite.teamsJoinUrl).toContain("teams.microsoft.com/l/meetup-join");
+  });
+
+  it("adds To and Cc recipients when the calendar attendee list is incomplete", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: Alex <alex@company.com>, notetaker@meet.company.com
+Cc: Casey <casey@company.com>, Vendor <vendor@example.net>
+Subject: Project sync
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:abc-headers
+SUMMARY:Project sync
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    expect(invite.attendees).toEqual([
+      { email: "alex@company.com", name: "Alex", role: "required" },
+      { email: "notetaker@meet.company.com" },
+      { email: "casey@company.com", name: "Casey" },
+      { email: "vendor@example.net", name: "Vendor" }
+    ]);
   });
 
   it("maps updates to the same calendar UID", () => {
@@ -58,7 +86,7 @@ Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?co
     expect(first.kind).toBe("request");
     expect(first.subject).toBe("Join Teams meeting in progress");
     expect(first.organizer.email).toBe("p.gustafson@wgsglobalservices.com");
-    expect(first.attendees).toEqual([]);
+    expect(first.attendees).toEqual([{ email: "notetaker@wgs.bot", name: undefined, role: undefined }]);
     expect(first.teamsJoinUrl).toContain("teams.microsoft.com/l/meetup-join");
     expect(first.calendarUid).toBe(second.calendarUid);
     expect(new Date(first.endTime).getTime() - new Date(first.startTime).getTime()).toBe(60 * 60 * 1000);

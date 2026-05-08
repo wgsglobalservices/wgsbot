@@ -1,7 +1,8 @@
 import { AppError } from "@minutesbot/shared";
 import { extractTeamsJoinUrl } from "./extractTeamsJoinUrl";
+import { normalizeAttendees } from "./normalizeAttendees";
 import { parseIcsCalendar } from "./parseIcs";
-import type { ParsedMeetingInvite } from "./types";
+import type { NormalizedAttendee, ParsedMeetingInvite, RawIcsAttendee } from "./types";
 
 export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
   const headers = parseHeaders(rawEmail);
@@ -25,6 +26,7 @@ export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
 
   return {
     ...calendar,
+    attendees: mergeAttendees(calendar.attendees, headerAttendees(headers)),
     teamsJoinUrl,
     rawRecipient: rawRecipient.toLowerCase(),
     rawSender: rawSender.toLowerCase()
@@ -44,13 +46,58 @@ function parseLinkOnlyInvite(input: { headers: Map<string, string>; body: string
     calendarUid: `teams-link-${stableHash(teamsJoinUrl)}`,
     subject: decodeMimeWords(input.headers.get("subject") ?? "").trim() || "Teams meeting",
     organizer: { email: input.rawSender.toLowerCase() },
-    attendees: [],
+    attendees: headerAttendees(input.headers),
     startTime: start.toISOString(),
     endTime: end.toISOString(),
     teamsJoinUrl,
     rawRecipient: input.rawRecipient.toLowerCase(),
     rawSender: input.rawSender.toLowerCase()
   };
+}
+
+function headerAttendees(headers: Map<string, string>): NormalizedAttendee[] {
+  return normalizeAttendees([...parseAddressList(headers.get("to") ?? ""), ...parseAddressList(headers.get("cc") ?? ""), ...parseAddressList(headers.get("bcc") ?? "")]);
+}
+
+function parseAddressList(value: string): RawIcsAttendee[] {
+  return splitAddressList(value).map(parseAddress).filter((attendee): attendee is RawIcsAttendee => Boolean(attendee));
+}
+
+function splitAddressList(value: string): string[] {
+  const items: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (const char of value) {
+    if (char === '"') quoted = !quoted;
+    if (char === "," && !quoted) {
+      items.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current) items.push(current);
+  return items.map((item) => item.trim()).filter(Boolean);
+}
+
+function parseAddress(value: string): RawIcsAttendee | null {
+  const angle = value.match(/<([^>]+)>/);
+  const email = (angle?.[1] ?? value).trim().replace(/^mailto:/i, "").toLowerCase();
+  if (!email.includes("@")) return null;
+  const rawName = angle ? value.slice(0, value.indexOf("<")).trim().replace(/^"|"$/g, "") : "";
+  const name = rawName ? decodeMimeWords(rawName) : undefined;
+  return { email, name };
+}
+
+function mergeAttendees(primary: NormalizedAttendee[], fallback: NormalizedAttendee[]): NormalizedAttendee[] {
+  const seen = new Set<string>();
+  const merged: NormalizedAttendee[] = [];
+  for (const attendee of [...primary, ...fallback]) {
+    if (seen.has(attendee.email)) continue;
+    seen.add(attendee.email);
+    merged.push(attendee);
+  }
+  return merged;
 }
 
 function parseHeaders(rawEmail: string): Map<string, string> {

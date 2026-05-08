@@ -56,9 +56,10 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     return;
   }
 
+  const meetingInvitees = parsed.attendees.filter((attendee) => !isRecorderRecipient(attendee.email, settings.recorderEmail, settings.recorderAliasEmails));
   const filtered = buildSummaryRecipients({
     organizer: parsed.organizer,
-    attendees: parsed.attendees,
+    attendees: meetingInvitees,
     primaryDomain: settings.primaryDomain,
     allowedDomains: settings.allowedDomains,
     allowSubdomains: settings.policy.allowSubdomains

@@ -195,4 +195,44 @@ END:VCALENDAR`
     expect(setReject).not.toHaveBeenCalled();
     expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
   });
+
+  it("stores domain-eligible To and Cc invitees while excluding the notetaker mailbox", async () => {
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: Alex <alex@wgs.bot>, notetaker@wgs.bot
+Cc: Casey <casey@wgs.bot>, Vendor <vendor@example.net>
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-header-recipients
+SUMMARY:Header Recipients
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(db.attendees.map((values) => [values[2], values[6], values[7]])).toEqual([
+      ["alice@wgs.bot", 1, null],
+      ["alex@wgs.bot", 1, null],
+      ["casey@wgs.bot", 1, null],
+      ["vendor@example.net", 0, "excluded_external_domain"]
+    ]);
+  });
 });
