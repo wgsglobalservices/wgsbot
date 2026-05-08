@@ -27,12 +27,13 @@ function normalizeSummary(summary: SummaryEmailSummary): Required<Pick<SummaryEm
 
 function renderText(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string, recapDepthLabel: string): string {
   const secondarySections = resolveSecondarySections(input, isLegacyOnly(input.summary));
+  const displayDate = input.date ? formatMeetingDate(input.date) : "";
   return [
     aiDisclaimer,
     "",
     "Meeting recap",
     `Subject: ${input.subject}`,
-    input.date ? `Date: ${input.date}` : "",
+    displayDate ? `Date: ${displayDate}` : "",
     `Meeting type: ${meetingTypeLabel}`,
     `Recap depth: ${recapDepthLabel}`,
     input.transcriptDownloadUrl ? `Download Transcript: ${input.transcriptDownloadUrl}` : "",
@@ -79,6 +80,7 @@ function renderHtml(input: SummaryEmailInput & { summary: ReturnType<typeof norm
 }
 
 function renderHeader(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string): string {
+  const displayDate = input.date ? formatMeetingDate(input.date) : "";
   return [
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;margin:0 0 4px;">',
     "<tr>",
@@ -87,8 +89,8 @@ function renderHeader(input: SummaryEmailInput & { summary: ReturnType<typeof no
     '<h1 style="margin:6px 0 5px;font-size:27px;line-height:1.18;color:#111827;">Meeting recap</h1>',
     paragraph(input.subject, "margin:0;font-size:18px;line-height:1.4;color:#111827;font-weight:800;"),
     "</td>",
-    '<td valign="top" align="right" style="padding:2px 0 0 16px;text-align:right;white-space:nowrap;">',
-    input.date ? paragraph(input.date, "margin:0 0 9px;font-size:15px;line-height:1.4;color:#374151;") : "",
+    '<td valign="top" align="right" style="padding:2px 0 0 16px;text-align:right;">',
+    displayDate ? paragraph(displayDate, "margin:0 0 9px;font-size:15px;line-height:1.4;color:#374151;") : "",
     `<div style="display:block;margin:0;">${badge(meetingTypeLabel)}${input.summary.recapDepth === "brief" ? badge("Brief recap", "#eef2ff", "#312e81") : ""}</div>`,
     input.transcriptDownloadUrl
       ? `<p style="margin:6px 0 0;font-size:15px;line-height:1.4;"><a href="${escapeAttribute(input.transcriptDownloadUrl)}" style="color:#5b21b6;font-weight:800;text-decoration:underline;">Download Transcript</a></p>` +
@@ -220,6 +222,20 @@ function formatOwners(owners: string[]): string {
 
 function transcriptExpirationText(hours = defaultTranscriptDownloadExpirationHours): string {
   return `This transcript link expires after ${hours} ${hours === 1 ? "hour" : "hours"}.`;
+}
+
+function formatMeetingDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short"
+  }).format(date);
 }
 
 function escapeHtml(value: string): string {
