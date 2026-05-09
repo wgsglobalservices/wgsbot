@@ -2,12 +2,12 @@ console.log(`# minutesbot Cloudflare Worker
 CLOUDFLARE_ACCOUNT_ID=
 CLOUDFLARE_ENV=production
 APP_BASE_URL=https://admin.minutes.bot
-API_BASE_URL=https://admin.minutes.bot
+API_BASE_URL=https://api.minutes.bot
 ATTENDEE_WEBHOOK_BASE_URL=https://admin.minutes.bot
 ATTENDEE_API_BASE_URL=https://attendee.company.com
 ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME=minutesbot-artifacts
-DEFAULT_RECORDER_EMAIL=notetaker@meet.company.com
-DEFAULT_SENDER_EMAIL=notetaker@meet.company.com
+DEFAULT_RECORDER_EMAIL=notetaker@minutes.bot
+DEFAULT_SENDER_EMAIL=notetaker@minutes.bot
 ENVIRONMENT=production
 ATTENDEE_API_KEY=
 ATTENDEE_WEBHOOK_SECRET=

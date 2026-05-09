@@ -20,8 +20,9 @@ describe("parseOneshotArgs", () => {
 
 describe("parseEnvFile", () => {
   it("parses simple dotenv files without leaking comments into values", () => {
-    expect(parseEnvFile("# comment\nAPP_BASE_URL=https://admin.minutes.bot\nSESSION_SECRET='secret'\n")).toEqual({
+    expect(parseEnvFile("# comment\nAPP_BASE_URL=https://admin.minutes.bot\nAPI_BASE_URL=https://api.minutes.bot\nSESSION_SECRET='secret'\n")).toEqual({
       APP_BASE_URL: "https://admin.minutes.bot",
+      API_BASE_URL: "https://api.minutes.bot",
       SESSION_SECRET: "secret"
     });
   });
@@ -39,9 +40,9 @@ describe("validateOneshotEnv", () => {
     expect(() => validateOneshotEnv(env, "production")).toThrow("CLOUDFLARE_ENV must match --env");
   });
 
-  it("requires the main Worker URLs to use admin.minutes.bot", () => {
+  it("requires production base URLs to use the configured minutes.bot hosts", () => {
     expect(() => validateOneshotEnv(sampleEnv({ API_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
-      "APP_BASE_URL, API_BASE_URL, and ATTENDEE_WEBHOOK_BASE_URL must use admin.minutes.bot"
+      "API_BASE_URL must use api.minutes.bot"
     );
   });
 });
@@ -51,7 +52,9 @@ describe("build oneshot Wrangler configs", () => {
     const minutesbotConfig = buildMinutesbotWranglerConfig(sampleEnv(), "production");
     const attendeeConfig = buildAttendeeWranglerConfig(sampleEnv());
 
+    expect(minutesbotConfig).toContain("app.minutes.bot");
     expect(minutesbotConfig).toContain("admin.minutes.bot");
+    expect(minutesbotConfig).toContain("api.minutes.bot");
     expect(minutesbotConfig).toContain("13f67694a98579897f6175043bb595df17afdfd5129d44c33e8b937b5576ae71");
     expect(attendeeConfig).toContain("attendee.company.com");
     expect(minutesbotConfig).toContain('"workers_dev": false');
@@ -143,9 +146,9 @@ describe("deployOneshot", () => {
     expect(secrets).toContain("wrangler secret put ATTENDEE_API_KEY --config .wrangler/oneshot-minutesbot.jsonc");
     expect(fetches).toContain("GET https://attendee.company.com/_ops/health");
     expect(fetches).toContain("POST https://attendee.company.com/_ops/start-workers");
-    expect(fetches).toContain("GET https://admin.minutes.bot/api/health");
-    expect(fetches).toContain("POST https://admin.minutes.bot/api/admin/test-r2");
-    expect(fetches).toContain("POST https://admin.minutes.bot/api/admin/test-attendee");
+    expect(fetches).toContain("GET https://api.minutes.bot/api/health");
+    expect(fetches).toContain("POST https://api.minutes.bot/api/admin/test-r2");
+    expect(fetches).toContain("POST https://api.minutes.bot/api/admin/test-attendee");
     expect(fetches).toContain("POST https://admin.minutes.bot/api/webhooks/attendee");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-minutesbot.jsonc");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-attendee.jsonc");
@@ -157,12 +160,12 @@ function sampleEnv(overrides: Record<string, string> = {}): Record<string, strin
     CLOUDFLARE_ACCOUNT_ID: "account-id",
     CLOUDFLARE_ENV: "production",
     APP_BASE_URL: "https://admin.minutes.bot",
-    API_BASE_URL: "https://admin.minutes.bot",
+    API_BASE_URL: "https://api.minutes.bot",
     ATTENDEE_WEBHOOK_BASE_URL: "https://admin.minutes.bot",
     ATTENDEE_API_BASE_URL: "https://attendee.company.com",
     ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME: "minutesbot-artifacts",
-    DEFAULT_RECORDER_EMAIL: "notetaker@meet.company.com",
-    DEFAULT_SENDER_EMAIL: "notetaker@meet.company.com",
+    DEFAULT_RECORDER_EMAIL: "notetaker@minutes.bot",
+    DEFAULT_SENDER_EMAIL: "notetaker@minutes.bot",
     DATABASE_URL: "postgres://user:pass@db.example.com:5432/attendee",
     REDIS_URL: "redis://redis.example.com:6379",
     DJANGO_SECRET_KEY: "django-secret",

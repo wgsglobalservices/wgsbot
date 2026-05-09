@@ -11,7 +11,7 @@
   "workers_dev": false,
   "routes": [
     {
-      "pattern": "admin.minutes.bot",
+      "pattern": "app.minutes.bot",
       "custom_domain": true
     }
   ],
@@ -23,12 +23,12 @@
   },
   "vars": {
     "APP_BASE_URL": "https://admin.minutes.bot",
-    "API_BASE_URL": "https://admin.minutes.bot",
+    "API_BASE_URL": "https://api.minutes.bot",
     "ATTENDEE_WEBHOOK_BASE_URL": "https://admin.minutes.bot",
     "ATTENDEE_API_BASE_URL": "https://attendee.company.com",
     "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
-    "DEFAULT_RECORDER_EMAIL": "notetaker@meet.company.com",
-    "DEFAULT_SENDER_EMAIL": "notetaker@meet.company.com",
+    "DEFAULT_RECORDER_EMAIL": "notetaker@minutes.bot",
+    "DEFAULT_SENDER_EMAIL": "notetaker@minutes.bot",
     "ENVIRONMENT": "production",
     "CLOUDFLARE_ACCESS_AUD": "13f67694a98579897f6175043bb595df17afdfd5129d44c33e8b937b5576ae71",
     "CLOUDFLARE_ACCESS_JWKS_URL": "https://esau.cloudflareaccess.com/cdn-cgi/access/certs",
@@ -79,7 +79,7 @@
   "send_email": [
     {
       "name": "SEND_EMAIL",
-      "allowed_sender_addresses": ["notetaker@meet.company.com"]
+      "allowed_sender_addresses": ["notetaker@minutes.bot"]
     }
   ]
 }

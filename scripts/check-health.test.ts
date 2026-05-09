@@ -6,7 +6,7 @@ describe("checkHealth", () => {
     const messages: string[] = [];
 
     const exitCode = await checkHealth({
-      env: { API_BASE_URL: "https://admin.minutes.bot" },
+      env: { API_BASE_URL: "https://api.minutes.bot" },
       fetchHealth: async () =>
         new Response("This deployment cannot be found", {
           status: 404,
@@ -30,7 +30,7 @@ describe("checkHealth", () => {
     const messages: string[] = [];
 
     const exitCode = await checkHealth({
-      env: { API_BASE_URL: "https://admin.minutes.bot" },
+      env: { API_BASE_URL: "https://api.minutes.bot" },
       fetchHealth: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
       resolveNs: async () => ["abby.ns.cloudflare.com", "arvind.ns.cloudflare.com"],
       log: (message) => messages.push(message),

@@ -179,7 +179,7 @@ export const defaultSettings: AppSettings = {
   primaryDomain: "company.com",
   timeZone: defaultTimeZone,
   allowedDomains: ["company.com"],
-  recorderEmail: "notetaker@meet.company.com",
+  recorderEmail: "notetaker@minutes.bot",
   recorderAliasEmails: [],
   attendee: {
     baseUrl: "https://app.attendee.dev",
@@ -198,7 +198,7 @@ export const defaultSettings: AppSettings = {
   },
   email: {
     provider: "mock",
-    senderEmail: "notetaker@meet.company.com",
+    senderEmail: "notetaker@minutes.bot",
     testRecipient: defaultSampleRecapRecipient
   },
   policy: {

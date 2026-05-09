@@ -32,7 +32,7 @@ CLOUDFLARE_ACCESS_ISSUER=https://esau.cloudflareaccess.com
 
 ## DNS Cutover
 
-Public traffic will not reach Workers until the relevant domain is active in Cloudflare DNS and the configured custom domains exist. The main minutesbot Worker must use the single custom domain `admin.minutes.bot` for the admin UI, API, and Attendee webhook endpoint. Configure the separate Attendee Container custom domain, such as `attendee.company.com`, before running the real deployment.
+Public traffic will not reach Workers until the relevant domain is active in Cloudflare DNS and the configured custom domains exist. The main minutesbot Worker custom domain is `app.minutes.bot`. Runtime config uses `https://api.minutes.bot` for API calls and `https://admin.minutes.bot` for the admin UI and Attendee webhook base URL. Configure the separate Attendee Container custom domain, such as `attendee.company.com`, before running the real deployment.
 
 ## Resources
 
@@ -46,7 +46,7 @@ Public traffic will not reach Workers until the relevant domain is active in Clo
 
 ## Environments
 
-The checked-in `wrangler.jsonc` uses `admin.minutes.bot` as the only main Worker custom domain. The one-shot deploy script writes concrete ignored configs from `.env.oneshot` so account IDs, sender addresses, bucket names, and the separate Attendee Container host do not need to be committed.
+The checked-in `wrangler.jsonc` uses `app.minutes.bot` as the main Worker custom domain. The one-shot deploy script writes concrete ignored configs from `.env.oneshot` so account IDs, sender addresses, bucket names, and the separate Attendee Container host do not need to be committed.
 
 ## Commands
 
@@ -63,7 +63,7 @@ pnpm db:migrate:remote
 pnpm run deploy
 ```
 
-Configure Email Routing to send `notetaker@meet.company.com` to the Email Worker. Any notetaker aliases configured in Setup must also route to the same Email Worker. Configure `admin.minutes.bot` as the only main Worker custom domain, plus the separate Attendee Container custom domain, in Cloudflare DNS/routes.
+Configure Email Routing to send `notetaker@minutes.bot` to the Email Worker. Any notetaker aliases configured in Setup must also route to the same Email Worker. Configure `app.minutes.bot` as the main Worker custom domain, plus the separate Attendee Container custom domain, in Cloudflare DNS/routes.
 
 Protect the admin UI with Cloudflare Access for the MVP.
 

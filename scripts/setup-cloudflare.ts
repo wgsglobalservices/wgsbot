@@ -27,5 +27,5 @@ for (const command of commands) console.log(`- ${command}`);
 console.log("\nUse pnpm deploy:oneshot --env production for first-time Cloudflare-first deployments.");
 console.log("Use pnpm run deploy for later minutesbot-only deployments so Cloudflare queues are checked before Wrangler runs.");
 console.log("Use pnpm attendee:deploy only after configuring external Postgres, Redis, and generated Attendee secrets.");
-console.log("Also configure Email Routing for notetaker@meet.company.com and custom domains for admin.minutes.bot plus the Attendee host.");
-console.log("The main Worker custom domain is admin.minutes.bot; keep Attendee on a separate host such as attendee.company.com.");
+console.log("Also configure Email Routing for notetaker@minutes.bot and custom domains for app.minutes.bot plus the Attendee host.");
+console.log("The main Worker custom domain is app.minutes.bot; keep Attendee on a separate host such as attendee.company.com.");

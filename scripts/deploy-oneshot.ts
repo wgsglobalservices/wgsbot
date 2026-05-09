@@ -33,7 +33,10 @@ type OneshotEnv = Record<string, string>;
 
 const GENERATED_MINUTESBOT_CONFIG = ".wrangler/oneshot-minutesbot.jsonc";
 const GENERATED_ATTENDEE_CONFIG = ".wrangler/oneshot-attendee.jsonc";
-const MAIN_CLOUDFLARE_DOMAIN = "admin.minutes.bot";
+const WORKER_CUSTOM_DOMAIN = "app.minutes.bot";
+const EXPECTED_APP_BASE_DOMAIN = "admin.minutes.bot";
+const EXPECTED_API_BASE_DOMAIN = "api.minutes.bot";
+const EXPECTED_ATTENDEE_WEBHOOK_DOMAIN = "admin.minutes.bot";
 
 const REQUIRED_ENV_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
@@ -181,11 +184,9 @@ export function validateOneshotEnv(env: Record<string, string | undefined>, envi
   for (const key of ["APP_BASE_URL", "API_BASE_URL", "ATTENDEE_WEBHOOK_BASE_URL", "ATTENDEE_API_BASE_URL", "R2_ENDPOINT_URL"] as const) {
     assertUrl(key, env[key] ?? "");
   }
-  for (const key of ["APP_BASE_URL", "API_BASE_URL", "ATTENDEE_WEBHOOK_BASE_URL"] as const) {
-    if (new URL(env[key] ?? "").hostname !== MAIN_CLOUDFLARE_DOMAIN) {
-      throw new Error(`APP_BASE_URL, API_BASE_URL, and ATTENDEE_WEBHOOK_BASE_URL must use ${MAIN_CLOUDFLARE_DOMAIN}.`);
-    }
-  }
+  assertUrlHostname("APP_BASE_URL", env.APP_BASE_URL ?? "", EXPECTED_APP_BASE_DOMAIN);
+  assertUrlHostname("API_BASE_URL", env.API_BASE_URL ?? "", EXPECTED_API_BASE_DOMAIN);
+  assertUrlHostname("ATTENDEE_WEBHOOK_BASE_URL", env.ATTENDEE_WEBHOOK_BASE_URL ?? "", EXPECTED_ATTENDEE_WEBHOOK_DOMAIN);
   for (const key of ["DEFAULT_RECORDER_EMAIL", "DEFAULT_SENDER_EMAIL"] as const) {
     if (!(env[key] ?? "").includes("@")) throw new Error(`${key} must be an email address.`);
   }
@@ -205,7 +206,7 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
       run_worker_first: true
     },
     workers_dev: false,
-    routes: uniqueRoutes([env.APP_BASE_URL, env.API_BASE_URL, env.ATTENDEE_WEBHOOK_BASE_URL]),
+    routes: [{ pattern: WORKER_CUSTOM_DOMAIN, custom_domain: true }],
     compatibility_date: "2026-05-04",
     compatibility_flags: ["nodejs_compat"],
     observability: { enabled: true, head_sampling_rate: 1 },
@@ -460,6 +461,12 @@ function assertUrl(key: string, value: string): void {
     new URL(value);
   } catch {
     throw new Error(`${key} must be a valid URL.`);
+  }
+}
+
+function assertUrlHostname(key: string, value: string, expectedHostname: string): void {
+  if (new URL(value).hostname !== expectedHostname) {
+    throw new Error(`${key} must use ${expectedHostname}.`);
   }
 }
 

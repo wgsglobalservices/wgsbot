@@ -15,18 +15,18 @@ describe("invite parser", () => {
     expect(invite.kind).toBe("request");
     expect(invite.subject).toBe("Project sync");
     expect(invite.organizer.email).toBe("alice@company.com");
-    expect(invite.rawRecipient).toBe("notetaker@meet.company.com");
+    expect(invite.rawRecipient).toBe("notetaker@minutes.bot");
     expect(invite.attendees).toEqual([
       { email: "alex@company.com", name: "Alex", role: "required" },
       { email: "vendor@example.net", name: "Vendor", role: "optional" },
-      { email: "notetaker@meet.company.com", name: "minutesbot", role: undefined }
+      { email: "notetaker@minutes.bot", name: "minutesbot", role: undefined }
     ]);
     expect(invite.teamsJoinUrl).toContain("teams.microsoft.com/l/meetup-join");
   });
 
   it("adds To and Cc recipients when the calendar attendee list is incomplete", () => {
     const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: Alex <alex@company.com>, notetaker@meet.company.com
+To: Alex <alex@company.com>, notetaker@minutes.bot
 Cc: Casey <casey@company.com>, Vendor <vendor@example.net>
 Subject: Project sync
 
@@ -45,7 +45,7 @@ END:VCALENDAR`);
 
     expect(invite.attendees).toEqual([
       { email: "alex@company.com", name: "Alex", role: "required" },
-      { email: "notetaker@meet.company.com" },
+      { email: "notetaker@minutes.bot" },
       { email: "casey@company.com", name: "Casey" },
       { email: "vendor@example.net", name: "Vendor" }
     ]);

@@ -129,7 +129,7 @@ describe("summary workflow", () => {
     expect(db.emailDeliveries.map((values) => values[2])).toEqual(["owner@wgs.bot", "alex@team.wgs.bot", "casey@partner.com", "no-show@wgs.bot"]);
     expect(db.emailDeliveries.every((values) => values[4] === "sent")).toBe(true);
     expect(send.mock.calls[0][0]).toMatchObject({
-      from: "WGS Notetaker <notetaker@meet.company.com>",
+      from: "WGS Notetaker <notetaker@minutes.bot>",
       text: expect.stringContaining("/api/artifacts/mtg_1/transcript.txt?token="),
       html: expect.stringContaining("Download Transcript")
     });

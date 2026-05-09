@@ -175,7 +175,7 @@ END:VCALENDAR`;
     await entrypoint.default.email(
       {
         from: "alice@company.com",
-        to: "notetaker@meet.company.com",
+        to: "notetaker@minutes.bot",
         raw: new Response(raw).body!,
         setReject: vi.fn()
       },

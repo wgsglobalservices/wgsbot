@@ -33,7 +33,7 @@ describe("retention cleanup", () => {
       SUMMARY_QUEUE: { send: vi.fn() },
       EMAIL_QUEUE: { send: vi.fn() },
       ATTENDEE_API_BASE_URL: "https://attendee.company.com",
-      API_BASE_URL: "https://admin.minutes.bot"
+      API_BASE_URL: "https://api.minutes.bot"
     });
     expect(deleteObject).toHaveBeenCalled();
     expect(db.prepares.some((sql) => sql.includes("DELETE FROM audit_logs"))).toBe(true);

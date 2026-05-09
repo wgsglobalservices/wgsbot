@@ -51,10 +51,10 @@ describe("email worker invite handling", () => {
     };
 
     await handleInvite(
-      { from: "p.gustafson@example.net", to: "notetaker@meet.company.com", setReject },
+      { from: "p.gustafson@example.net", to: "notetaker@minutes.bot", setReject },
       env,
       `From: Peter <p.gustafson@example.net>
-To: notetaker@meet.company.com
+To: notetaker@minutes.bot
 Subject: TEST
 
 hello`
@@ -76,10 +76,10 @@ hello`
     };
 
     await handleInvite(
-      { from: "p.gustafson@company.com", to: "notetaker@meet.company.com", setReject },
+      { from: "p.gustafson@company.com", to: "notetaker@minutes.bot", setReject },
       env,
       `From: Peter <p.gustafson@company.com>
-To: notetaker@meet.company.com
+To: notetaker@minutes.bot
 Subject: Join Teams meeting in progress
 
 https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?context=%7b%7d`
@@ -173,7 +173,7 @@ END:VCALENDAR`
     };
 
     await handleInvite(
-      { from: "alice@company.com", to: "notetaker@meet.company.com", setReject },
+      { from: "alice@company.com", to: "notetaker@minutes.bot", setReject },
       env,
       `From: Alice <alice@company.com>
 To: Alice <alice@company.com>
@@ -207,10 +207,10 @@ END:VCALENDAR`
     };
 
     await handleInvite(
-      { from: "alice@company.com", to: "notetaker@meet.company.com", setReject },
+      { from: "alice@company.com", to: "notetaker@minutes.bot", setReject },
       env,
       `From: Alice <alice@company.com>
-To: Alex <alex@company.com>, notetaker@meet.company.com
+To: Alex <alex@company.com>, notetaker@minutes.bot
 Cc: Casey <casey@company.com>, Vendor <vendor@example.net>
 
 BEGIN:VCALENDAR

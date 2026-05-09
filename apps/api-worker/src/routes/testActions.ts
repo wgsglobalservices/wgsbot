@@ -10,7 +10,7 @@ import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
 
 const sampleInvite = `From: Alice <alice@company.com>
-To: notetaker@meet.company.com
+To: notetaker@minutes.bot
 Subject: Test
 
 BEGIN:VCALENDAR
