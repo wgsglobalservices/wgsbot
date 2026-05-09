@@ -58,7 +58,7 @@ describe("bot runtime app", () => {
           bucket_name: "minutesbot-artifacts",
           recording_file_name: "recordings/mtg_1/recording.mp3"
         },
-        webhooks: [{ url: "https://admin.minutes.bot/api/webhooks/bot", triggers: ["bot.state_change"] }],
+        webhooks: [{ url: "https://meeting.minutes.bot/api/webhooks/bot", triggers: ["bot.state_change"] }],
         metadata: { minutesbot_meeting_id: "mtg_1" }
       })
     });
@@ -74,7 +74,7 @@ describe("bot runtime app", () => {
     expect(stored[0]?.bytes).toEqual(new Uint8Array([1, 2, 3]));
     await vi.waitFor(() => expect(webhooks.some((webhook) => webhook.body.includes("post_processing_completed"))).toBe(true));
     const completion = webhooks.find((webhook) => webhook.body.includes("post_processing_completed"));
-    expect(completion?.url).toBe("https://admin.minutes.bot/api/webhooks/bot");
+    expect(completion?.url).toBe("https://meeting.minutes.bot/api/webhooks/bot");
     expect(await verifySignature(completion?.body ?? "", completion?.signature ?? "")).toBe(true);
   });
 });

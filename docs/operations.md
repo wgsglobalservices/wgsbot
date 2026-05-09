@@ -2,7 +2,7 @@
 
 Use `/api/health` and `pnpm check` for basic health checks.
 
-Use `https://meeting-bot.company.com/_ops/health` for the meeting bot container runtime check.
+Use `https://meeting-api.minutes.bot/_ops/health` for the meeting bot container runtime check.
 
 Admins can:
 

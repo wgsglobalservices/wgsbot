@@ -66,13 +66,13 @@ describe("api worker", () => {
   it("requires Cloudflare Access JWTs before serving admin UI assets when Access is configured", async () => {
     const assetsFetch = vi.fn(async () => new Response("<html>admin</html>", { headers: { "content-type": "text/html" } }));
     const env = {
-      APP_BASE_URL: "https://admin.minutes.bot",
+      APP_BASE_URL: "https://app.minutes.bot",
       CLOUDFLARE_ACCESS_AUD: "13f67694a98579897f6175043bb595df17afdfd5129d44c33e8b937b5576ae71",
       CLOUDFLARE_ACCESS_JWKS_URL: "https://esau.cloudflareaccess.com/cdn-cgi/access/certs",
       ASSETS: { fetch: assetsFetch }
     } as unknown as Env;
 
-    const response = await entrypoint.handleFetch(new Request("https://admin.minutes.bot/"), env);
+    const response = await entrypoint.handleFetch(new Request("https://app.minutes.bot/"), env);
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: { code: "ACCESS_JWT_MISSING" } });

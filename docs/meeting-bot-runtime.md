@@ -33,7 +33,7 @@ The Worker creates a bot with:
     "bucket_name": "minutesbot-artifacts",
     "recording_file_name": "recordings/<meetingId>/recording.mp3"
   },
-  "webhooks": [{ "url": "https://admin.minutes.bot/api/webhooks/bot", "triggers": ["bot.state_change"] }]
+  "webhooks": [{ "url": "https://meeting.minutes.bot/api/webhooks/bot", "triggers": ["bot.state_change"] }]
 }
 ```
 
@@ -44,7 +44,7 @@ After recording, the bot runtime uploads `recordings/<meetingId>/recording.mp3` 
 Use:
 
 ```text
-https://meeting-bot.company.com/_ops/health
+https://meeting-api.minutes.bot/_ops/health
 ```
 
 The health response reports missing runtime pieces such as `BOT_API_KEY`, `BOT_WEBHOOK_SECRET`, `TEAMS_RECORDER_PASSWORD`, `chromium`, or `ffmpeg`.

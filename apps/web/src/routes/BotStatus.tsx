@@ -24,7 +24,7 @@ export function BotStatus() {
       </section>
       <section>
         <h2>Meeting bot setup copy block</h2>
-        <pre>{`BOT_API_BASE_URL=https://meeting-bot.company.com
+        <pre>{`BOT_API_BASE_URL=https://meeting-api.minutes.bot
 wrangler secret put BOT_API_KEY
 wrangler secret put BOT_WEBHOOK_SECRET`}</pre>
       </section>

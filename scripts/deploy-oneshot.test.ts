@@ -20,8 +20,8 @@ describe("parseOneshotArgs", () => {
 
 describe("parseEnvFile", () => {
   it("parses simple dotenv files without leaking comments into values", () => {
-    expect(parseEnvFile("# comment\nAPP_BASE_URL=https://admin.minutes.bot\nAPI_BASE_URL=https://api.minutes.bot\nSESSION_SECRET='secret'\n")).toEqual({
-      APP_BASE_URL: "https://admin.minutes.bot",
+    expect(parseEnvFile("# comment\nAPP_BASE_URL=https://app.minutes.bot\nAPI_BASE_URL=https://api.minutes.bot\nSESSION_SECRET='secret'\n")).toEqual({
+      APP_BASE_URL: "https://app.minutes.bot",
       API_BASE_URL: "https://api.minutes.bot",
       SESSION_SECRET: "secret"
     });
@@ -44,6 +44,12 @@ describe("validateOneshotEnv", () => {
     expect(() => validateOneshotEnv(sampleEnv({ API_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
       "API_BASE_URL must use api.minutes.bot"
     );
+    expect(() => validateOneshotEnv(sampleEnv({ BOT_WEBHOOK_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
+      "BOT_WEBHOOK_BASE_URL must use meeting.minutes.bot"
+    );
+    expect(() => validateOneshotEnv(sampleEnv({ BOT_API_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
+      "BOT_API_BASE_URL must use meeting-api.minutes.bot"
+    );
   });
 });
 
@@ -53,18 +59,19 @@ describe("build oneshot Wrangler configs", () => {
     const botConfig = buildBotWranglerConfig(sampleEnv());
 
     expect(minutesbotConfig).toContain("app.minutes.bot");
-    expect(minutesbotConfig).toContain("admin.minutes.bot");
     expect(minutesbotConfig).toContain("api.minutes.bot");
+    expect(minutesbotConfig).toContain("meeting.minutes.bot");
     expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_AUD");
     expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_JWKS_URL");
     expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_ISSUER");
-    expect(botConfig).toContain("meeting-bot.company.com");
+    expect(botConfig).toContain("meeting-api.minutes.bot");
+    expect(botConfig).toContain("meeting.minutes.bot");
     expect(botConfig).toContain("../apps/bot-runtime/Dockerfile");
     expect(botConfig).not.toContain(".attendee/upstream");
     expect(botConfig).not.toContain("DJANGO_SETTINGS_MODULE");
     expect(minutesbotConfig).toContain('"workers_dev": false');
     expect(botConfig).toContain('"workers_dev": false');
-    expect((minutesbotConfig.match(/"custom_domain": true/g) ?? []).length).toBe(1);
+    expect((minutesbotConfig.match(/"custom_domain": true/g) ?? []).length).toBe(3);
     expect(minutesbotConfig).toContain('"producers"');
     expect(minutesbotConfig).not.toContain('"consumers"');
     expect(minutesbotConfig).not.toContain("notes.company.com");
@@ -150,11 +157,11 @@ describe("deployOneshot", () => {
     expect(secrets).toContain("wrangler secret put BOT_API_KEY --config .wrangler/oneshot-bot.jsonc");
     expect(secrets).toContain("wrangler secret put TEAMS_RECORDER_PASSWORD --config .wrangler/oneshot-bot.jsonc");
     expect(secrets).toContain("wrangler secret put BOT_API_KEY --config .wrangler/oneshot-minutesbot.jsonc");
-    expect(fetches).toContain("GET https://meeting-bot.company.com/_ops/health");
+    expect(fetches).toContain("GET https://meeting-api.minutes.bot/_ops/health");
     expect(fetches).toContain("GET https://api.minutes.bot/api/health");
-    expect(fetches).toContain("POST https://api.minutes.bot/api/admin/test-r2");
-    expect(fetches).toContain("POST https://api.minutes.bot/api/admin/test-bot");
-    expect(fetches).toContain("POST https://admin.minutes.bot/api/webhooks/bot");
+    expect(fetches).toContain("POST https://app.minutes.bot/api/admin/test-r2");
+    expect(fetches).toContain("POST https://app.minutes.bot/api/admin/test-bot");
+    expect(fetches).toContain("POST https://meeting.minutes.bot/api/webhooks/bot");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-minutesbot.jsonc");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-bot.jsonc");
   });
@@ -164,10 +171,10 @@ function sampleEnv(overrides: Record<string, string> = {}): Record<string, strin
   return {
     CLOUDFLARE_ACCOUNT_ID: "account-id",
     CLOUDFLARE_ENV: "production",
-    APP_BASE_URL: "https://admin.minutes.bot",
+    APP_BASE_URL: "https://app.minutes.bot",
     API_BASE_URL: "https://api.minutes.bot",
-    BOT_WEBHOOK_BASE_URL: "https://admin.minutes.bot",
-    BOT_API_BASE_URL: "https://meeting-bot.company.com",
+    BOT_WEBHOOK_BASE_URL: "https://meeting.minutes.bot",
+    BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     DEFAULT_RECORDER_EMAIL: "notetaker@minutes.bot",
     DEFAULT_SENDER_EMAIL: "notetaker@minutes.bot",

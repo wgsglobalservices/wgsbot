@@ -32,7 +32,7 @@ describe("retention cleanup", () => {
       INVITE_QUEUE: { send: vi.fn() },
       SUMMARY_QUEUE: { send: vi.fn() },
       EMAIL_QUEUE: { send: vi.fn() },
-      BOT_API_BASE_URL: "https://meeting-bot.company.com",
+      BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
       API_BASE_URL: "https://api.minutes.bot"
     });
     expect(deleteObject).toHaveBeenCalled();

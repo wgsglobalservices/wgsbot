@@ -32,10 +32,10 @@ type OneshotEnv = Record<string, string>;
 
 const GENERATED_MINUTESBOT_CONFIG = ".wrangler/oneshot-minutesbot.jsonc";
 const GENERATED_BOT_CONFIG = ".wrangler/oneshot-bot.jsonc";
-const WORKER_CUSTOM_DOMAIN = "app.minutes.bot";
-const EXPECTED_APP_BASE_DOMAIN = "admin.minutes.bot";
+const EXPECTED_APP_BASE_DOMAIN = "app.minutes.bot";
 const EXPECTED_API_BASE_DOMAIN = "api.minutes.bot";
-const EXPECTED_BOT_WEBHOOK_DOMAIN = "admin.minutes.bot";
+const EXPECTED_BOT_WEBHOOK_DOMAIN = "meeting.minutes.bot";
+const EXPECTED_BOT_API_DOMAIN = "meeting-api.minutes.bot";
 
 const REQUIRED_ENV_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
@@ -168,6 +168,7 @@ export function validateOneshotEnv(env: Record<string, string | undefined>, envi
   assertUrlHostname("APP_BASE_URL", env.APP_BASE_URL ?? "", EXPECTED_APP_BASE_DOMAIN);
   assertUrlHostname("API_BASE_URL", env.API_BASE_URL ?? "", EXPECTED_API_BASE_DOMAIN);
   assertUrlHostname("BOT_WEBHOOK_BASE_URL", env.BOT_WEBHOOK_BASE_URL ?? "", EXPECTED_BOT_WEBHOOK_DOMAIN);
+  assertUrlHostname("BOT_API_BASE_URL", env.BOT_API_BASE_URL ?? "", EXPECTED_BOT_API_DOMAIN);
   for (const key of ["DEFAULT_RECORDER_EMAIL", "DEFAULT_SENDER_EMAIL", "TEAMS_RECORDER_EMAIL"] as const) {
     if (!(env[key] ?? "").includes("@")) throw new Error(`${key} must be an email address.`);
   }
@@ -187,7 +188,7 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
       run_worker_first: true
     },
     workers_dev: false,
-    routes: [{ pattern: WORKER_CUSTOM_DOMAIN, custom_domain: true }],
+    routes: uniqueRoutes([env.APP_BASE_URL, env.API_BASE_URL, env.BOT_WEBHOOK_BASE_URL]),
     compatibility_date: "2026-05-04",
     compatibility_flags: ["nodejs_compat"],
     observability: { enabled: true, head_sampling_rate: 1 },
@@ -317,10 +318,10 @@ async function runSmokeChecks(options: {
     await getOk(options.fetchHealth, `${trimUrl(options.env.API_BASE_URL)}/api/health`);
   });
   await runOrLog(options.dryRun, options.log, "smoke check R2 binding", async () => {
-    await postJson(options.fetchHealth, `${trimUrl(options.env.API_BASE_URL)}/api/admin/test-r2`, options.env.SESSION_SECRET);
+    await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-r2`, options.env.SESSION_SECRET);
   });
   await runOrLog(options.dryRun, options.log, "smoke check meeting bot API auth", async () => {
-    await postJson(options.fetchHealth, `${trimUrl(options.env.API_BASE_URL)}/api/admin/test-bot`, options.env.SESSION_SECRET);
+    await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-bot`, options.env.SESSION_SECRET);
   });
   await runOrLog(options.dryRun, options.log, "smoke check signed meeting bot webhook", async () => {
     const payload = {

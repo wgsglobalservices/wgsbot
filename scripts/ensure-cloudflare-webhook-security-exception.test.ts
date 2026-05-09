@@ -8,8 +8,8 @@ import {
 
 describe("ensureWebhookSecurityException", () => {
   it("builds the narrow meeting bot webhook POST expression", () => {
-    expect(webhookSecurityExceptionExpression({ host: "admin.minutes.bot", path: "/api/webhooks/bot" })).toBe(
-      'http.host eq "admin.minutes.bot" and http.request.uri.path eq "/api/webhooks/bot" and http.request.method eq "POST"'
+    expect(webhookSecurityExceptionExpression({ host: "meeting.minutes.bot", path: "/api/webhooks/bot" })).toBe(
+      'http.host eq "meeting.minutes.bot" and http.request.uri.path eq "/api/webhooks/bot" and http.request.method eq "POST"'
     );
   });
 
@@ -25,7 +25,7 @@ describe("ensureWebhookSecurityException", () => {
 
     expect(rules[0]).toMatchObject({
       ref: BOT_WEBHOOK_SECURITY_EXCEPTION_REF,
-      expression: 'http.host eq "admin.minutes.bot" and http.request.uri.path eq "/api/webhooks/bot" and http.request.method eq "POST"',
+      expression: 'http.host eq "meeting.minutes.bot" and http.request.uri.path eq "/api/webhooks/bot" and http.request.method eq "POST"',
       action: "skip",
       action_parameters: {
         ruleset: "current",

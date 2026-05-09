@@ -44,7 +44,7 @@ In the Cloudflare dashboard, add project-level IP blocks or custom WAF rules for
 Add a narrow skip rule before any challenge/block rules so meeting bot webhook delivery reaches the Worker:
 
 ```text
-http.host eq "admin.minutes.bot" and http.request.uri.path eq "/api/webhooks/bot" and http.request.method eq "POST"
+http.host eq "meeting.minutes.bot" and http.request.uri.path eq "/api/webhooks/bot" and http.request.method eq "POST"
 ```
 
 The rule should use Cloudflare's `skip` action for browser/security challenges only on that exact POST endpoint. In ruleset JSON, minutesbot applies:

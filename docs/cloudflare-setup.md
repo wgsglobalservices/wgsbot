@@ -22,7 +22,7 @@ Run `pnpm deploy:oneshot --env production --dry-run` to validate the plan withou
 
 ## DNS Cutover
 
-Public traffic will not reach Workers until the relevant domain is active in Cloudflare DNS and the configured custom domains exist. The main minutesbot Worker custom domain is `app.minutes.bot`. Runtime config uses `https://api.minutes.bot` for API calls, `https://admin.minutes.bot` for the admin UI and bot webhook base URL, and a separate bot runtime custom domain such as `meeting-bot.company.com`.
+Public traffic will not reach Workers until the relevant domain is active in Cloudflare DNS and the configured custom domains exist. The main minutesbot Worker custom domains are `app.minutes.bot`, `api.minutes.bot`, and `meeting.minutes.bot`. Runtime config uses `https://app.minutes.bot` for the admin UI and `APP_BASE_URL`, `https://api.minutes.bot` for public API calls, `https://meeting.minutes.bot` for the bot webhook base URL, and `https://meeting-api.minutes.bot` for the meeting bot runtime API.
 
 ## Resources
 
@@ -49,7 +49,7 @@ pnpm db:migrate:remote
 pnpm run deploy
 ```
 
-Configure Email Routing to send `notetaker@minutes.bot` to the Email Worker. Any notetaker aliases configured in Setup must also route to the same Email Worker. Configure `app.minutes.bot` as the main Worker custom domain plus the separate meeting bot container custom domain.
+Configure Email Routing to send `notetaker@minutes.bot` to the Email Worker. Any notetaker aliases configured in Setup must also route to the same Email Worker. Configure `app.minutes.bot`, `api.minutes.bot`, and `meeting.minutes.bot` as main Worker custom domains plus `meeting-api.minutes.bot` as the separate meeting bot container custom domain.
 
 Protect the admin UI with Cloudflare Access for the MVP.
 

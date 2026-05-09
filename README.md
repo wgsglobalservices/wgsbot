@@ -15,7 +15,7 @@ This repository is Cloudflare-first. The control plane runs on Cloudflare Worker
 - Fetch-based meeting bot client in `packages/bot-client`.
 - First-party meeting bot runtime in `apps/bot-runtime` deployed through `deploy/bot-container`.
 
-The main Cloudflare Worker uses `app.minutes.bot` as its custom domain, `https://api.minutes.bot` as the API base URL, and `https://admin.minutes.bot` as the admin UI and bot webhook base URL. Self-hosted examples keep the bot runtime on a separate host such as `https://meeting-bot.company.com`, with `notetaker@minutes.bot` as the recorder mailbox.
+The main Cloudflare Worker uses `https://app.minutes.bot` as the admin UI and `APP_BASE_URL`, `https://api.minutes.bot` as the public API base URL, and `https://meeting.minutes.bot` as the meeting bot webhook base URL. The meeting bot runtime API uses `https://meeting-api.minutes.bot`, with `notetaker@minutes.bot` as the recorder mailbox.
 
 ## Quickstart
 

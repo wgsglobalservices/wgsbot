@@ -182,7 +182,7 @@ export const defaultSettings: AppSettings = {
   recorderEmail: "notetaker@minutes.bot",
   recorderAliasEmails: [],
   attendee: {
-    baseUrl: "https://meeting-bot.company.com",
+    baseUrl: "https://meeting-api.minutes.bot",
     apiKeyConfigured: false,
     webhookSecretConfigured: false,
     botName: "minutesbot",
