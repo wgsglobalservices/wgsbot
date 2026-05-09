@@ -3,12 +3,12 @@ import type { BotClientOptions, BotHealth, BotRecording, BotRun, BotTranscriptSe
 
 export class BotClient {
   private readonly baseUrl: string;
-  private readonly apiKey: string;
+  private readonly internalToken: string | undefined;
   private readonly fetcher: typeof fetch;
 
   constructor(options: BotClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
-    this.apiKey = options.apiKey;
+    this.internalToken = options.internalToken;
     this.fetcher = options.fetcher ?? ((input, init) => globalThis.fetch(input, init));
   }
 
@@ -77,13 +77,14 @@ export class BotClient {
   }
 
   private async rawRequest(path: string, init: RequestInit = {}, errorMapper = mapStatus): Promise<Response> {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      ...(this.internalToken ? { authorization: `Bearer ${this.internalToken}` } : {}),
+      ...(init.headers as Record<string, string> | undefined)
+    };
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       ...init,
-      headers: {
-        "content-type": "application/json",
-        authorization: `Token ${this.apiKey}`,
-        ...(init.headers ?? {})
-      }
+      headers
     });
 
     if (!response.ok) {

@@ -38,8 +38,7 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
       environment: c.env.ENVIRONMENT,
       botRuntime: {
         baseUrl: settings.attendee.baseUrl,
-        apiKeyConfigured: settings.attendee.apiKeyConfigured,
-        webhookSecretConfigured: settings.attendee.webhookSecretConfigured
+        managed: true
       },
       webhookUrl: botWebhookUrl(c.env)
     });
@@ -58,8 +57,11 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
   })
   .post("/test-bot", async (c) => {
     const settings = await readSettings(c.env);
-    if (!c.env.BOT_API_KEY) return c.json({ ok: false, message: "BOT_API_KEY secret is not configured" }, 400);
-    const client = new BotClient({ baseUrl: settings.attendee.baseUrl, apiKey: c.env.BOT_API_KEY });
+    const client = new BotClient({
+      baseUrl: settings.attendee.baseUrl,
+      internalToken: c.env.BOT_INTERNAL_TOKEN,
+      fetcher: c.env.BOT_RUNTIME ? (input, init) => c.env.BOT_RUNTIME!.fetch(input, init) : undefined
+    });
     try {
       await client.checkHealth();
       await client.getBot("minutesbot-preflight");
@@ -172,8 +174,8 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
       return c.json({ ok: false, message: error instanceof Error ? error.message : "Sample recap email failed to send" }, 502);
     }
   })
-  .post("/verify-webhook-signature-sample", async (c) =>
-    c.json({ ok: true, message: "Use BOT_WEBHOOK_SECRET and X-Webhook-Signature against /api/webhooks/bot for live verification" })
+  .post("/verify-webhook-auth-sample", async (c) =>
+    c.json({ ok: true, message: "Meeting bot webhooks are verified with managed internal authorization." })
   );
 
 function botTestErrorMessage(error: unknown): string {

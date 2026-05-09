@@ -30,7 +30,7 @@ minutesbot is the Cloudflare control plane and includes its own Cloudflare Conta
 4. D1 stores meeting metadata, attendees, webhook events, email deliveries, summaries metadata, and audit logs.
 5. R2 stores raw invites, bot-uploaded MP3 recordings, transcript JSON/text, summaries, and artifacts.
 6. Workflow creates a meeting bot before start time and supplies bot-level webhooks plus MP3 recording storage settings.
-7. The bot runtime posts signed webhook events to `/api/webhooks/bot`.
+7. The bot runtime posts managed webhook events to `/api/webhooks/bot`.
 8. After post-processing completes, Transcript workflow reads `recordings/<meetingId>/recording.mp3` from R2, transcribes it with the OpenRouter/Whisper provider, stores transcript artifacts, and queues summarization.
 9. Summary workflow generates notes, filters recipients, and sends only eligible same-company attendees.
 

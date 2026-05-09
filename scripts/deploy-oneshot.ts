@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,8 +48,6 @@ const REQUIRED_ENV_KEYS = [
   "BOT_RECORDING_BUCKET_NAME",
   "DEFAULT_RECORDER_EMAIL",
   "DEFAULT_SENDER_EMAIL",
-  "BOT_API_KEY",
-  "BOT_WEBHOOK_SECRET",
   "TEAMS_RECORDER_EMAIL",
   "TEAMS_RECORDER_PASSWORD",
   "OPENROUTER_API_KEY",
@@ -63,13 +62,18 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   const fetchHealth = options.fetchHealth ?? fetch;
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
-  const env = await loadOneshotEnv(options);
+  const loadedEnv = await loadOneshotEnv(options);
+  const env = {
+    ...loadedEnv,
+    BOT_INTERNAL_TOKEN: loadedEnv.BOT_INTERNAL_TOKEN?.trim() || generateInternalToken()
+  };
 
   validateOneshotEnv(env, environment);
+  const oneshotEnv: OneshotEnv = env;
 
-  const minutesbotConfig = buildMinutesbotWranglerConfig(env, environment);
-  const botConfig = buildBotWranglerConfig(env);
-  const resources = resourceNames(environment, env);
+  const minutesbotConfig = buildMinutesbotWranglerConfig(oneshotEnv, environment);
+  const botConfig = buildBotWranglerConfig(oneshotEnv, environment);
+  const resources = resourceNames(environment, oneshotEnv);
 
   await validatePrerequisites({ runCommand, dryRun, log });
   await writeGeneratedConfig(GENERATED_MINUTESBOT_CONFIG, minutesbotConfig, options, dryRun, log);
@@ -91,7 +95,7 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   await putSecrets({
     label: "meeting bot container",
     configPath: GENERATED_BOT_CONFIG,
-    secrets: botContainerSecrets(env),
+    secrets: botContainerSecrets(oneshotEnv),
     dryRun,
     runCommandWithInput,
     log
@@ -102,13 +106,13 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   });
 
   await runOrLog(dryRun, log, "check meeting bot health", async () => {
-    await verifyBotHealth({ baseUrl: env.BOT_API_BASE_URL, fetchHealth, log, error });
+    await verifyBotHealth({ baseUrl: oneshotEnv.BOT_API_BASE_URL, fetchHealth, log, error });
   });
 
   await putSecrets({
     label: "minutesbot",
     configPath: GENERATED_MINUTESBOT_CONFIG,
-    secrets: minutesbotSecrets(env),
+    secrets: minutesbotSecrets(oneshotEnv),
     dryRun,
     runCommandWithInput,
     log
@@ -122,7 +126,7 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
     await runCommand("wrangler", ["deploy", "--config", GENERATED_MINUTESBOT_CONFIG]);
   });
 
-  await runSmokeChecks({ env, dryRun, fetchHealth, log });
+  await runSmokeChecks({ env: oneshotEnv, dryRun, fetchHealth, log });
 }
 
 export function parseOneshotArgs(args: string[]): { environment: CloudflareEnvironment; dryRun: boolean; envFilePath?: string } {
@@ -204,6 +208,7 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
     },
     d1_databases: [{ binding: resources.d1.binding, database_name: resources.d1.databaseName, database_id: "replace-with-d1-database-id" }],
     r2_buckets: [{ binding: "ARTIFACTS", bucket_name: env.BOT_RECORDING_BUCKET_NAME }],
+    services: [{ binding: "BOT_RUNTIME", service: workerName("minutesbot-meeting-bot", environment) }],
     queues: queueConfig(resources.queues),
     workflows: [
       { name: scopedName("minutesbot-meeting-workflow", environment), binding: "MEETING_WORKFLOW", class_name: "MeetingWorkflow" },
@@ -215,10 +220,10 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
   });
 }
 
-export function buildBotWranglerConfig(env: OneshotEnv): string {
+export function buildBotWranglerConfig(env: OneshotEnv, environment: CloudflareEnvironment = "production"): string {
   return stringifyConfig({
     $schema: "../node_modules/wrangler/config-schema.json",
-    name: "minutesbot-meeting-bot",
+    name: workerName("minutesbot-meeting-bot", environment),
     account_id: env.CLOUDFLARE_ACCOUNT_ID,
     main: "../deploy/bot-container/src/index.ts",
     compatibility_date: "2026-05-04",
@@ -293,16 +298,14 @@ async function putSecrets(options: {
 
 function botContainerSecrets(env: OneshotEnv): Record<string, string> {
   return {
-    BOT_API_KEY: env.BOT_API_KEY,
-    BOT_WEBHOOK_SECRET: env.BOT_WEBHOOK_SECRET,
+    BOT_INTERNAL_TOKEN: env.BOT_INTERNAL_TOKEN,
     TEAMS_RECORDER_PASSWORD: env.TEAMS_RECORDER_PASSWORD
   };
 }
 
 function minutesbotSecrets(env: OneshotEnv): Record<string, string> {
   return {
-    BOT_API_KEY: env.BOT_API_KEY,
-    BOT_WEBHOOK_SECRET: env.BOT_WEBHOOK_SECRET,
+    BOT_INTERNAL_TOKEN: env.BOT_INTERNAL_TOKEN,
     AI_API_KEY: env.OPENROUTER_API_KEY,
     SESSION_SECRET: env.SESSION_SECRET
   };
@@ -323,7 +326,7 @@ async function runSmokeChecks(options: {
   await runOrLog(options.dryRun, options.log, "smoke check meeting bot API auth", async () => {
     await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-bot`, options.env.SESSION_SECRET);
   });
-  await runOrLog(options.dryRun, options.log, "smoke check signed meeting bot webhook", async () => {
+  await runOrLog(options.dryRun, options.log, "smoke check managed meeting bot webhook", async () => {
     const payload = {
       idempotency_key: `oneshot-smoke-${Date.now()}`,
       bot_id: "minutesbot-oneshot-smoke",
@@ -331,9 +334,8 @@ async function runSmokeChecks(options: {
       data: { event_type: "smoke_check", new_state: "ended" }
     };
     const rawBody = stableStringify(payload);
-    const signature = await signWebhook(rawBody, options.env.BOT_WEBHOOK_SECRET);
     await postJson(options.fetchHealth, `${trimUrl(options.env.BOT_WEBHOOK_BASE_URL)}/api/webhooks/bot`, undefined, rawBody, {
-      "x-webhook-signature": signature
+      authorization: `Bearer ${options.env.BOT_INTERNAL_TOKEN}`
     });
   });
 }
@@ -383,12 +385,6 @@ async function postJson(
     body
   });
   if (!response.ok) throw new Error(`${url} returned ${response.status}: ${await response.text()}`);
-}
-
-async function signWebhook(rawBody: string, webhookSecretBase64: string): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", Buffer.from(webhookSecretBase64, "base64"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  return Buffer.from(digest).toString("base64");
 }
 
 async function runOrLog<T>(dryRun: boolean, log: (message: string) => void, label: string, fn: () => Promise<T>): Promise<T | undefined> {
@@ -456,6 +452,10 @@ function assertUrlHostname(key: string, value: string, expectedHostname: string)
 function unquote(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) return value.slice(1, -1);
   return value;
+}
+
+function generateInternalToken(): string {
+  return randomBytes(32).toString("base64url");
 }
 
 async function runWithInput(command: string, args: string[], input: string): Promise<string> {

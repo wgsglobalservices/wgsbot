@@ -33,11 +33,10 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
 
   let bot: BotRun;
   try {
-    if (!env.BOT_API_KEY) throw new AppError("BOT_API_KEY_MISSING", "BOT_API_KEY secret is not configured", 500);
     if (!env.BOT_RECORDING_BUCKET_NAME) {
       throw new AppError("BOT_RECORDING_BUCKET_NAME_MISSING", "BOT_RECORDING_BUCKET_NAME is not configured", 500);
     }
-    const client = new BotClient({ baseUrl: resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL), apiKey: env.BOT_API_KEY });
+    const client = createBotClient(env, resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL));
     await client.checkHealth();
     bot = await client.createBot({
       meetingUrl: meeting.teams_join_url ?? "",
@@ -77,6 +76,14 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
     status: "BOT_CREATED"
   });
   await createAuditLog(env.DB, { eventType: "bot.created", resourceType: "meeting", resourceId: meetingId, metadata: { botId: bot.id, state: bot.state } });
+}
+
+export function createBotClient(env: Pick<WorkflowEnv, "BOT_INTERNAL_TOKEN" | "BOT_RUNTIME">, baseUrl: string): BotClient {
+  return new BotClient({
+    baseUrl,
+    internalToken: env.BOT_INTERNAL_TOKEN,
+    fetcher: env.BOT_RUNTIME ? (input, init) => env.BOT_RUNTIME!.fetch(input, init) : undefined
+  });
 }
 
 function botJoinChatMessage(botName: string): string {

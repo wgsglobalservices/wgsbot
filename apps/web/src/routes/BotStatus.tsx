@@ -15,18 +15,11 @@ export function BotStatus() {
       <div className="metricGrid">
         <div className="metric"><span>Connection</span><strong><StatusBadge value={status?.ok ? "ready" : "not_tested"} /></strong></div>
         <div className="metric"><span>Base URL</span><strong>{String(botRuntime.baseUrl ?? "")}</strong></div>
-        <div className="metric"><span>API key</span><strong>{botRuntime.apiKeyConfigured ? "Configured" : "Missing"}</strong></div>
-        <div className="metric"><span>Webhook secret</span><strong>{botRuntime.webhookSecretConfigured ? "Configured" : "Missing"}</strong></div>
+        <div className="metric"><span>Runtime</span><strong>{botRuntime.managed ? "Built in" : "Not tested"}</strong></div>
       </div>
       <section>
         <h2>Webhook URL</h2>
         <pre>{String(status?.webhookUrl ?? "")}</pre>
-      </section>
-      <section>
-        <h2>Meeting bot setup copy block</h2>
-        <pre>{`BOT_API_BASE_URL=https://meeting-api.minutes.bot
-wrangler secret put BOT_API_KEY
-wrangler secret put BOT_WEBHOOK_SECRET`}</pre>
       </section>
       <TestActionButton path="/api/admin/test-bot" label="Test meeting bot" />
     </div>

@@ -12,10 +12,10 @@ export function createDefaultDeps(env: RuntimeProcessEnv): BotRuntimeDeps {
     checkBinary: async (name) => binaryAvailable(name === "chromium" ? env.CHROMIUM_EXECUTABLE_PATH || "chromium" : "ffmpeg"),
     recorder: createBrowserRecorder(env),
     recordingStore: createHttpRecordingStore(env),
-    sendWebhook: async ({ url, body, signature }) => {
+    sendWebhook: async ({ url, body, internalToken }) => {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-webhook-signature": signature },
+        headers: { "content-type": "application/json", ...(internalToken ? { authorization: `Bearer ${internalToken}` } : {}) },
         body
       });
       if (!response.ok) throw new Error(`Webhook ${url} returned ${response.status}`);
@@ -71,7 +71,7 @@ function createHttpRecordingStore(env: RuntimeProcessEnv): BotRuntimeDeps["recor
       const response = await fetch(uploadUrl, {
         method: "PUT",
         headers: {
-          authorization: `Token ${env.BOT_API_KEY ?? ""}`,
+          ...(env.BOT_INTERNAL_TOKEN ? { authorization: `Bearer ${env.BOT_INTERNAL_TOKEN}` } : {}),
           "content-type": input.contentType,
           "x-recording-bucket": input.bucketName,
           "x-recording-key": input.key

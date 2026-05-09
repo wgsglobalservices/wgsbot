@@ -3,8 +3,6 @@ const commands = [
   "wrangler r2 bucket create minutesbot-artifacts",
   "pnpm cloudflare:ensure",
   "CLOUDFLARE_API_TOKEN=... pnpm cloudflare:ensure-webhook-bypass",
-  "wrangler secret put BOT_API_KEY",
-  "wrangler secret put BOT_WEBHOOK_SECRET",
   "wrangler secret put AI_API_KEY",
   "wrangler secret put SESSION_SECRET",
   "cp .env.oneshot.example .env.oneshot",

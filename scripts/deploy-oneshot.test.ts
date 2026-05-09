@@ -66,6 +66,8 @@ describe("build oneshot Wrangler configs", () => {
     expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_ISSUER");
     expect(botConfig).toContain("meeting-api.minutes.bot");
     expect(botConfig).toContain("meeting.minutes.bot");
+    expect(minutesbotConfig).toContain('"binding": "BOT_RUNTIME"');
+    expect(minutesbotConfig).toContain('"service": "minutesbot-meeting-bot"');
     expect(botConfig).toContain("../apps/bot-runtime/Dockerfile");
     expect(botConfig).not.toContain(".attendee/upstream");
     expect(botConfig).not.toContain("DJANGO_SETTINGS_MODULE");
@@ -112,7 +114,8 @@ describe("deployOneshot", () => {
     expect(commands).toEqual([]);
     expect([...writes.keys()]).toEqual([]);
     expect(messages).toContain("[dry-run] deploy minutesbot Worker");
-    expect(messages).toContain("[dry-run] put meeting bot container secret BOT_API_KEY");
+    expect(messages).toContain("[dry-run] put meeting bot container secret BOT_INTERNAL_TOKEN");
+    expect(messages).not.toContain("[dry-run] put meeting bot container secret BOT_API_KEY");
   });
 
   it("runs the deploy flow with generated configs, secrets, health checks, and smoke checks", async () => {
@@ -154,9 +157,11 @@ describe("deployOneshot", () => {
     expect(commands).toContain("wrangler deploy --config .wrangler/oneshot-bot.jsonc");
     expect(commands).toContain("pnpm run build");
     expect(commands).toContain("wrangler deploy --config .wrangler/oneshot-minutesbot.jsonc");
-    expect(secrets).toContain("wrangler secret put BOT_API_KEY --config .wrangler/oneshot-bot.jsonc");
+    expect(secrets).toContain("wrangler secret put BOT_INTERNAL_TOKEN --config .wrangler/oneshot-bot.jsonc");
     expect(secrets).toContain("wrangler secret put TEAMS_RECORDER_PASSWORD --config .wrangler/oneshot-bot.jsonc");
-    expect(secrets).toContain("wrangler secret put BOT_API_KEY --config .wrangler/oneshot-minutesbot.jsonc");
+    expect(secrets).toContain("wrangler secret put BOT_INTERNAL_TOKEN --config .wrangler/oneshot-minutesbot.jsonc");
+    expect(secrets).not.toContain("wrangler secret put BOT_API_KEY --config .wrangler/oneshot-bot.jsonc");
+    expect(secrets).not.toContain("wrangler secret put BOT_WEBHOOK_SECRET --config .wrangler/oneshot-minutesbot.jsonc");
     expect(fetches).toContain("GET https://meeting-api.minutes.bot/_ops/health");
     expect(fetches).toContain("GET https://api.minutes.bot/api/health");
     expect(fetches).toContain("POST https://app.minutes.bot/api/admin/test-r2");
@@ -178,8 +183,6 @@ function sampleEnv(overrides: Record<string, string> = {}): Record<string, strin
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     DEFAULT_RECORDER_EMAIL: "notetaker@minutes.bot",
     DEFAULT_SENDER_EMAIL: "notetaker@minutes.bot",
-    BOT_API_KEY: "bot-api-key",
-    BOT_WEBHOOK_SECRET: Buffer.from("webhook-secret").toString("base64"),
     TEAMS_RECORDER_EMAIL: "notetaker@company.com",
     TEAMS_RECORDER_PASSWORD: "teams-recorder-password",
     OPENROUTER_API_KEY: "openrouter-key",

@@ -340,7 +340,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 
 .setupField > span:first-child,
 .allowedDomainsControl > .fieldHelp,
-.secretStatusRow > div > span {
+.secretStatusRow > div > span,
+.runtimeStatusRow > span {
   font-weight: 650;
 }
 
@@ -432,7 +433,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   max-width: 680px;
 }
 
-.secretStatusRow {
+.secretStatusRow,
+.runtimeStatusRow {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(170px, auto) auto;
   gap: 12px;
@@ -452,6 +454,15 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 }
 
 .secretStatusRow code {
+  color: #cbd5e1;
+  overflow-wrap: anywhere;
+}
+
+.runtimeStatusRow {
+  max-width: 680px;
+}
+
+.runtimeStatusRow code {
   color: #cbd5e1;
   overflow-wrap: anywhere;
 }
@@ -1137,7 +1148,8 @@ pre {
   .fieldWidth-domains {
     max-width: none;
   }
-  .secretStatusRow {
+  .secretStatusRow,
+  .runtimeStatusRow {
     grid-template-columns: 1fr;
   }
   .retentionHeader,

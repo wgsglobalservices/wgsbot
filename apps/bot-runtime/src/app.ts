@@ -1,10 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { stableStringify } from "@minutesbot/shared";
+import { timingSafeEqualString } from "@minutesbot/shared";
 
 type RuntimeEnv = {
-  BOT_API_KEY?: string;
-  BOT_WEBHOOK_SECRET?: string;
+  BOT_INTERNAL_TOKEN?: string;
   BOT_RECORDING_BUCKET_NAME?: string;
   TEAMS_RECORDER_EMAIL?: string;
   TEAMS_RECORDER_PASSWORD?: string;
@@ -45,7 +44,7 @@ export type BotRuntimeDeps = {
   recordingStore: {
     putRecording(input: { bucketName: string; key: string; bytes: Uint8Array; contentType: string }): Promise<void>;
   };
-  sendWebhook: (input: { url: string; body: string; signature: string }) => Promise<void>;
+  sendWebhook: (input: { url: string; body: string; internalToken?: string }) => Promise<void>;
   randomUUID?: () => string;
   now?: () => string;
 };
@@ -83,9 +82,9 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
   });
 
   app.use("/api/*", async (c, next) => {
-    const expected = deps.env.BOT_API_KEY;
+    const expected = deps.env.BOT_INTERNAL_TOKEN;
     const actual = c.req.header("authorization") ?? "";
-    if (!expected || actual !== `Token ${expected}`) return c.json({ detail: "Unauthorized" }, 401);
+    if (expected && !timingSafeEqualString(actual, `Bearer ${expected}`)) return c.json({ detail: "Unauthorized" }, 401);
     await next();
   });
 
@@ -179,27 +178,15 @@ async function emitStateWebhook(deps: BotRuntimeDeps, input: z.infer<typeof crea
     }
   };
   const body = JSON.stringify(payload);
-  const signature = await signWebhook(body, deps.env.BOT_WEBHOOK_SECRET);
   await Promise.all(
     input.webhooks
       .filter((webhook) => webhook.triggers.includes("bot.state_change"))
-      .map((webhook) => deps.sendWebhook({ url: webhook.url, body, signature }))
+      .map((webhook) => deps.sendWebhook({ url: webhook.url, body, internalToken: deps.env.BOT_INTERNAL_TOKEN }))
   );
-}
-
-async function signWebhook(rawBody: string, secretBase64: string | undefined): Promise<string> {
-  if (!secretBase64) return "";
-  const secret = Buffer.from(secretBase64, "base64");
-  const key = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const canonical = stableStringify(JSON.parse(rawBody));
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
-  return Buffer.from(digest).toString("base64");
 }
 
 async function missingRuntimeSettings(deps: BotRuntimeDeps): Promise<string[]> {
   const missing: string[] = [];
-  if (!deps.env.BOT_API_KEY) missing.push("BOT_API_KEY");
-  if (!deps.env.BOT_WEBHOOK_SECRET) missing.push("BOT_WEBHOOK_SECRET");
   if (!deps.env.BOT_RECORDING_BUCKET_NAME) missing.push("BOT_RECORDING_BUCKET_NAME");
   if (!deps.env.TEAMS_RECORDER_PASSWORD && deps.env.BOT_ALLOW_GUEST_JOIN === "false") missing.push("TEAMS_RECORDER_PASSWORD");
   if (!deps.env.TEAMS_RECORDER_PASSWORD && deps.env.BOT_ALLOW_GUEST_JOIN !== "true") missing.push("TEAMS_RECORDER_PASSWORD");

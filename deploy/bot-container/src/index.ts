@@ -1,12 +1,12 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
+import { timingSafeEqualString } from "@minutesbot/shared";
 
 type BotContainerEnv = {
   MEETING_BOT: DurableObjectNamespace<MeetingBotContainer>;
   ARTIFACTS: R2Bucket;
-  BOT_API_KEY?: string;
+  BOT_INTERNAL_TOKEN?: string;
   BOT_API_BASE_URL?: string;
-  BOT_WEBHOOK_SECRET?: string;
   BOT_RECORDING_BUCKET_NAME?: string;
   BOT_CONTAINER_SLEEP_AFTER?: string;
   BOT_WEBHOOK_BASE_URL?: string;
@@ -36,7 +36,7 @@ export default {
 };
 
 async function storeRecording(request: Request, env: BotContainerEnv): Promise<Response> {
-  if (!env.BOT_API_KEY || request.headers.get("authorization") !== `Token ${env.BOT_API_KEY}`) {
+  if (env.BOT_INTERNAL_TOKEN && !timingSafeEqualString(request.headers.get("authorization") ?? "", `Bearer ${env.BOT_INTERNAL_TOKEN}`)) {
     return Response.json({ detail: "Unauthorized" }, { status: 401 });
   }
   const bucket = request.headers.get("x-recording-bucket");
@@ -53,9 +53,8 @@ async function storeRecording(request: Request, env: BotContainerEnv): Promise<R
 function stringEnv(env: BotContainerEnv): Record<string, string> {
   return Object.fromEntries(
     [
-      "BOT_API_KEY",
+      "BOT_INTERNAL_TOKEN",
       "BOT_API_BASE_URL",
-      "BOT_WEBHOOK_SECRET",
       "BOT_RECORDING_BUCKET_NAME",
       "BOT_WEBHOOK_BASE_URL",
       "TEAMS_RECORDER_EMAIL",

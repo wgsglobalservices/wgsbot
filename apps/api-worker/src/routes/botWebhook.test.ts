@@ -1,4 +1,3 @@
-import { stableStringify } from "@minutesbot/shared";
 import { describe, expect, it, vi } from "vitest";
 import { app } from "../index";
 
@@ -48,7 +47,7 @@ describe("meeting bot webhook route", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-webhook-signature": await signWebhook(payload)
+          authorization: "Bearer managed-token"
         },
         body: JSON.stringify(payload)
       },
@@ -72,7 +71,7 @@ describe("meeting bot webhook route", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-webhook-signature": await signWebhook(payload)
+          authorization: "Bearer managed-token"
         },
         body: JSON.stringify(payload)
       },
@@ -103,7 +102,7 @@ describe("meeting bot webhook route", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-webhook-signature": await signWebhook(payload)
+          authorization: "Bearer managed-token"
         },
         body: JSON.stringify(payload)
       },
@@ -116,7 +115,7 @@ describe("meeting bot webhook route", () => {
     expect(db.webhookEvents).toHaveLength(1);
   });
 
-  it("returns Worker JSON for malformed signed webhook bodies", async () => {
+  it("returns Worker JSON for malformed managed webhook bodies", async () => {
     const db = new WebhookD1();
     const rawBody = "{bad-json";
 
@@ -126,16 +125,37 @@ describe("meeting bot webhook route", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-webhook-signature": "not-a-valid-signature"
+          authorization: "Bearer managed-token"
         },
         body: rawBody
       },
       env(db, { send: vi.fn(async () => undefined) })
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(400);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toMatchObject({ error: { code: "INVALID_WEBHOOK_SIGNATURE" } });
+    expect(await response.json()).toMatchObject({ error: { code: "INVALID_BOT_WEBHOOK_PAYLOAD" } });
+  });
+
+  it("rejects webhooks with the wrong managed authorization token", async () => {
+    const db = new WebhookD1();
+    const payload = postProcessingPayload("wh_bad_auth");
+
+    const response = await app.request(
+      "/api/webhooks/bot",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer wrong-token"
+        },
+        body: JSON.stringify(payload)
+      },
+      env(db, { send: vi.fn(async () => undefined) })
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: { code: "INVALID_BOT_WEBHOOK_AUTH" } });
   });
 
   it("keeps protected admin APIs behind the admin token", async () => {
@@ -174,22 +194,7 @@ function env(db: WebhookD1, summaryQueue: { send: ReturnType<typeof vi.fn> }) {
     INVITE_QUEUE: { send: vi.fn() },
     SUMMARY_QUEUE: summaryQueue,
     EMAIL_QUEUE: { send: vi.fn() },
-    BOT_WEBHOOK_SECRET: webhookSecret(),
+    BOT_INTERNAL_TOKEN: "managed-token",
     SESSION_SECRET: "test-secret"
   };
-}
-
-async function signWebhook(payload: unknown): Promise<string> {
-  return signRawWebhook(JSON.stringify(payload));
-}
-
-async function signRawWebhook(rawBody: string): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", Buffer.from(webhookSecret(), "base64"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const canonical = stableStringify(JSON.parse(rawBody));
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
-  return Buffer.from(digest).toString("base64");
-}
-
-function webhookSecret(): string {
-  return Buffer.from("webhook-secret").toString("base64");
 }

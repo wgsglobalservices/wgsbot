@@ -213,7 +213,7 @@ describe("admin test actions", () => {
     });
   });
 
-  it("calls the meeting bot runtime when testing runtime auth without returning the secret", async () => {
+  it("calls the managed meeting bot runtime without requiring a user API key", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
       "fetch",
@@ -226,7 +226,7 @@ describe("admin test actions", () => {
         })
     );
 
-    const response = await post("/api/admin/test-bot", env({ BOT_API_KEY: "bot-secret" }));
+    const response = await post("/api/admin/test-bot", env());
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -239,7 +239,25 @@ describe("admin test actions", () => {
     expect(requests).toHaveLength(2);
     expect(requests[0].url).toBe(`${defaultSettings.attendee.baseUrl}/_ops/health`);
     expect(requests[1].url).toBe(`${defaultSettings.attendee.baseUrl}/api/v1/bots/minutesbot-preflight`);
-    expect(requests[1].init?.headers).toMatchObject({ authorization: "Token bot-secret" });
+    expect(requests[1].init?.headers).not.toHaveProperty("authorization");
+  });
+
+  it("uses deployment-managed internal auth when the runtime token is present", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(url), init });
+        return String(url).endsWith("/_ops/health")
+          ? Response.json({ ok: true, runtime: "meeting-bot-container", missing: [] })
+          : new Response("not found", { status: 404 });
+      })
+    );
+
+    const response = await post("/api/admin/test-bot", env({ BOT_INTERNAL_TOKEN: "managed-token" }));
+
+    expect(response.status).toBe(200);
+    expect(requests[1].init?.headers).toMatchObject({ authorization: "Bearer managed-token" });
   });
 
   it("returns a redacted meeting bot auth failure", async () => {
@@ -251,7 +269,7 @@ describe("admin test actions", () => {
         .mockResolvedValueOnce(new Response("nope bot-secret", { status: 401 }))
     );
 
-    const response = await post("/api/admin/test-bot", env({ BOT_API_KEY: "bot-secret" }));
+    const response = await post("/api/admin/test-bot", env({ BOT_INTERNAL_TOKEN: "managed-token" }));
 
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({
@@ -271,7 +289,7 @@ describe("admin test actions", () => {
       )
     );
 
-    const testEnv = env({ BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app", BOT_API_KEY: "bot-secret" });
+    const testEnv = env({ BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app" });
     await testEnv.DB.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)").bind(
       "app",
       JSON.stringify({

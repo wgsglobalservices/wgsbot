@@ -155,7 +155,6 @@ function env(db: FakeD1, artifacts: { get: ReturnType<typeof vi.fn>; put: Return
     EMAIL_QUEUE: { send: vi.fn() },
     BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app",
     API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
-    BOT_API_KEY: "bot-key",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     AI_API_KEY: "openrouter-key"
   };

@@ -8,11 +8,11 @@ The meeting bot runtime stores active runtime state in its container process and
 
 ## Secrets
 
-Store `BOT_API_KEY`, `BOT_WEBHOOK_SECRET`, `TEAMS_RECORDER_PASSWORD`, `AI_API_KEY`, `EMAIL_API_KEY`, `SMTP_PASSWORD`, and `SESSION_SECRET` with `wrangler secret put`. D1 stores only configured status or secret references.
+Store `TEAMS_RECORDER_PASSWORD`, `AI_API_KEY`, `EMAIL_API_KEY`, `SMTP_PASSWORD`, and `SESSION_SECRET` with `wrangler secret put`. D1 stores only configured status or secret references. The one-shot deploy flow generates and pushes the internal meeting bot token automatically.
 
 ## Webhooks
 
-Meeting bot webhooks are verified with HMAC-SHA256 using canonicalized JSON and `X-Webhook-Signature`. Events are deduplicated by `idempotency_key`.
+Meeting bot webhooks are verified with managed internal bearer authorization. Events are deduplicated by `idempotency_key`.
 
 ## Recipients
 

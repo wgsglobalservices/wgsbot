@@ -1,11 +1,10 @@
-import { stableStringify } from "@minutesbot/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createBotRuntimeApp, type BotRuntimeDeps } from "./app";
 
 describe("bot runtime app", () => {
   it("reports missing runtime dependencies clearly", async () => {
     const app = createBotRuntimeApp({
-      env: { BOT_API_KEY: "secret", BOT_WEBHOOK_SECRET: "webhook-secret", BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts" },
+      env: { BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts" },
       checkBinary: async (name) => name !== "ffmpeg",
       recorder: fakeRecorder(),
       recordingStore: fakeRecordingStore(),
@@ -22,13 +21,12 @@ describe("bot runtime app", () => {
     });
   });
 
-  it("creates a bot, records to the supplied R2 key, and emits a signed completion webhook", async () => {
+  it("creates a bot, records to the supplied R2 key, and emits a managed completion webhook", async () => {
     const stored: Array<{ bucketName: string; key: string; bytes: Uint8Array; contentType: string }> = [];
-    const webhooks: Array<{ url: string; body: string; signature: string }> = [];
+    const webhooks: Array<{ url: string; body: string; internalToken?: string }> = [];
     const app = createBotRuntimeApp({
       env: {
-        BOT_API_KEY: "secret",
-        BOT_WEBHOOK_SECRET: Buffer.from("webhook-secret").toString("base64"),
+        BOT_INTERNAL_TOKEN: "managed-token",
         BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
         TEAMS_RECORDER_EMAIL: "notetaker@company.com",
         TEAMS_RECORDER_PASSWORD: "password"
@@ -49,7 +47,7 @@ describe("bot runtime app", () => {
 
     const response = await app.request("/api/v1/bots", {
       method: "POST",
-      headers: { authorization: "Token secret", "content-type": "application/json" },
+      headers: { authorization: "Bearer managed-token", "content-type": "application/json" },
       body: JSON.stringify({
         meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
         bot_name: "minutesbot",
@@ -75,7 +73,7 @@ describe("bot runtime app", () => {
     await vi.waitFor(() => expect(webhooks.some((webhook) => webhook.body.includes("post_processing_completed"))).toBe(true));
     const completion = webhooks.find((webhook) => webhook.body.includes("post_processing_completed"));
     expect(completion?.url).toBe("https://meeting.minutes.bot/api/webhooks/bot");
-    expect(await verifySignature(completion?.body ?? "", completion?.signature ?? "")).toBe(true);
+    expect(completion?.internalToken).toBe("managed-token");
   });
 });
 
@@ -89,11 +87,4 @@ function fakeRecordingStore(): BotRuntimeDeps["recordingStore"] {
   return {
     putRecording: async () => undefined
   };
-}
-
-async function verifySignature(rawBody: string, signature: string): Promise<boolean> {
-  const key = await crypto.subtle.importKey("raw", Buffer.from("webhook-secret"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const canonical = stableStringify(JSON.parse(rawBody));
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
-  return Buffer.from(digest).toString("base64") === signature;
 }

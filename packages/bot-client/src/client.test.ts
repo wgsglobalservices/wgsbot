@@ -7,11 +7,11 @@ describe("BotClient", () => {
     vi.unstubAllGlobals();
   });
 
-  it("creates bots with token auth and normalized payload", async () => {
+  it("creates bots without requiring user-managed auth and normalizes payload", async () => {
     const fetcher = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" })
     );
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", fetcher });
 
     const bot = await client.createBot({
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
@@ -24,8 +24,23 @@ describe("BotClient", () => {
       "https://meeting-api.minutes.bot/api/v1/bots",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ authorization: "Token secret" }),
         body: expect.stringContaining("meeting_url")
+      })
+    );
+  });
+
+  it("adds managed internal auth when supplied by deployment", async () => {
+    const fetcher = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
+      Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" })
+    );
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", internalToken: "managed-token", fetcher });
+
+    await client.getBot("bot_1");
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://meeting-api.minutes.bot/api/v1/bots/bot_1",
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: "Bearer managed-token" })
       })
     );
   });
@@ -34,7 +49,7 @@ describe("BotClient", () => {
     const fetcher = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" })
     );
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", fetcher });
 
     await client.createBot({
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
@@ -63,7 +78,7 @@ describe("BotClient", () => {
     const fetcher = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" })
     );
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", fetcher });
 
     await client.createBot({
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
@@ -87,7 +102,7 @@ describe("BotClient", () => {
     const fetcher = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
       Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" })
     );
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", fetcher });
 
     await client.createBot({
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
@@ -105,7 +120,7 @@ describe("BotClient", () => {
 
   it("normalizes rate limits into retryable typed errors", async () => {
     const fetcher = vi.fn(async () => new Response("rate limited", { status: 429 }));
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
 
     await expect(client.getBot("bot_1")).rejects.toMatchObject({ code: "BOT_RATE_LIMITED", retryable: true });
   });
@@ -113,13 +128,13 @@ describe("BotClient", () => {
   it("retrieves bot recordings with content metadata", async () => {
     const audio = new Uint8Array([1, 2, 3]).buffer;
     const fetcher = vi.fn(async () => new Response(audio, { headers: { "content-type": "audio/mp4", "content-length": "3" } }));
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
 
     const recording = await client.getBotRecording("bot_1");
 
     expect(fetcher).toHaveBeenCalledWith(
       "https://meeting-api.minutes.bot/api/v1/bots/bot_1/recording",
-      expect.objectContaining({ headers: expect.objectContaining({ authorization: "Token secret" }) })
+      expect.objectContaining({ headers: expect.objectContaining({ "content-type": "application/json" }) })
     );
     expect(recording.contentType).toBe("audio/mp4");
     expect(recording.sizeBytes).toBe(3);
@@ -128,31 +143,31 @@ describe("BotClient", () => {
 
   it("can force meeting bot transcript retrieval", async () => {
     const fetcher = vi.fn(async () => Response.json([]));
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
 
     await client.getBotTranscript("bot_1", { force: true });
 
     expect(fetcher).toHaveBeenCalledWith(
       "https://meeting-api.minutes.bot/api/v1/bots/bot_1/transcript?force=true",
-      expect.objectContaining({ headers: expect.objectContaining({ authorization: "Token secret" }) })
+      expect.objectContaining({ headers: expect.objectContaining({ "content-type": "application/json" }) })
     );
   });
 
   it("does not force transcript retrieval by default", async () => {
     const fetcher = vi.fn(async () => Response.json([]));
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
 
     await client.getBotTranscript("bot_1");
 
     expect(fetcher).toHaveBeenCalledWith(
       "https://meeting-api.minutes.bot/api/v1/bots/bot_1/transcript",
-      expect.objectContaining({ headers: expect.objectContaining({ authorization: "Token secret" }) })
+      expect.objectContaining({ headers: expect.objectContaining({ "content-type": "application/json" }) })
     );
   });
 
   it("rejects JSON recording responses as unavailable media", async () => {
     const fetcher = vi.fn(async () => Response.json({ detail: "Recording is not available yet" }));
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
 
     await expect(client.getBotRecording("bot_1")).rejects.toMatchObject({
       code: "BOT_RECORDING_UNAVAILABLE",
@@ -168,20 +183,20 @@ describe("BotClient", () => {
         return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" });
       })
     );
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret" });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot" });
 
     await expect(client.getBot("bot_1")).resolves.toMatchObject({ id: "bot_1" });
   });
 
   it("checks the first-party runtime health endpoint", async () => {
     const fetcher = vi.fn(async () => Response.json({ ok: true, runtime: "meeting-bot-container", missing: [] }));
-    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", apiKey: "secret", fetcher });
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
 
     await expect(client.checkHealth()).resolves.toEqual({ ok: true, runtime: "meeting-bot-container", missing: [] });
     expect(fetcher).toHaveBeenCalledWith(
       "https://meeting-api.minutes.bot/_ops/health",
       expect.objectContaining({
-        headers: expect.objectContaining({ authorization: "Token secret" })
+        headers: expect.objectContaining({ "content-type": "application/json" })
       })
     );
   });

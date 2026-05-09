@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const legacySelfHostedBotBaseUrls = new Set<string>(["https://app.attendee.dev"]);
+const legacySelfHostedBotBaseUrls = new Set<string>(["https://app.attendee.dev", "https://attendee.minutes.bot"]);
 const defaultTimeZone = "UTC";
 
 const domainSchema = z

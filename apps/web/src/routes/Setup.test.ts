@@ -68,6 +68,17 @@ describe("settings form", () => {
     expect(html).toContain("hours");
     expect(html).toContain('value="24"');
   });
+
+  it("renders the meeting bot runtime as built in without credential setup fields", () => {
+    const html = renderToStaticMarkup(React.createElement(SettingsForm, { value: defaultSettings, onChange: () => undefined }));
+
+    expect(html).toContain("Built in");
+    expect(html).toContain("Managed");
+    expect(html).toContain("Runtime URL");
+    expect(html).not.toContain("Bot API key");
+    expect(html).not.toContain("Webhook secret");
+    expect(html).not.toContain("Not configured");
+  });
 });
 
 describe("sample recap recipient", () => {

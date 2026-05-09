@@ -71,6 +71,21 @@ describe("settings service", () => {
     });
   });
 
+  it("normalizes legacy Attendee runtime URLs to the configured built-in bot runtime URL", async () => {
+    const testEnv = env({ BOT_API_BASE_URL: "https://meeting-api.minutes.bot" });
+    await writeSettings(testEnv, {
+      ...defaultSettings,
+      attendee: {
+        ...defaultSettings.attendee,
+        baseUrl: "https://attendee.minutes.bot"
+      }
+    });
+
+    await expect(readSettings(testEnv)).resolves.toMatchObject({
+      attendee: { baseUrl: "https://meeting-api.minutes.bot" }
+    });
+  });
+
   it("uploads bot images to R2 and persists only image metadata in settings", async () => {
     const put = vi.fn(async () => undefined);
     const testEnv = env({ ARTIFACTS: { put } as unknown as R2Bucket });

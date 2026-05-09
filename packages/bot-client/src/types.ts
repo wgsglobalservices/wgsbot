@@ -64,7 +64,7 @@ export type BotTranscriptSegment = {
 
 export type BotClientOptions = {
   baseUrl: string;
-  apiKey: string;
+  internalToken?: string;
   fetcher?: typeof fetch;
 };
 

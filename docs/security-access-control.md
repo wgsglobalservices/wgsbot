@@ -22,7 +22,7 @@ The API protects every `/api/*` route except:
 - `/api/health`
 - `/api/webhooks/bot`
 
-Meeting bot webhooks are still protected by `BOT_WEBHOOK_SECRET`.
+Meeting bot webhooks are still protected by the managed internal bot token generated during one-shot deployment.
 
 ## Cloudflare Access JWT Validation
 
@@ -61,7 +61,7 @@ The rule should use Cloudflare's `skip` action for browser/security challenges o
 }
 ```
 
-This does not make the webhook unauthenticated. `/api/webhooks/bot` still verifies the meeting bot `X-Webhook-Signature` with `BOT_WEBHOOK_SECRET`, and unsigned POSTs should return `401 INVALID_WEBHOOK_SIGNATURE` from the Worker instead of a Cloudflare HTML challenge page.
+This does not make the webhook unauthenticated. `/api/webhooks/bot` still verifies managed bearer authorization, and unauthorized POSTs should return `401 INVALID_BOT_WEBHOOK_AUTH` from the Worker instead of a Cloudflare HTML challenge page.
 
 To apply the exception with a Cloudflare API token that can edit zone rulesets:
 

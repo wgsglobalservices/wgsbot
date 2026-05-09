@@ -1,6 +1,6 @@
 # minutesbot
 
-minutesbot is an open-source, self-hosted, single-tenant Microsoft Teams meeting notetaker. It coordinates meeting invites, scheduling, first-party meeting bot creation, signed bot webhooks, transcript artifact storage, AI summaries, recipient filtering, email delivery, retention, and audit visibility.
+minutesbot is an open-source, self-hosted, single-tenant Microsoft Teams meeting notetaker. It coordinates meeting invites, scheduling, first-party meeting bot creation, managed bot webhooks, transcript artifact storage, AI summaries, recipient filtering, email delivery, retention, and audit visibility.
 
 This repository is Cloudflare-first. The control plane runs on Cloudflare Workers, Workers Static Assets, D1, R2, Queues, Workflows, Email Routing, and a first-party Cloudflare Container meeting bot runtime. It does not use, clone, fork, vendor, or deploy the upstream Attendee repository.
 
@@ -30,7 +30,7 @@ For a Cloudflare-first production deployment:
 
 ```bash
 cp .env.oneshot.example .env.oneshot
-# fill .env.oneshot with account, domain, bot runtime, and provider values
+# fill .env.oneshot with account, domain, recorder, and provider values
 pnpm install
 pnpm deploy:oneshot --env production
 ```
@@ -38,11 +38,11 @@ pnpm deploy:oneshot --env production
 Set secrets with Wrangler, never in D1 or source:
 
 ```bash
-wrangler secret put BOT_API_KEY
-wrangler secret put BOT_WEBHOOK_SECRET
 wrangler secret put AI_API_KEY
 wrangler secret put SESSION_SECRET
 ```
+
+The one-shot deploy script generates and pushes the internal meeting bot token automatically; there are no bot API or webhook keys to configure.
 
 ## Commands
 

@@ -16,7 +16,7 @@ pnpm install
 pnpm deploy:oneshot --env production
 ```
 
-The script validates pnpm, Wrangler auth, Docker, `.env.oneshot`, bot runtime secrets, AI/transcription keys, and session/email settings. It generates ignored Wrangler configs under `.wrangler/`, ensures D1/R2/queues/migrations, deploys the first-party meeting bot container, pushes secrets, deploys minutesbot, and runs health/smoke checks.
+The script validates pnpm, Wrangler auth, Docker, `.env.oneshot`, AI/transcription keys, and session/email settings. It generates ignored Wrangler configs under `.wrangler/`, creates a managed internal meeting bot token, ensures D1/R2/queues/migrations, deploys the first-party meeting bot container, pushes secrets, deploys minutesbot, and runs health/smoke checks.
 
 Run `pnpm deploy:oneshot --env production --dry-run` to validate the plan without mutating Cloudflare resources.
 
@@ -29,6 +29,7 @@ Public traffic will not reach Workers until the relevant domain is active in Clo
 - D1 database binding: `DB`
 - R2 bucket binding: `ARTIFACTS`
 - Recording bucket var: `BOT_RECORDING_BUCKET_NAME`
+- Service binding: `BOT_RUNTIME`
 - Queues: `INVITE_QUEUE`, `SUMMARY_QUEUE`, `EMAIL_QUEUE`
 - Workflow bindings: `MEETING_WORKFLOW`, `TRANSCRIPT_WORKFLOW`, `SUMMARY_WORKFLOW`, `CLEANUP_WORKFLOW`
 - Optional email binding: `SEND_EMAIL`
@@ -41,8 +42,6 @@ wrangler d1 create minutesbot
 wrangler r2 bucket create minutesbot-artifacts
 pnpm cloudflare:ensure
 CLOUDFLARE_API_TOKEN=... pnpm cloudflare:ensure-webhook-bypass
-wrangler secret put BOT_API_KEY
-wrangler secret put BOT_WEBHOOK_SECRET
 wrangler secret put AI_API_KEY
 wrangler secret put SESSION_SECRET
 pnpm db:migrate:remote

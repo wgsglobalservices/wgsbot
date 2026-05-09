@@ -1,9 +1,9 @@
-import { BotClient } from "@minutesbot/bot-client";
 import { createAuditLog, getMeeting, getSettings, updateTranscriptStatus, upsertArtifact } from "@minutesbot/db";
 import { createOpenRouterTranscriptionProvider } from "@minutesbot/summary-engine";
 import { AppError, recordingR2Key, resolveBotBaseUrl } from "@minutesbot/shared";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
+import { createBotClient } from "./botCreation";
 import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string; botId?: string; attempt?: number };
@@ -125,8 +125,7 @@ async function deleteAttendeeData(
   settings: Awaited<ReturnType<typeof getSettings>>,
   attendeeBotId: string
 ): Promise<void> {
-  if (!env.BOT_API_KEY) throw new AppError("BOT_API_KEY_MISSING", "BOT_API_KEY secret is not configured", 500);
-  const client = new BotClient({ baseUrl: resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL), apiKey: env.BOT_API_KEY });
+  const client = createBotClient(env, resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL));
   await client.deleteBotData(attendeeBotId);
 }
 

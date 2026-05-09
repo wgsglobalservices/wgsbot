@@ -52,6 +52,12 @@
       "bucket_name": "minutesbot-artifacts"
     }
   ],
+  "services": [
+    {
+      "binding": "BOT_RUNTIME",
+      "service": "minutesbot-meeting-bot"
+    }
+  ],
   "queues": {
     "producers": [
       { "binding": "INVITE_QUEUE", "queue": "minutesbot-invites" },

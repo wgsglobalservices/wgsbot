@@ -15,11 +15,11 @@ export type Env = {
   BOT_WEBHOOK_BASE_URL?: string;
   BOT_API_BASE_URL: string;
   BOT_RECORDING_BUCKET_NAME?: string;
+  BOT_RUNTIME?: Fetcher;
+  BOT_INTERNAL_TOKEN?: string;
   DEFAULT_RECORDER_EMAIL: string;
   DEFAULT_SENDER_EMAIL: string;
   ENVIRONMENT: string;
-  BOT_API_KEY?: string;
-  BOT_WEBHOOK_SECRET?: string;
   AI_API_KEY?: string;
   EMAIL_API_KEY?: string;
   SMTP_PASSWORD?: string;

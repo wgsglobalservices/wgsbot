@@ -52,13 +52,13 @@ export function SettingsForm({
 
       <SettingsSection
         title="Meeting Bot Runtime"
-        description="Connects minutesbot to the first-party Teams recording runtime."
-        status={<StatusPill tone={configuredTone(value.attendee.apiKeyConfigured)}>{configuredLabel(value.attendee.apiKeyConfigured)}</StatusPill>}
+        description="The first-party Teams recording runtime is deployed with minutesbot."
+        status={<StatusPill tone="good">Built in</StatusPill>}
       >
-        <TextField label="Base URL" value={value.attendee.baseUrl} width="url" onChange={(v) => update("attendee.baseUrl", v)} />
-        <div className="secretRows">
-          <SecretStatusRow label="Bot API key" configured={value.attendee.apiKeyConfigured} />
-          <SecretStatusRow label="Webhook secret" configured={value.attendee.webhookSecretConfigured} />
+        <div className="runtimeStatusRow">
+          <span>Runtime URL</span>
+          <code>{value.attendee.baseUrl}</code>
+          <StatusPill tone="neutral">Managed</StatusPill>
         </div>
         <ToggleRow
           checked={value.attendee.deleteAttendeeDataAfterTranscriptFetch}
@@ -436,19 +436,6 @@ function SelectField({
         ))}
       </select>
     </label>
-  );
-}
-
-function SecretStatusRow({ configured, label }: { configured: boolean; label: string }) {
-  return (
-    <div className="secretStatusRow">
-      <div>
-        <span>{label}</span>
-        <small>Stored securely. Leave unchanged unless rotating credentials.</small>
-      </div>
-      <code aria-label={configuredLabel(configured)}>{configured ? "••••••••••••••••" : "Not configured"}</code>
-      <StatusPill tone={configuredTone(configured)}>{configuredLabel(configured)}</StatusPill>
-    </div>
   );
 }
 

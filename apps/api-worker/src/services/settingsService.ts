@@ -10,9 +10,7 @@ export async function readSettings(env: Env): Promise<AppSettings> {
     ...settings,
     attendee: {
       ...settings.attendee,
-      baseUrl: resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL),
-      apiKeyConfigured: Boolean(env.BOT_API_KEY) || settings.attendee.apiKeyConfigured,
-      webhookSecretConfigured: Boolean(env.BOT_WEBHOOK_SECRET) || settings.attendee.webhookSecretConfigured
+      baseUrl: resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL)
     },
     ai: {
       ...settings.ai,

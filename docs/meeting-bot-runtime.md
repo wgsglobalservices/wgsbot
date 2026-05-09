@@ -4,21 +4,19 @@ minutesbot includes its own first-party Teams meeting bot runtime. It does not c
 
 The runtime is split into:
 
-- `apps/bot-runtime`: Node/TypeScript Hono service that exposes the bot API, drives the browser/ffmpeg recording adapter, uploads recordings, and emits signed webhooks.
+- `apps/bot-runtime`: Node/TypeScript Hono service that exposes the bot API, drives the browser/ffmpeg recording adapter, uploads recordings, and emits managed webhooks.
 - `deploy/bot-container`: Cloudflare Container router that runs the bot runtime and stores uploaded recordings in the minutesbot R2 bucket.
 - `packages/bot-client`: Fetch client used by Workers and tests.
 
 ## Required Secrets
 
 ```bash
-wrangler secret put BOT_API_KEY
-wrangler secret put BOT_WEBHOOK_SECRET
 wrangler secret put TEAMS_RECORDER_PASSWORD --config deploy/bot-container/wrangler.jsonc
 wrangler secret put AI_API_KEY
 wrangler secret put SESSION_SECRET
 ```
 
-Set `TEAMS_RECORDER_EMAIL` as a non-secret var in the bot container config. The runtime prefers that service account and can fall back to guest join when allowed by tenant policy.
+Set `TEAMS_RECORDER_EMAIL` as a non-secret var in the bot container config. The runtime prefers that service account and can fall back to guest join when allowed by tenant policy. `pnpm deploy:oneshot` generates and pushes the internal meeting bot token automatically; admins do not configure bot API or webhook keys.
 
 ## Runtime Contract
 
@@ -47,4 +45,4 @@ Use:
 https://meeting-api.minutes.bot/_ops/health
 ```
 
-The health response reports missing runtime pieces such as `BOT_API_KEY`, `BOT_WEBHOOK_SECRET`, `TEAMS_RECORDER_PASSWORD`, `chromium`, or `ffmpeg`.
+The health response reports missing runtime pieces such as `TEAMS_RECORDER_PASSWORD`, `chromium`, or `ffmpeg`.

@@ -61,7 +61,6 @@ function env(overrides: Partial<WorkflowEnv> = {}, db = new BotCreationD1()): Wo
     SUMMARY_QUEUE: { send: vi.fn() },
     EMAIL_QUEUE: { send: vi.fn() },
     BOT_API_BASE_URL: "https://meeting-bot.example.com",
-    BOT_API_KEY: "bot-secret",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     API_BASE_URL: "https://minutesbot.example.com",
     BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app",
@@ -145,20 +144,6 @@ describe("createMeetingBot failure handling", () => {
         }
       ]
     });
-  });
-
-  it("stores a visible failure when BOT_API_KEY is missing", async () => {
-    const db = new BotCreationD1();
-
-    await expect(createMeetingBot(env({ BOT_API_KEY: undefined }, db), "mtg_1")).rejects.toMatchObject({
-      code: "BOT_API_KEY_MISSING"
-    });
-
-    expect(db.statusUpdates.at(-1)).toEqual({
-      status: "FAILED",
-      latestError: "BOT_API_KEY_MISSING: BOT_API_KEY secret is not configured"
-    });
-    expect(db.auditLogs.at(-1)).toMatchObject({ eventType: "bot.fatal_error" });
   });
 
   it("stores a visible failure when the meeting bot runtime cannot be reached", async () => {
