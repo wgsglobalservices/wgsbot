@@ -77,6 +77,18 @@
         "binding": "EMAIL_QUEUE",
         "queue": "minutesbot-email"
       }
+    ],
+    "consumers": [
+      {
+        "queue": "minutesbot-invites",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      },
+      {
+        "queue": "minutesbot-summaries",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      }
     ]
   },
   "workflows": [

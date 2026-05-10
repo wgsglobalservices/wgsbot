@@ -75,7 +75,9 @@ describe("build oneshot Wrangler configs", () => {
     expect(botConfig).toContain('"workers_dev": false');
     expect((minutesbotConfig.match(/"custom_domain": true/g) ?? []).length).toBe(3);
     expect(minutesbotConfig).toContain('"producers"');
-    expect(minutesbotConfig).not.toContain('"consumers"');
+    expect(minutesbotConfig).toContain('"consumers"');
+    expect(minutesbotConfig).toContain('"queue": "minutesbot-invites"');
+    expect(minutesbotConfig).toContain('"queue": "minutesbot-summaries"');
     expect(minutesbotConfig).not.toContain("notes.company.com");
     expect(minutesbotConfig).not.toContain("api.company.com");
     expect(minutesbotConfig).not.toContain("webhook.company.com");

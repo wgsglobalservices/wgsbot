@@ -411,6 +411,10 @@ function queueConfig(queues: string[]) {
       { binding: "INVITE_QUEUE", queue: queues[0] },
       { binding: "SUMMARY_QUEUE", queue: queues[1] },
       { binding: "EMAIL_QUEUE", queue: queues[2] }
+    ],
+    consumers: [
+      { queue: queues[0], max_batch_size: 10, max_batch_timeout: 5 },
+      { queue: queues[1], max_batch_size: 10, max_batch_timeout: 5 }
     ]
   };
 }
