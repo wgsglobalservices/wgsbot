@@ -70,6 +70,7 @@ describe("build oneshot Wrangler configs", () => {
     expect(botConfig).toContain('"BOT_RUNTIME_VERSION": "runtime-test-version"');
     expect(botConfig).toContain('"binding": "ARTIFACTS"');
     expect(botConfig).toContain('"bucket_name": "minutesbot-artifacts"');
+    expect(botConfig).toContain('"max_instances": 6');
     expect(minutesbotConfig).toContain('"binding": "BOT_RUNTIME"');
     expect(minutesbotConfig).toContain('"service": "minutesbot-meeting-bot"');
     expect(botConfig).toContain("../Dockerfile.bot");

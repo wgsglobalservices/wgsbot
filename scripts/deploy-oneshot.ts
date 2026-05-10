@@ -244,7 +244,7 @@ export function buildBotWranglerConfig(env: OneshotEnv, environment: CloudflareE
     },
     r2_buckets: [{ binding: "ARTIFACTS", bucket_name: env.BOT_RECORDING_BUCKET_NAME }],
     containers: [
-      { class_name: "MeetingBotContainer", image: "../Dockerfile.bot", max_instances: 2, instance_type: "standard-2" }
+      { class_name: "MeetingBotContainer", image: "../Dockerfile.bot", max_instances: 6, instance_type: "standard-2" }
     ],
     durable_objects: {
       bindings: [

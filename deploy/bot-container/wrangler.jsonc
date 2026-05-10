@@ -34,7 +34,7 @@
     {
       "class_name": "MeetingBotContainer",
       "image": "../../Dockerfile.bot",
-      "max_instances": 2,
+      "max_instances": 6,
       "instance_type": "standard-2"
     }
   ],
