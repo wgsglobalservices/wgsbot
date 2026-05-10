@@ -31,7 +31,7 @@ describe("recap form helpers", () => {
 
   it("defines the five suggested recap templates", () => {
     expect(recapTemplates.map((template) => template.title)).toEqual([
-      "Auto-classified WGS recap",
+      "Auto-classified recap",
       "Weekly SPQRC",
       "Weekly Sales",
       "Individual Plant Meeting",
@@ -45,7 +45,7 @@ describe("recap form helpers", () => {
     const html = renderToStaticMarkup(React.createElement(RecapForm, { value: defaultSettings.recap, onChange: () => undefined }));
 
     expect(html).toContain("Templates");
-    expect(html).toContain("Auto-classified WGS recap");
+    expect(html).toContain("Auto-classified recap");
     expect(html).toContain("Weekly SPQRC");
     expect(html).toContain("Weekly Sales");
     expect(html).toContain("Individual Plant Meeting");

@@ -82,7 +82,7 @@ describe("BotClient", () => {
 
     await client.createBot({
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
-      botName: "WGS Bot",
+      botName: "Meeting Bot",
       botImage: {
         type: "image/png",
         data: "iVBORw0KGgo="
@@ -90,7 +90,7 @@ describe("BotClient", () => {
     });
 
     expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toMatchObject({
-      bot_name: "WGS Bot",
+      bot_name: "Meeting Bot",
       bot_image: {
         type: "image/png",
         data: "iVBORw0KGgo="
@@ -106,14 +106,14 @@ describe("BotClient", () => {
 
     await client.createBot({
       meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
-      botName: "WGS Notetaker",
-      botChatMessage: "Hi, I'm WGS Notetaker, an automated meeting notetaker."
+      botName: "Meeting Notetaker",
+      botChatMessage: "Hi, I'm Meeting Notetaker, an automated meeting notetaker."
     });
 
     expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toMatchObject({
       bot_chat_message: {
         to: "everyone",
-        message: "Hi, I'm WGS Notetaker, an automated meeting notetaker."
+        message: "Hi, I'm Meeting Notetaker, an automated meeting notetaker."
       }
     });
   });

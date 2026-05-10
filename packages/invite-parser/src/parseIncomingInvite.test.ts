@@ -74,8 +74,8 @@ END:VCALENDAR`);
   });
 
   it("parses plain forwarded Teams links as immediate meetings", () => {
-    const raw = `From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
+    const raw = `From: Peter <p.gustafson@company.com>
+To: notetaker@minutes.bot
 Subject: Join Teams meeting in progress
 
 Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?context=%7b%7d`;
@@ -85,8 +85,8 @@ Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?co
 
     expect(first.kind).toBe("request");
     expect(first.subject).toBe("Join Teams meeting in progress");
-    expect(first.organizer.email).toBe("p.gustafson@wgsglobalservices.com");
-    expect(first.attendees).toEqual([{ email: "notetaker@wgs.bot", name: undefined, role: undefined }]);
+    expect(first.organizer.email).toBe("p.gustafson@company.com");
+    expect(first.attendees).toEqual([{ email: "notetaker@minutes.bot", name: undefined, role: undefined }]);
     expect(first.teamsJoinUrl).toContain("teams.microsoft.com/l/meetup-join");
     expect(first.calendarUid).toBe(second.calendarUid);
     expect(new Date(first.endTime).getTime() - new Date(first.startTime).getTime()).toBe(60 * 60 * 1000);
@@ -94,8 +94,8 @@ Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?co
 
   it("still rejects plain emails without Teams links", () => {
     expect(() =>
-      parseIncomingInvite(`From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
+      parseIncomingInvite(`From: Peter <p.gustafson@company.com>
+To: notetaker@minutes.bot
 Subject: TEST
 
 hello`)

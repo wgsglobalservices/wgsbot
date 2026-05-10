@@ -5,10 +5,10 @@ describe("botWebhookUrl", () => {
   it("uses the dedicated meeting bot webhook base URL when configured", () => {
     expect(
       botWebhookUrl({
-        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
-        BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app"
+        API_BASE_URL: "https://minutesbot-api.example.com",
+        BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.example.com"
       })
-    ).toBe("https://minutesbot-webhook.wgsglobal.app/api/webhooks/bot");
+    ).toBe("https://minutesbot-webhook.example.com/api/webhooks/bot");
   });
 
   it("falls back to API_BASE_URL for existing deployments", () => {

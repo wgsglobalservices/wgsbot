@@ -63,7 +63,7 @@ function env(overrides: Partial<WorkflowEnv> = {}, db = new BotCreationD1()): Wo
     BOT_API_BASE_URL: "https://meeting-bot.example.com",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     API_BASE_URL: "https://minutesbot.example.com",
-    BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app",
+    BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.example.com",
     ...overrides
   };
 }
@@ -79,11 +79,11 @@ describe("createMeetingBot failure handling", () => {
       ...defaultSettings,
       attendee: {
         ...defaultSettings.attendee,
-        botName: "WGS Meeting Assistant",
+        botName: "Meeting Assistant",
         botImage: {
           r2Key: "settings/attendee-bot-image.png",
           contentType: "image/png",
-          fileName: "wgsbot.png",
+          fileName: "minutesbot.png",
           uploadedAt: "2026-05-06T12:00:00.000Z"
         }
       }
@@ -102,7 +102,7 @@ describe("createMeetingBot failure handling", () => {
 
     const createRequest = requests.find((request) => request.url.endsWith("/api/v1/bots"));
     expect(JSON.parse(createRequest?.init?.body as string)).toMatchObject({
-      bot_name: "WGS Meeting Assistant",
+      bot_name: "Meeting Assistant",
       bot_image: {
         type: "image/png",
         data: "AQID"
@@ -131,7 +131,7 @@ describe("createMeetingBot failure handling", () => {
       bot_name: "minutesbot",
       bot_chat_message: {
         to: "everyone",
-        message: "Hi, I'm minutesbot, an automated WGS meeting notetaker. I record and transcribe this meeting so the team can receive a recap."
+        message: "Hi, I'm minutesbot, an automated meeting notetaker. I record and transcribe this meeting so the team can receive a recap."
       },
       recording_settings: { format: "mp3" },
       external_media_storage_settings: {
@@ -140,7 +140,7 @@ describe("createMeetingBot failure handling", () => {
       },
       webhooks: [
         {
-          url: "https://minutesbot-webhook.wgsglobal.app/api/webhooks/bot"
+          url: "https://minutesbot-webhook.example.com/api/webhooks/bot"
         }
       ]
     });
@@ -189,7 +189,7 @@ describe("createMeetingBot failure handling", () => {
       ...defaultSettings,
       attendee: {
         ...defaultSettings.attendee,
-        baseUrl: "https://meeting-bot.wgsglobal.app"
+        baseUrl: "https://meeting-bot.example.com"
       }
     };
     const requests: string[] = [];
@@ -204,11 +204,11 @@ describe("createMeetingBot failure handling", () => {
       })
     );
 
-    await expect(createMeetingBot(env({ BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app" }, db), "mtg_1")).rejects.toMatchObject({
+    await expect(createMeetingBot(env({ BOT_API_BASE_URL: "https://meeting-bot.example.com" }, db), "mtg_1")).rejects.toMatchObject({
       code: "BOT_UNHEALTHY"
     });
 
-    expect(requests).toEqual(["https://meeting-bot.wgsglobal.app/_ops/health"]);
+    expect(requests).toEqual(["https://meeting-bot.example.com/_ops/health"]);
     expect(db.statusUpdates.at(-1)).toEqual({
       status: "FAILED",
       latestError: "BOT_UNHEALTHY: Meeting bot health check failed: missing TEAMS_RECORDER_PASSWORD, ffmpeg"

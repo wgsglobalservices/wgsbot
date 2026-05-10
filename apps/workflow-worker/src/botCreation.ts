@@ -87,7 +87,7 @@ export function createBotClient(env: Pick<WorkflowEnv, "BOT_INTERNAL_TOKEN" | "B
 }
 
 function botJoinChatMessage(botName: string): string {
-  return `Hi, I'm ${botName}, an automated WGS meeting notetaker. I record and transcribe this meeting so the team can receive a recap.`;
+  return `Hi, I'm ${botName}, an automated meeting notetaker. I record and transcribe this meeting so the team can receive a recap.`;
 }
 
 async function loadBotImage(

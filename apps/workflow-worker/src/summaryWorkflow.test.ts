@@ -43,7 +43,7 @@ class FakeD1 {
           return {
             id: "mtg_1",
             subject: "Project Sync",
-            organizer_email: "owner@wgs.bot",
+            organizer_email: "owner@minutes.bot",
             organizer_name: "Owner",
             start_time: "2026-05-04T15:00:00.000Z",
             end_time: "2026-05-04T15:02:00.000Z"
@@ -54,7 +54,7 @@ class FakeD1 {
             key: "app",
             value: JSON.stringify({
               ...db.settings,
-              primaryDomain: "wgs.bot",
+              primaryDomain: "minutes.bot",
               allowedDomains: ["partner.com"],
               policy: { ...db.settings.policy, allowSubdomains: true },
               email: { ...db.settings.email, provider: "cloudflare-email-service" }
@@ -71,9 +71,9 @@ class FakeD1 {
         if (sql.includes("FROM attendees")) {
           return {
             results: [
-              { email: "alex@team.wgs.bot", name: "Alex", summary_eligible: 1 },
+              { email: "alex@team.minutes.bot", name: "Alex", summary_eligible: 1 },
               { email: "casey@partner.com", name: "Casey", summary_eligible: 1 },
-              { email: "no-show@wgs.bot", name: "Invited No Show", summary_eligible: 1 },
+              { email: "no-show@minutes.bot", name: "Invited No Show", summary_eligible: 1 },
               { email: "do-not-send@partner.com", name: "Stored Ineligible", summary_eligible: 0, exclusion_reason: "excluded_external_domain" },
               { email: "vendor@example.net", name: "Vendor", summary_eligible: 0 }
             ]
@@ -122,8 +122,8 @@ describe("summary workflow", () => {
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
         EMAIL_QUEUE: { send: vi.fn() },
-        BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app",
-        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        BOT_API_BASE_URL: "https://meeting-bot.example.com",
+        API_BASE_URL: "https://minutesbot-api.example.com",
         AI_API_KEY: "test-ai-key",
         SESSION_SECRET: "session-secret",
         SEND_EMAIL: { send }
@@ -131,8 +131,8 @@ describe("summary workflow", () => {
       "mtg_1"
     );
 
-    expect(send.mock.calls.map(([message]) => (message as { to: string }).to)).toEqual(["owner@wgs.bot", "alex@team.wgs.bot", "casey@partner.com", "no-show@wgs.bot"]);
-    expect(db.emailDeliveries.map((values) => values[2])).toEqual(["owner@wgs.bot", "alex@team.wgs.bot", "casey@partner.com", "no-show@wgs.bot"]);
+    expect(send.mock.calls.map(([message]) => (message as { to: string }).to)).toEqual(["owner@minutes.bot", "alex@team.minutes.bot", "casey@partner.com", "no-show@minutes.bot"]);
+    expect(db.emailDeliveries.map((values) => values[2])).toEqual(["owner@minutes.bot", "alex@team.minutes.bot", "casey@partner.com", "no-show@minutes.bot"]);
     expect(db.emailDeliveries.every((values) => values[4] === "sent")).toBe(true);
     expect(send.mock.calls[0][0]).toMatchObject({
       from: "Plant Notes <notetaker@minutes.bot>",
@@ -162,8 +162,8 @@ describe("summary workflow", () => {
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
         EMAIL_QUEUE: { send: vi.fn() },
-        BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app",
-        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        BOT_API_BASE_URL: "https://meeting-bot.example.com",
+        API_BASE_URL: "https://minutesbot-api.example.com",
         AI_API_KEY: "test-ai-key",
         SESSION_SECRET: "session-secret",
         SEND_EMAIL: { send }
@@ -193,8 +193,8 @@ describe("summary workflow", () => {
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
         EMAIL_QUEUE: { send: vi.fn() },
-        BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app",
-        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        BOT_API_BASE_URL: "https://meeting-bot.example.com",
+        API_BASE_URL: "https://minutesbot-api.example.com",
         AI_API_KEY: "test-ai-key",
         SESSION_SECRET: "session-secret",
         SEND_EMAIL: { send: vi.fn(async () => ({ id: "msg-1" })) }

@@ -73,13 +73,13 @@ describe("admin test actions", () => {
       { headers: { authorization: "Bearer test-secret" } },
       env({
         API_BASE_URL: "https://minutesbot.example.com",
-        BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app"
+        BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.example.com"
       })
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      webhookUrl: "https://minutesbot-webhook.wgsglobal.app/api/webhooks/bot"
+      webhookUrl: "https://minutesbot-webhook.example.com/api/webhooks/bot"
     });
   });
 
@@ -158,7 +158,7 @@ describe("admin test actions", () => {
           ...defaultSettings.email,
           provider: "cloudflare-email-service",
           senderName: "Plant Notes",
-          senderEmail: "recaps@wgs.bot"
+          senderEmail: "recaps@minutes.bot"
         }
       }),
       new Date().toISOString()
@@ -176,7 +176,7 @@ describe("admin test actions", () => {
     });
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({
-      from: "Plant Notes <recaps@wgs.bot>",
+      from: "Plant Notes <recaps@minutes.bot>",
       to: "reviewer@example.com",
       subject: "Meeting recap: Sample recap email"
     });
@@ -290,14 +290,14 @@ describe("admin test actions", () => {
       )
     );
 
-    const testEnv = env({ BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app" });
+    const testEnv = env({ BOT_API_BASE_URL: "https://meeting-bot.example.com" });
     await testEnv.DB.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)").bind(
       "app",
       JSON.stringify({
         ...defaultSettings,
         attendee: {
           ...defaultSettings.attendee,
-          baseUrl: "https://meeting-bot.wgsglobal.app"
+          baseUrl: "https://meeting-bot.example.com"
         }
       }),
       new Date().toISOString()

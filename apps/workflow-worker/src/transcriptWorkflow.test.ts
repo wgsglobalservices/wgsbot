@@ -153,8 +153,8 @@ function env(db: FakeD1, artifacts: { get: ReturnType<typeof vi.fn>; put: Return
     INVITE_QUEUE: { send: vi.fn() },
     SUMMARY_QUEUE: summaryQueue,
     EMAIL_QUEUE: { send: vi.fn() },
-    BOT_API_BASE_URL: "https://meeting-bot.wgsglobal.app",
-    API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+    BOT_API_BASE_URL: "https://meeting-bot.example.com",
+    API_BASE_URL: "https://minutesbot-api.example.com",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     AI_API_KEY: "openrouter-key"
   };

@@ -97,13 +97,13 @@ describe("api worker", () => {
   it("serves admin UI assets only from APP_BASE_URL host", async () => {
     const assetsFetch = vi.fn(async () => new Response("<html>admin</html>", { headers: { "content-type": "text/html" } }));
     const env = {
-      APP_BASE_URL: "https://minutesbot-admin.wgsglobal.app",
+      APP_BASE_URL: "https://minutesbot-admin.example.com",
       ASSETS: { fetch: assetsFetch }
     } as unknown as Env;
 
-    const adminResponse = await entrypoint.handleFetch(new Request("https://minutesbot-admin.wgsglobal.app/"), env);
-    const apiHostResponse = await entrypoint.handleFetch(new Request("https://minutesbot-api.wgsglobal.app/"), env);
-    const webhookHostResponse = await entrypoint.handleFetch(new Request("https://minutesbot-webhook.wgsglobal.app/"), env);
+    const adminResponse = await entrypoint.handleFetch(new Request("https://minutesbot-admin.example.com/"), env);
+    const apiHostResponse = await entrypoint.handleFetch(new Request("https://minutesbot-api.example.com/"), env);
+    const webhookHostResponse = await entrypoint.handleFetch(new Request("https://minutesbot-webhook.example.com/"), env);
 
     expect(adminResponse.status).toBe(200);
     expect(await adminResponse.text()).toBe("<html>admin</html>");
@@ -130,9 +130,9 @@ describe("api worker", () => {
 
   it("still routes API requests on non-admin hosts through the Worker", async () => {
     const response = await entrypoint.handleFetch(
-      new Request("https://minutesbot-api.wgsglobal.app/api/health"),
+      new Request("https://minutesbot-api.example.com/api/health"),
       {
-        APP_BASE_URL: "https://minutesbot-admin.wgsglobal.app"
+        APP_BASE_URL: "https://minutesbot-admin.example.com"
       } as unknown as Env
     );
 
@@ -142,14 +142,14 @@ describe("api worker", () => {
 
   it("blocks protected admin API routes on non-admin hosts", async () => {
     const env = {
-      APP_BASE_URL: "https://minutesbot-admin.wgsglobal.app"
+      APP_BASE_URL: "https://minutesbot-admin.example.com"
     } as unknown as Env;
 
     const blocked = await entrypoint.handleFetch(
-      new Request("https://minutesbot-api.wgsglobal.app/api/settings"),
+      new Request("https://minutesbot-api.example.com/api/settings"),
       env
     );
-    const allowed = await entrypoint.handleFetch(new Request("https://minutesbot-admin.wgsglobal.app/api/settings"), env);
+    const allowed = await entrypoint.handleFetch(new Request("https://minutesbot-admin.example.com/api/settings"), env);
 
     expect(blocked.status).toBe(404);
     expect(allowed.status).toBe(503);

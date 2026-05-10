@@ -93,7 +93,7 @@ describe("settings service", () => {
     const settings = await uploadBotImage(testEnv, {
       contentType: "image/png",
       data: "AQID",
-      fileName: "wgsbot.png"
+      fileName: "minutesbot.png"
     });
 
     expect(put).toHaveBeenCalledWith(
@@ -104,7 +104,7 @@ describe("settings service", () => {
     expect(settings.attendee.botImage).toMatchObject({
       r2Key: "settings/meeting-bot-image.png",
       contentType: "image/png",
-      fileName: "wgsbot.png"
+      fileName: "minutesbot.png"
     });
     expect(JSON.stringify(settings)).not.toContain("AQID");
   });

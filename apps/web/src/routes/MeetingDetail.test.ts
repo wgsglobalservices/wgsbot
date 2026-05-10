@@ -61,17 +61,17 @@ describe("meeting artifact summaries", () => {
 describe("recipient recap delivery status", () => {
   it("uses the latest summary email delivery for each attendee", () => {
     const status = getRecapEmailDeliveryStatus(
-      { email: "Peter.Test@wgsglobalservices.com" },
+      { email: "Peter.Test@company.com" },
       [
         {
-          recipient_email: "peter.test@wgsglobalservices.com",
+          recipient_email: "peter.test@company.com",
           type: "summary",
           status: "failed",
           failure_reason: "SMTP provider failed",
           created_at: "2026-05-08T12:00:00.000Z"
         },
         {
-          recipient_email: "peter.test@wgsglobalservices.com",
+          recipient_email: "peter.test@company.com",
           type: "summary",
           status: "sent",
           created_at: "2026-05-08T12:05:00.000Z"
@@ -85,8 +85,8 @@ describe("recipient recap delivery status", () => {
   it("renders a recap email status column", () => {
     const html = renderToStaticMarkup(
       React.createElement(RecipientEligibilityTable, {
-        attendees: [{ id: "att_1", email: "peter.test@wgsglobalservices.com", summary_eligible: 1 }],
-        emailDeliveries: [{ recipient_email: "peter.test@wgsglobalservices.com", type: "summary", status: "sent", created_at: "2026-05-08T12:05:00.000Z" }]
+        attendees: [{ id: "att_1", email: "peter.test@company.com", summary_eligible: 1 }],
+        emailDeliveries: [{ recipient_email: "peter.test@company.com", type: "summary", status: "sent", created_at: "2026-05-08T12:05:00.000Z" }]
       })
     );
 

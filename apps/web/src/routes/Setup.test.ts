@@ -28,9 +28,9 @@ describe("setup save status", () => {
 
 describe("allowed domains parsing", () => {
   it("accepts comma-separated and newline-separated domains", () => {
-    expect(parseAllowedDomains("wgsglobalservices.com, wgs.global\nsubsidiary.example\n\n partner.example")).toEqual([
-      "wgsglobalservices.com",
-      "wgs.global",
+    expect(parseAllowedDomains("company.com, acme.global\nsubsidiary.example\n\n partner.example")).toEqual([
+      "company.com",
+      "acme.global",
       "subsidiary.example",
       "partner.example"
     ]);
@@ -44,10 +44,10 @@ describe("allowed domains parsing", () => {
 
 describe("notetaker alias parsing", () => {
   it("accepts comma-separated and newline-separated emails", () => {
-    expect(parseEmailList("sales-notes@wgs.bot, plant-notes@wgs.bot\nquality-notes@wgs.bot\n\n")).toEqual([
-      "sales-notes@wgs.bot",
-      "plant-notes@wgs.bot",
-      "quality-notes@wgs.bot"
+    expect(parseEmailList("sales-notes@minutes.bot, plant-notes@minutes.bot\nquality-notes@minutes.bot\n\n")).toEqual([
+      "sales-notes@minutes.bot",
+      "plant-notes@minutes.bot",
+      "quality-notes@minutes.bot"
     ]);
   });
 });
@@ -94,7 +94,7 @@ describe("settings form", () => {
 });
 
 describe("sample recap recipient", () => {
-  it("defaults missing saved settings to the WGS IT recipient", () => {
+  it("defaults missing saved settings to the generic admin recipient", () => {
     expect(resolveSampleRecapRecipient(undefined)).toBe(defaultSampleRecapRecipient);
   });
 
@@ -105,17 +105,17 @@ describe("sample recap recipient", () => {
 
 describe("bot image upload", () => {
   it("compresses uploaded bot background images into optimized JPEG API input", async () => {
-    const file = new NodeFile([new Uint8Array([1, 2, 3])], "wgsbot.png", { type: "image/png" }) as unknown as File;
+    const file = new NodeFile([new Uint8Array([1, 2, 3])], "minutesbot.png", { type: "image/png" }) as unknown as File;
 
     await expect(
       fileToBotImageUpload(file, async (uploaded) => {
         expect(uploaded).toBe(file);
-        return new NodeFile([new Uint8Array([4, 5, 6])], "wgsbot-optimized.jpg", { type: "image/jpeg" }) as unknown as File;
+        return new NodeFile([new Uint8Array([4, 5, 6])], "minutesbot-optimized.jpg", { type: "image/jpeg" }) as unknown as File;
       })
     ).resolves.toEqual({
       contentType: "image/jpeg",
       data: "BAUG",
-      fileName: "wgsbot-optimized.jpg"
+      fileName: "minutesbot-optimized.jpg"
     });
   });
 });

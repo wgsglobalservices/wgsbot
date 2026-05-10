@@ -69,7 +69,7 @@ describe("settings validation", () => {
     expect(JSON.stringify(settings)).not.toContain("sk-");
   });
 
-  it("uses the WGS IT mailbox as the default sample recap recipient", () => {
+  it("uses the generic admin mailbox as the default sample recap recipient", () => {
     expect(defaultSettings.email.testRecipient).toBe(defaultSampleRecapRecipient);
     expect(parseSettings(defaultSettings).email.testRecipient).toBe("admin@company.com");
   });
@@ -82,7 +82,7 @@ describe("settings validation", () => {
         botImage: {
           r2Key: "settings/attendee-bot-image.png",
           contentType: "image/png",
-          fileName: "wgsbot.png",
+          fileName: "minutesbot.png",
           uploadedAt: "2026-05-06T12:00:00.000Z"
         }
       }
@@ -91,7 +91,7 @@ describe("settings validation", () => {
     expect(settings.attendee.botImage).toEqual({
       r2Key: "settings/attendee-bot-image.png",
       contentType: "image/png",
-      fileName: "wgsbot.png",
+      fileName: "minutesbot.png",
       uploadedAt: "2026-05-06T12:00:00.000Z"
     });
     expect(JSON.stringify(settings)).not.toContain("base64");
@@ -106,7 +106,7 @@ describe("settings validation", () => {
           botImage: {
             r2Key: "settings/attendee-bot-image.gif",
             contentType: "image/gif",
-            fileName: "wgsbot.gif",
+            fileName: "minutesbot.gif",
             uploadedAt: "2026-05-06T12:00:00.000Z"
           }
         }

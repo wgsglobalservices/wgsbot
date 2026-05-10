@@ -54,7 +54,7 @@ describe("validateOneshotEnv", () => {
 });
 
 describe("build oneshot Wrangler configs", () => {
-  it("uses env-provided routes and removes WGS-specific defaults", () => {
+  it("uses env-provided routes and removes legacy customer-specific defaults", () => {
     const minutesbotConfig = buildMinutesbotWranglerConfig(sampleEnv(), "production");
     const botConfig = buildBotWranglerConfig(sampleEnv());
 
@@ -81,8 +81,8 @@ describe("build oneshot Wrangler configs", () => {
     expect(minutesbotConfig).not.toContain("notes.company.com");
     expect(minutesbotConfig).not.toContain("api.company.com");
     expect(minutesbotConfig).not.toContain("webhook.company.com");
-    expect(`${minutesbotConfig}\n${botConfig}`).not.toContain("wgsglobal");
-    expect(`${minutesbotConfig}\n${botConfig}`).not.toContain("wgs.bot");
+    expect(`${minutesbotConfig}\n${botConfig}`).not.toContain("legacy-customer");
+    expect(`${minutesbotConfig}\n${botConfig}`).not.toContain("customer.example");
   });
 });
 
