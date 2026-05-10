@@ -1,5 +1,5 @@
 import { BOT_WEBHOOK_TRIGGERS, BotClient, BotClientError, type BotRun } from "@minutesbot/bot-client";
-import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus, type MeetingRow } from "@minutesbot/db";
+import { createAuditLog, getMeeting, getSettings, listWebhookEvents, updateMeetingBotState, updateMeetingStatus, type MeetingRow } from "@minutesbot/db";
 import { AppError, botWebhookUrl, minutesBefore, recordingR2Key, resolveBotBaseUrl } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
@@ -70,20 +70,25 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
 
   const latestMeeting = await getMeeting(env.DB, meetingId);
   const lifecycleWebhookAlreadyAdvanced = hasLifecycleWebhookState(latestMeeting, bot);
+  const recordedWebhookState = lifecycleWebhookAlreadyAdvanced ? null : await latestRecordedLifecycleState(env.DB, meetingId, bot.id);
   if (!lifecycleWebhookAlreadyAdvanced) {
-    await updateMeetingBotState(env.DB, meetingId, {
-      botId: bot.id,
-      state: bot.state,
-      transcriptionState: bot.transcription_state,
-      recordingState: bot.recording_state,
-      status: "BOT_CREATED"
-    });
+    if (recordedWebhookState) {
+      await updateMeetingBotState(env.DB, meetingId, recordedWebhookState);
+    } else {
+      await updateMeetingBotState(env.DB, meetingId, {
+        botId: bot.id,
+        state: bot.state,
+        transcriptionState: bot.transcription_state,
+        recordingState: bot.recording_state,
+        status: "BOT_CREATED"
+      });
+    }
   }
   await createAuditLog(env.DB, {
     eventType: "bot.created",
     resourceType: "meeting",
     resourceId: meetingId,
-    metadata: { botId: bot.id, state: lifecycleWebhookAlreadyAdvanced ? latestMeeting?.attendee_bot_state : bot.state }
+    metadata: { botId: bot.id, state: lifecycleWebhookAlreadyAdvanced ? latestMeeting?.attendee_bot_state : recordedWebhookState?.state ?? bot.state }
   });
 }
 
@@ -125,6 +130,59 @@ function secondsUntil(iso: string): number {
 function hasLifecycleWebhookState(meeting: MeetingRow | null, bot: BotRun): boolean {
   if (meeting?.attendee_bot_id !== bot.id || !meeting.attendee_bot_state) return false;
   return meeting.attendee_bot_state !== bot.state || !["BOT_CREATE_QUEUED", "BOT_CREATED"].includes(meeting.status);
+}
+
+async function latestRecordedLifecycleState(
+  db: D1Database,
+  meetingId: string,
+  botId: string
+): Promise<Parameters<typeof updateMeetingBotState>[2] | null> {
+  const events = await listWebhookEvents(db, meetingId);
+  for (const event of events) {
+    if (event.attendee_bot_id !== botId || event.trigger !== "bot.state_change") continue;
+    const payload = typeof event.payload === "string" ? parseJsonObject(event.payload) : null;
+    const data = payload && typeof payload.data === "object" && payload.data ? payload.data as Record<string, unknown> : null;
+    if (!data) continue;
+    const state = stringOrUndefined(data.new_state);
+    const eventType = stringOrUndefined(data.event_type);
+    return {
+      botId,
+      state,
+      transcriptionState: stringOrUndefined(data.transcription_state),
+      recordingState: stringOrUndefined(data.recording_state),
+      status: mapBotStateToMeetingStatus(state, eventType),
+      latestError: stringOrUndefined(data.latest_error)
+    };
+  }
+  return null;
+}
+
+function mapBotStateToMeetingStatus(state?: string, eventType?: string): MeetingRow["status"] | undefined {
+  if (eventType === "post_processing_completed") return "BOT_ENDED";
+  if (eventType === "fatal_error") return "BOT_FATAL_ERROR";
+  if (!state) return undefined;
+  if (state === "failed" || state.includes("fatal") || state.includes("error")) return "BOT_FATAL_ERROR";
+  if (state === "joining") return "BOT_JOINING";
+  if (state.includes("waiting")) return "BOT_WAITING_ROOM";
+  if (state === "joined") return "BOT_JOINED";
+  if (state.includes("record")) return "BOT_RECORDING";
+  if (state.includes("post_processing")) return "BOT_POST_PROCESSING";
+  if (state === "ended") return "BOT_ENDED";
+  if (state.includes("leave")) return "BOT_LEAVING";
+  return "BOT_CREATED";
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function botCreationFailure(error: unknown): { latestError: string; auditMetadata: Record<string, unknown> } {

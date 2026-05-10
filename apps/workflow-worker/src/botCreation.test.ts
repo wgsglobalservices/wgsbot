@@ -21,6 +21,7 @@ class BotCreationD1 {
     status: string | null;
   }> = [];
   auditLogs: Array<{ eventType: string; metadata: unknown }> = [];
+  webhookEvents: Array<Record<string, unknown>> = [];
 
   prepare(sql: string) {
     const db = this;
@@ -62,6 +63,10 @@ class BotCreationD1 {
           db.auditLogs.push({ eventType: this.values[2] as string, metadata: this.values[5] ? JSON.parse(this.values[5] as string) : null });
         }
         return { success: true };
+      },
+      async all<T>() {
+        if (sql.includes("FROM attendee_webhook_events")) return { results: db.webhookEvents as T[] };
+        return { results: [] };
       }
     };
   }
@@ -190,6 +195,52 @@ describe("createMeetingBot failure handling", () => {
           attendee_recording_state: "pending",
           status: "BOT_JOINING"
         };
+        return Response.json(
+          {
+            id: "bot_1",
+            meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+            state: "queued",
+            transcription_state: "pending",
+            recording_state: "pending"
+          },
+          { status: 201 }
+        );
+      })
+    );
+
+    await createMeetingBot(env({}, db), "mtg_1");
+
+    expect(db.meeting).toMatchObject({
+      attendee_bot_id: "bot_1",
+      attendee_bot_state: "joining",
+      attendee_transcription_state: "pending",
+      attendee_recording_state: "pending",
+      status: "BOT_JOINING"
+    });
+  });
+
+  it("uses a recorded same-bot webhook state when the event lands before the meeting row update", async () => {
+    const db = new BotCreationD1();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith("/_ops/health")) return Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] });
+        db.webhookEvents = [
+          {
+            attendee_bot_id: "bot_1",
+            trigger: "bot.state_change",
+            event_type: "state_change",
+            payload: JSON.stringify({
+              data: {
+                event_type: "state_change",
+                new_state: "joining",
+                transcription_state: "pending",
+                recording_state: "pending"
+              }
+            }),
+            created_at: "2026-05-10T07:20:12.206Z"
+          }
+        ];
         return Response.json(
           {
             id: "bot_1",

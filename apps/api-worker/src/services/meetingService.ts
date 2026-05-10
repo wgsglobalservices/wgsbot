@@ -33,25 +33,16 @@ export async function processBotWebhook(env: Env, payload: BotWebhookPayload): P
     payload: JSON.stringify(payload),
     processed_at: new Date().toISOString()
   });
-  if (!event) return { duplicate: true, meetingId: meeting?.id };
-  if (!meeting) return { duplicate: false };
+  if (!meeting) return { duplicate: !event };
 
   if (payload.trigger === "bot.state_change") {
-    const state = typeof payload.data.new_state === "string" ? payload.data.new_state : undefined;
-    await updateMeetingBotState(env.DB, meeting.id, {
-      botId: payload.bot_id,
-      state,
-      transcriptionState: typeof payload.data.transcription_state === "string" ? payload.data.transcription_state : undefined,
-      recordingState: typeof payload.data.recording_state === "string" ? payload.data.recording_state : undefined,
-      status: mapBotStateToMeetingStatus(state, String(payload.data.event_type ?? "")),
-      latestError: typeof payload.data.latest_error === "string" ? payload.data.latest_error : undefined
-    });
-    if (payload.data.event_type === "post_processing_completed") {
+    await applyBotStateChange(env, meeting.id, payload);
+    if (event && payload.data.event_type === "post_processing_completed") {
       await env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: meeting.id, botId: payload.bot_id });
     }
   }
 
-  if (payload.trigger === "transcript.update") {
+  if (event && payload.trigger === "transcript.update") {
     const transcription = payload.data.transcription;
     const text = typeof transcription === "string" ? transcription : typeof transcription === "object" && transcription ? String((transcription as { transcript?: unknown }).transcript ?? "") : "";
     if (text) {
@@ -69,7 +60,7 @@ export async function processBotWebhook(env: Env, payload: BotWebhookPayload): P
     }
   }
 
-  return { duplicate: false, meetingId: meeting.id };
+  return { duplicate: !event, meetingId: meeting.id };
 }
 
 export const processAttendeeWebhook = processBotWebhook;
@@ -92,6 +83,18 @@ function mapBotStateToMeetingStatus(state?: string, eventType?: string) {
   if (state === "ended") return "BOT_ENDED";
   if (state.includes("leave")) return "BOT_LEAVING";
   return "BOT_CREATED";
+}
+
+async function applyBotStateChange(env: Env, meetingId: string, payload: BotWebhookPayload): Promise<void> {
+  const state = typeof payload.data.new_state === "string" ? payload.data.new_state : undefined;
+  await updateMeetingBotState(env.DB, meetingId, {
+    botId: payload.bot_id,
+    state,
+    transcriptionState: typeof payload.data.transcription_state === "string" ? payload.data.transcription_state : undefined,
+    recordingState: typeof payload.data.recording_state === "string" ? payload.data.recording_state : undefined,
+    status: mapBotStateToMeetingStatus(state, String(payload.data.event_type ?? "")),
+    latestError: typeof payload.data.latest_error === "string" ? payload.data.latest_error : undefined
+  });
 }
 
 function stringOrNull(value: unknown): string | null {

@@ -35,6 +35,27 @@ class WebhookD1 {
   }
 }
 
+class DuplicateWebhookD1 extends WebhookD1 {
+  prepare(sql: string) {
+    const statement = super.prepare(sql);
+    return {
+      ...statement,
+      async first() {
+        if (sql.includes("FROM attendee_webhook_events")) {
+          return {
+            id: "wh_existing",
+            attendee_bot_id: "bot_1",
+            status: "BOT_JOINING",
+            transcript_status: "not_started",
+            summary_status: "not_started"
+          };
+        }
+        return statement.first();
+      }
+    };
+  }
+}
+
 describe("meeting bot webhook route", () => {
   it("accepts signed post-processing webhooks and queues R2 transcript processing", async () => {
     const db = new WebhookD1();
@@ -155,6 +176,52 @@ describe("meeting bot webhook route", () => {
       expect.any(String),
       "BOT_FATAL_ERROR",
       "Teams pre-join screen did not show a Join now button",
+      expect.any(String),
+      "mtg_1"
+    ]);
+  });
+
+  it("re-applies duplicate state-change webhooks without repeating side effects", async () => {
+    const db = new DuplicateWebhookD1();
+    const summaryQueue = { send: vi.fn(async () => undefined) };
+    const payload = {
+      idempotency_key: "bot_1-state_change-joining",
+      bot_id: "bot_1",
+      bot_metadata: { minutesbot_meeting_id: "mtg_1", calendar_uid: "teams-link-1" },
+      trigger: "bot.state_change",
+      data: {
+        event_type: "state_change",
+        new_state: "joining",
+        transcription_state: "pending",
+        recording_state: "pending"
+      }
+    };
+
+    const response = await app.request(
+      "/api/webhooks/bot",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer managed-token"
+        },
+        body: JSON.stringify(payload)
+      },
+      env(db, summaryQueue)
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, duplicate: true, meetingId: "mtg_1" });
+    expect(summaryQueue.send).not.toHaveBeenCalled();
+    expect(db.webhookEvents).toHaveLength(0);
+    expect(db.meetingUpdates.at(-1)).toEqual([
+      "bot_1",
+      "joining",
+      "pending",
+      "pending",
+      expect.any(String),
+      "BOT_JOINING",
+      null,
       expect.any(String),
       "mtg_1"
     ]);
