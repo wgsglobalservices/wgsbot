@@ -197,7 +197,6 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
     routes: uniqueRoutes([env.APP_BASE_URL, env.API_BASE_URL, env.BOT_WEBHOOK_BASE_URL]),
     compatibility_date: "2026-05-04",
     compatibility_flags: ["nodejs_compat"],
-    migrations_dir: "../migrations",
     observability: { enabled: true, head_sampling_rate: 1 },
     vars: {
       APP_BASE_URL: env.APP_BASE_URL,
@@ -209,7 +208,14 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
       DEFAULT_SENDER_EMAIL: env.DEFAULT_SENDER_EMAIL,
       ENVIRONMENT: environment
     },
-    d1_databases: [{ binding: resources.d1.binding, database_name: resources.d1.databaseName, database_id: "replace-with-d1-database-id" }],
+    d1_databases: [
+      {
+        binding: resources.d1.binding,
+        database_name: resources.d1.databaseName,
+        database_id: "replace-with-d1-database-id",
+        migrations_dir: "../migrations",
+      },
+    ],
     r2_buckets: [{ binding: "ARTIFACTS", bucket_name: env.BOT_RECORDING_BUCKET_NAME }],
     services: [{ binding: "BOT_RUNTIME", service: workerName("minutesbot-meeting-bot", environment) }],
     queues: queueConfig(resources.queues),

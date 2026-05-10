@@ -77,7 +77,7 @@ describe("build oneshot Wrangler configs", () => {
     expect(botConfig).not.toContain(".attendee/upstream");
     expect(botConfig).not.toContain("DJANGO_SETTINGS_MODULE");
     expect(minutesbotConfig).toContain('"workers_dev": false');
-    expect(JSON.parse(minutesbotConfig).migrations_dir).toBe("../migrations");
+    expect(JSON.parse(minutesbotConfig).d1_databases[0].migrations_dir).toBe("../migrations");
     expect(botConfig).toContain('"workers_dev": false');
     expect((minutesbotConfig.match(/"custom_domain": true/g) ?? []).length).toBe(3);
     expect(minutesbotConfig).toContain('"producers"');
