@@ -28,6 +28,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
   if (meeting.status === "CANCELLED") return;
 
   const settings = await getSettings(env.DB);
+  const joinTimeoutSeconds = Math.max(60, settings.attendee.maxWaitingRoomMinutes * 60);
   await updateMeetingStatus(env.DB, meetingId, "BOT_CREATE_QUEUED");
   await createAuditLog(env.DB, { eventType: "bot.create_queued", resourceType: "meeting", resourceId: meetingId });
 
@@ -43,6 +44,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
       botName: settings.attendee.botName,
       botImage: await loadBotImage(env, settings.attendee.botImage),
       botChatMessage: botJoinChatMessage(settings.attendee.botName),
+      joinTimeoutSeconds,
       recordingSettings: { format: "mp3" },
       externalMediaStorageSettings: {
         bucketName: env.BOT_RECORDING_BUCKET_NAME,
@@ -84,11 +86,57 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
       });
     }
   }
+  await env.INVITE_QUEUE.send({ type: "monitor_bot_join", meetingId, botId: bot.id }, { delaySeconds: joinTimeoutSeconds });
   await createAuditLog(env.DB, {
     eventType: "bot.created",
     resourceType: "meeting",
     resourceId: meetingId,
     metadata: { botId: bot.id, state: lifecycleWebhookAlreadyAdvanced ? latestMeeting?.attendee_bot_state : recordedWebhookState?.state ?? bot.state }
+  });
+}
+
+export async function monitorBotJoin(env: WorkflowEnv, meetingId: string, botId: string): Promise<void> {
+  const meeting = await getMeeting(env.DB, meetingId);
+  if (!meeting || meeting.attendee_bot_id !== botId || !isStuckJoinState(meeting.attendee_bot_state, meeting.status)) return;
+
+  const settings = await getSettings(env.DB);
+  const client = createBotClient(env, resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL));
+  const runtimeBot = await client.getBot(botId).catch(() => null);
+  if (runtimeBot) {
+    const status = mapBotStateToMeetingStatus(runtimeBot.state, runtimeBot.state === "failed" ? "fatal_error" : "state_change");
+    if (!isStuckJoinState(runtimeBot.state, status)) {
+      await updateMeetingBotState(env.DB, meetingId, {
+        botId,
+        state: runtimeBot.state,
+        transcriptionState: runtimeBot.transcription_state,
+        recordingState: runtimeBot.recording_state,
+        status,
+        latestError: runtimeBot.latest_error
+      });
+      await createAuditLog(env.DB, {
+        eventType: "bot.state_changed",
+        resourceType: "meeting",
+        resourceId: meetingId,
+        metadata: { botId, source: "monitor", state: runtimeBot.state }
+      });
+      return;
+    }
+  }
+
+  const latestError = `Meeting bot remained in ${meeting.attendee_bot_state ?? "joining"} after the ${settings.attendee.maxWaitingRoomMinutes} minute waiting room timeout expired`;
+  await updateMeetingBotState(env.DB, meetingId, {
+    botId,
+    state: "failed",
+    transcriptionState: "failed",
+    recordingState: "failed",
+    status: "BOT_FATAL_ERROR",
+    latestError
+  });
+  await createAuditLog(env.DB, {
+    eventType: "bot.fatal_error",
+    resourceType: "meeting",
+    resourceId: meetingId,
+    metadata: { botId, reason: latestError, source: "monitor" }
   });
 }
 
@@ -170,6 +218,11 @@ function mapBotStateToMeetingStatus(state?: string, eventType?: string): Meeting
   if (state === "ended") return "BOT_ENDED";
   if (state.includes("leave")) return "BOT_LEAVING";
   return "BOT_CREATED";
+}
+
+function isStuckJoinState(state?: string | null, status?: MeetingRow["status"]): boolean {
+  if (status && !["BOT_JOINING", "BOT_WAITING_ROOM", "BOT_CREATED", "BOT_CREATE_QUEUED"].includes(status)) return false;
+  return !state || ["queued", "prejoin", "joining", "waiting_room"].includes(state);
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {

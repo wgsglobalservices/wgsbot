@@ -21,6 +21,7 @@ export class BotClient {
         bot_name: input.botName,
         bot_image: input.botImage,
         bot_chat_message: input.botChatMessage ? { to: "everyone", message: input.botChatMessage } : undefined,
+        join_timeout_seconds: input.joinTimeoutSeconds,
         recording_settings: input.recordingSettings ? { format: input.recordingSettings.format } : undefined,
         external_media_storage_settings: input.externalMediaStorageSettings
           ? {

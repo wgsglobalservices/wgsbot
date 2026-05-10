@@ -38,6 +38,7 @@ export type BotRuntimeDeps = {
       botName: string;
       botImage?: { type: "image/png" | "image/jpeg"; data: string };
       allowGuestJoin: boolean;
+      joinTimeoutSeconds?: number;
       onState?: (state: Extract<BotState, "prejoin" | "waiting_room" | "joined">) => Promise<void>;
     }): Promise<RecordingResult>;
   };
@@ -54,6 +55,7 @@ const createBotSchema = z.object({
   bot_name: z.string().trim().min(1),
   bot_image: z.object({ type: z.enum(["image/png", "image/jpeg"]), data: z.string() }).optional(),
   recording_settings: z.object({ format: z.enum(["mp3", "mp4", "webm"]).default("mp3") }).optional(),
+  join_timeout_seconds: z.number().int().min(1).max(24 * 60 * 60).optional(),
   external_media_storage_settings: z
     .object({
       bucket_name: z.string().trim().min(1),
@@ -135,6 +137,7 @@ async function runBotLifecycle(deps: BotRuntimeDeps, bot: BotRecord, input: z.in
       botName: input.bot_name,
       botImage: input.bot_image,
       allowGuestJoin: deps.env.BOT_ALLOW_GUEST_JOIN !== "false",
+      joinTimeoutSeconds: input.join_timeout_seconds,
       onState: async (state) => {
         await updateBot(deps, bot, input, { state });
       }

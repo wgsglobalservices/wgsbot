@@ -21,6 +21,7 @@ export type CreateBotInput = {
     data: string;
   };
   botChatMessage?: string;
+  joinTimeoutSeconds?: number;
   externalMediaStorageSettings?: {
     bucketName: string;
     recordingFileName?: string;
@@ -39,6 +40,7 @@ export type BotRun = {
   state: string;
   transcription_state?: string;
   recording_state?: string;
+  latest_error?: string;
 };
 
 export type BotRecording = {

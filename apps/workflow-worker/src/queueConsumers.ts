@@ -3,12 +3,13 @@ import { daysAgoIso } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 import { fetchAndStoreTranscript } from "./transcriptWorkflow";
 import { generateAndSendSummary } from "./summaryWorkflow";
-import { handleCreateBotQueueMessage } from "./botCreation";
+import { handleCreateBotQueueMessage, monitorBotJoin } from "./botCreation";
 
 export async function handleQueueBatch(batch: MessageBatch<unknown>, env: WorkflowEnv): Promise<void> {
   for (const message of batch.messages) {
     const body = message.body as { type?: string; meetingId?: string; botId?: string; attempt?: number };
     if (body.type === "create_bot" && body.meetingId) await handleCreateBotQueueMessage(env, body.meetingId);
+    if (body.type === "monitor_bot_join" && body.meetingId && body.botId) await monitorBotJoin(env, body.meetingId, body.botId);
     if (body.type === "fetch_transcript" && body.meetingId) await fetchAndStoreTranscript(env, body.meetingId, body.botId, undefined, { attempt: body.attempt });
     if (body.type === "summarize" && body.meetingId) await generateAndSendSummary(env, body.meetingId);
     message.ack();

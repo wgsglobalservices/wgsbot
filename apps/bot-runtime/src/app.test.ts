@@ -142,6 +142,86 @@ describe("bot runtime app", () => {
     expect(completion?.url).toBe("https://meeting.minutes.bot/api/webhooks/bot");
     expect(completion?.internalToken).toBe("managed-token");
   });
+
+  it("passes the configured join timeout into the recorder", async () => {
+    let joinTimeoutSeconds: number | undefined;
+    const app = createBotRuntimeApp({
+      env: {
+        BOT_INTERNAL_TOKEN: "managed-token",
+        BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts"
+      },
+      checkBinary: async () => true,
+      recorder: {
+        record: async (input) => {
+          joinTimeoutSeconds = input.joinTimeoutSeconds;
+          await input.onState?.("joined");
+          return { bytes: new Uint8Array([1]), contentType: "audio/mpeg", joinMode: "guest" };
+        }
+      },
+      recordingStore: fakeRecordingStore(),
+      sendWebhook: vi.fn(),
+      randomUUID: () => "bot_timeout"
+    });
+
+    const response = await app.request("/api/v1/bots", {
+      method: "POST",
+      headers: { authorization: "Bearer managed-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+        bot_name: "minutesbot",
+        join_timeout_seconds: 420,
+        external_media_storage_settings: { bucket_name: "minutesbot-artifacts" }
+      })
+    });
+
+    expect(response.status).toBe(201);
+    await vi.waitFor(() => expect(joinTimeoutSeconds).toBe(420));
+  });
+
+  it("emits a fatal webhook when the recorder times out before joining", async () => {
+    const webhooks: Array<{ body: string }> = [];
+    const app = createBotRuntimeApp({
+      env: {
+        BOT_INTERNAL_TOKEN: "managed-token",
+        BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts"
+      },
+      checkBinary: async () => true,
+      recorder: {
+        record: async (input) => {
+          await input.onState?.("prejoin");
+          throw new Error("Meeting bot did not join before the 1 second timeout expired");
+        }
+      },
+      recordingStore: fakeRecordingStore(),
+      sendWebhook: async (input) => {
+        webhooks.push(input);
+      },
+      randomUUID: () => "bot_timeout"
+    });
+
+    const response = await app.request("/api/v1/bots", {
+      method: "POST",
+      headers: { authorization: "Bearer managed-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+        bot_name: "minutesbot",
+        join_timeout_seconds: 1,
+        webhooks: [{ url: "https://meeting.minutes.bot/api/webhooks/bot", triggers: ["bot.state_change"] }],
+        external_media_storage_settings: { bucket_name: "minutesbot-artifacts" }
+      })
+    });
+
+    expect(response.status).toBe(201);
+    await vi.waitFor(() => expect(webhooks.some((webhook) => webhook.body.includes("fatal_error"))).toBe(true));
+    const fatal = JSON.parse(webhooks.find((webhook) => webhook.body.includes("fatal_error"))?.body ?? "{}");
+    expect(fatal.data).toMatchObject({
+      event_type: "fatal_error",
+      new_state: "failed",
+      transcription_state: "failed",
+      recording_state: "failed",
+      latest_error: "Meeting bot did not join before the 1 second timeout expired"
+    });
+  });
 });
 
 function fakeRecorder(bytes = new Uint8Array([9]), state?: "waiting_room" | "joined"): BotRuntimeDeps["recorder"] {

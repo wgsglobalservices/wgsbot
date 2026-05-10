@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "@minutesbot/shared";
-import { createMeetingBot } from "./botCreation";
+import { createMeetingBot, monitorBotJoin } from "./botCreation";
 import type { MeetingRow } from "@minutesbot/db";
 import type { WorkflowEnv } from "./env";
 
@@ -19,6 +19,7 @@ class BotCreationD1 {
     transcriptionState: string | null;
     recordingState: string | null;
     status: string | null;
+    latestError: string | null;
   }> = [];
   auditLogs: Array<{ eventType: string; metadata: unknown }> = [];
   webhookEvents: Array<Record<string, unknown>> = [];
@@ -50,7 +51,8 @@ class BotCreationD1 {
             state: this.values[1] as string | null,
             transcriptionState: this.values[2] as string | null,
             recordingState: this.values[3] as string | null,
-            status: this.values[5] as string | null
+            status: this.values[5] as string | null,
+            latestError: this.values[6] as string | null
           };
           db.botStateUpdates.push(update);
           db.meeting.attendee_bot_id = update.botId ?? db.meeting.attendee_bot_id;
@@ -58,6 +60,7 @@ class BotCreationD1 {
           db.meeting.attendee_transcription_state = update.transcriptionState ?? db.meeting.attendee_transcription_state;
           db.meeting.attendee_recording_state = update.recordingState ?? db.meeting.attendee_recording_state;
           db.meeting.status = (update.status as MeetingRow["status"] | null) ?? db.meeting.status;
+          db.meeting.latest_error = update.latestError ?? db.meeting.latest_error;
         }
         if (sql.startsWith("INSERT INTO audit_logs")) {
           db.auditLogs.push({ eventType: this.values[2] as string, metadata: this.values[5] ? JSON.parse(this.values[5] as string) : null });
@@ -142,6 +145,7 @@ describe("createMeetingBot failure handling", () => {
 
   it("creates meeting bots with MP3 recording upload to R2", async () => {
     const db = new BotCreationD1();
+    const inviteQueue = { send: vi.fn() };
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
       "fetch",
@@ -152,7 +156,7 @@ describe("createMeetingBot failure handling", () => {
       })
     );
 
-    await createMeetingBot(env({}, db), "mtg_1");
+    await createMeetingBot(env({ INVITE_QUEUE: inviteQueue }, db), "mtg_1");
 
     const createRequest = requests.find((request) => request.url.endsWith("/api/v1/bots"));
     expect(createRequest).toBeDefined();
@@ -168,6 +172,7 @@ describe("createMeetingBot failure handling", () => {
         bucket_name: "minutesbot-artifacts",
         recording_file_name: "recordings/mtg_1/recording.mp3"
       },
+      join_timeout_seconds: 900,
       webhooks: [
         {
           url: "https://minutesbot-webhook.example.com/api/webhooks/bot"
@@ -179,6 +184,7 @@ describe("createMeetingBot failure handling", () => {
       attendee_bot_state: "queued",
       status: "BOT_CREATED"
     });
+    expect(inviteQueue.send).toHaveBeenCalledWith({ type: "monitor_bot_join", meetingId: "mtg_1", botId: "bot_1" }, { delaySeconds: 900 });
   });
 
   it("does not downgrade bot state when a lifecycle webhook wins the creation race", async () => {
@@ -335,6 +341,83 @@ describe("createMeetingBot failure handling", () => {
     expect(db.auditLogs.at(-1)).toMatchObject({
       eventType: "bot.fatal_error",
       metadata: { code: "BOT_UNHEALTHY" }
+    });
+  });
+
+  it("marks a same-bot joining state fatal when the monitor timeout expires", async () => {
+    const db = new BotCreationD1();
+    db.meeting = {
+      ...db.meeting,
+      attendee_bot_id: "bot_1",
+      attendee_bot_state: "joining",
+      attendee_transcription_state: "pending",
+      attendee_recording_state: "pending",
+      status: "BOT_JOINING"
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        expect(String(url)).toBe("https://meeting-bot.example.com/api/v1/bots/bot_1");
+        return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "joining" });
+      })
+    );
+
+    await monitorBotJoin(env({}, db), "mtg_1", "bot_1");
+
+    expect(db.botStateUpdates.at(-1)).toMatchObject({
+      botId: "bot_1",
+      state: "failed",
+      transcriptionState: "failed",
+      recordingState: "failed",
+      status: "BOT_FATAL_ERROR",
+      latestError: "Meeting bot remained in joining after the 15 minute waiting room timeout expired"
+    });
+  });
+
+  it("ignores stale monitor messages for old bot ids", async () => {
+    const db = new BotCreationD1();
+    db.meeting = {
+      ...db.meeting,
+      attendee_bot_id: "bot_new",
+      attendee_bot_state: "joining",
+      status: "BOT_JOINING"
+    };
+
+    await monitorBotJoin(env({}, db), "mtg_1", "bot_old");
+
+    expect(db.botStateUpdates).toEqual([]);
+  });
+
+  it("applies an advanced runtime state instead of failing the monitored bot", async () => {
+    const db = new BotCreationD1();
+    db.meeting = {
+      ...db.meeting,
+      attendee_bot_id: "bot_1",
+      attendee_bot_state: "joining",
+      status: "BOT_JOINING"
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          id: "bot_1",
+          meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+          state: "recording",
+          transcription_state: "pending",
+          recording_state: "recording"
+        })
+      )
+    );
+
+    await monitorBotJoin(env({}, db), "mtg_1", "bot_1");
+
+    expect(db.botStateUpdates.at(-1)).toMatchObject({
+      botId: "bot_1",
+      state: "recording",
+      transcriptionState: "pending",
+      recordingState: "recording",
+      status: "BOT_RECORDING",
+      latestError: null
     });
   });
 });

@@ -8,6 +8,10 @@ type RuntimeProcessEnv = Record<string, string | undefined>;
 type RuntimeRecorderInput = Parameters<BotRuntimeDeps["recorder"]["record"]>[0];
 type JoinMode = "guest";
 type JoinedState = "waiting_room" | "joined";
+type JoinDeadline = {
+  seconds: number;
+  expiresAt: number;
+};
 
 type AudioIo = {
   mkdtemp: (prefix: string) => Promise<string>;
@@ -21,6 +25,8 @@ const MEETING_NOT_STARTED_MAX_ATTEMPTS = 2 * 60 * 60;
 const PREJOIN_POLL_INTERVAL_MS = 1_000;
 const CONTROL_PROBE_TIMEOUT_MS = 0;
 const CONTROL_ACTION_TIMEOUT_MS = 1_000;
+const DEFAULT_JOIN_TIMEOUT_SECONDS = 15 * 60;
+const DEFAULT_PROCESS_TIMEOUT_MS = 30_000;
 
 export function createDefaultDeps(env: RuntimeProcessEnv): BotRuntimeDeps {
   return {
@@ -56,20 +62,24 @@ function createBrowserRecorder(env: RuntimeProcessEnv): BotRuntimeDeps["recorder
         };
       }
 
-      const audio = await startPulseAudioSink(env);
+      const joinDeadline = createJoinDeadline(input.joinTimeoutSeconds);
+      const audio = await withJoinDeadline(startPulseAudioSink(env), joinDeadline);
       const userDataDir = env.BOT_BROWSER_PROFILE_DIR || (await mkdtemp(join(tmpdir(), "minutesbot-profile-")));
       let context: any;
       try {
-        const browser = await loadPlaywrightChromium();
-        context = await browser.launchPersistentContext(userDataDir, {
-          headless: env.BOT_HEADLESS !== "false",
-          executablePath: env.CHROMIUM_EXECUTABLE_PATH,
-          env: { ...process.env, PULSE_SINK: audio.sinkName },
-          args: ["--use-fake-ui-for-media-stream", "--no-sandbox", "--disable-dev-shm-usage"]
-        });
+        const browser = await withJoinDeadline(loadPlaywrightChromium(), joinDeadline);
+        context = await withJoinDeadline(
+          browser.launchPersistentContext(userDataDir, {
+            headless: env.BOT_HEADLESS !== "false",
+            executablePath: env.CHROMIUM_EXECUTABLE_PATH,
+            env: { ...process.env, PULSE_SINK: audio.sinkName },
+            args: ["--use-fake-ui-for-media-stream", "--no-sandbox", "--disable-dev-shm-usage"]
+          }),
+          joinDeadline
+        );
         const page = await context.newPage();
-        await page.goto(input.meetingUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs(env.BOT_JOIN_TIMEOUT_MS, 90_000) });
-        const joinedState = await joinAsGuest(page, input);
+        await page.goto(input.meetingUrl, { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs(env.BOT_JOIN_TIMEOUT_MS, 90_000), remainingJoinMs(joinDeadline)) });
+        const joinedState = await joinAsGuest(page, input, joinDeadline);
         await input.onState?.(joinedState);
         const bytes = await captureBrowserAudio(env, defaultAudioIo, audio.sinkName);
         return {
@@ -114,10 +124,10 @@ async function loadPlaywrightChromium(): Promise<any> {
   return playwright.chromium;
 }
 
-async function joinAsGuest(page: any, input: RuntimeRecorderInput): Promise<"waiting_room" | "joined"> {
+async function joinAsGuest(page: any, input: RuntimeRecorderInput, deadline = createJoinDeadline(input.joinTimeoutSeconds)): Promise<"joined"> {
   if (!input.allowGuestJoin) throw new Error("Guest join is disabled for the meeting bot runtime");
   await input.onState?.("prejoin");
-  return joinFromPrejoin(page, input.botName, "guest");
+  return joinFromPrejoin(page, input, "guest", deadline);
 }
 
 async function clickTeamsWebEntry(page: any, visibleTimeout = 20_000, actionTimeout = visibleTimeout): Promise<boolean> {
@@ -140,20 +150,22 @@ async function fillGuestName(page: any, botName: string): Promise<boolean> {
   return fillAny(guestNameLocators(page), botName, 20_000);
 }
 
-async function joinFromPrejoin(page: any, botName: string, mode: JoinMode): Promise<JoinedState> {
+async function joinFromPrejoin(page: any, input: RuntimeRecorderInput, mode: JoinMode, deadline: JoinDeadline): Promise<"joined"> {
   let filledName = false;
   let pressedEnter = false;
   let sawMeetingNotStarted = false;
+  let sawLobby = false;
 
   for (let attempt = 0; attempt < MEETING_NOT_STARTED_MAX_ATTEMPTS; attempt += 1) {
+    checkJoinDeadline(deadline);
     await clickTeamsWebEntry(page, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS);
 
     await dismissDevicePrompts(page, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS);
 
-    filledName = (await fillAny(guestNameLocators(page), botName, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS)) || filledName;
+    filledName = (await fillAny(guestNameLocators(page), input.botName, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS)) || filledName;
 
     if (await clickAny(joinButtonLocators(page), CONTROL_PROBE_TIMEOUT_MS, 30_000, { suppressClickErrors: true })) {
-      return waitForJoinedOrLobby(page);
+      return waitForJoined(page, input, deadline, sawLobby);
     }
 
     if (filledName && !pressedEnter) {
@@ -161,19 +173,26 @@ async function joinFromPrejoin(page: any, botName: string, mode: JoinMode): Prom
     }
 
     const stateAfterActions = await joinedOrLobbyState(page, CONTROL_PROBE_TIMEOUT_MS);
-    if (stateAfterActions) return stateAfterActions;
+    if (stateAfterActions === "joined") return "joined";
+    if (stateAfterActions === "waiting_room") {
+      if (!sawLobby) {
+        sawLobby = true;
+        await input.onState?.("waiting_room");
+      }
+      return waitForJoined(page, input, deadline, sawLobby);
+    }
 
     const blocker = await prejoinBlocker(page, mode, CONTROL_PROBE_TIMEOUT_MS);
     if (blocker) throw new Error(`${blocker} ${await prejoinDiagnostic(page)}`);
 
     if (await hasMeetingNotStartedSignals(page, CONTROL_PROBE_TIMEOUT_MS)) {
       sawMeetingNotStarted = true;
-      await page.waitForTimeout(PREJOIN_POLL_INTERVAL_MS);
+      await waitForPoll(page, deadline);
       continue;
     }
 
     if (!sawMeetingNotStarted && attempt >= PREJOIN_MAX_ATTEMPTS - 1) break;
-    await page.waitForTimeout(PREJOIN_POLL_INTERVAL_MS);
+    await waitForPoll(page, deadline);
   }
 
   if (sawMeetingNotStarted) throw new Error(`Teams meeting did not start before the bot wait window expired. ${await prejoinDiagnostic(page)}`);
@@ -237,22 +256,32 @@ async function dismissDevicePrompts(page: any, visibleTimeout = 3_000, actionTim
   }
 }
 
-async function waitForJoinedOrLobby(page: any): Promise<"waiting_room" | "joined"> {
+async function waitForJoined(page: any, input: RuntimeRecorderInput, deadline: JoinDeadline, sawLobby: boolean): Promise<"joined"> {
   let sawMeetingNotStarted = false;
+  let emittedLobby = sawLobby;
 
   for (let attempt = 0; attempt < MEETING_NOT_STARTED_MAX_ATTEMPTS; attempt += 1) {
+    checkJoinDeadline(deadline);
     await clickAny(joinButtonLocators(page), CONTROL_PROBE_TIMEOUT_MS, 30_000, { suppressClickErrors: true });
     const state = await joinedOrLobbyState(page, CONTROL_PROBE_TIMEOUT_MS);
-    if (state) return state;
+    if (state === "joined") return "joined";
+    if (state === "waiting_room") {
+      if (!emittedLobby) {
+        emittedLobby = true;
+        await input.onState?.("waiting_room");
+      }
+      await waitForPoll(page, deadline);
+      continue;
+    }
 
     if (await hasMeetingNotStartedSignals(page, CONTROL_PROBE_TIMEOUT_MS)) {
       sawMeetingNotStarted = true;
-      await page.waitForTimeout(PREJOIN_POLL_INTERVAL_MS);
+      await waitForPoll(page, deadline);
       continue;
     }
 
     if (!sawMeetingNotStarted && attempt >= PREJOIN_MAX_ATTEMPTS - 1) break;
-    await page.waitForTimeout(PREJOIN_POLL_INTERVAL_MS);
+    await waitForPoll(page, deadline);
   }
   if (sawMeetingNotStarted) throw new Error(`Teams meeting did not start before the bot wait window expired. ${await prejoinDiagnostic(page)}`);
   throw new Error("Teams did not confirm joined or waiting room state after Join now");
@@ -492,17 +521,21 @@ async function startPulseAudioSink(
   io: AudioIo = defaultAudioIo
 ): Promise<{ sinkName: string; cleanup: () => Promise<void> }> {
   const sinkName = env.BOT_AUDIO_SINK_NAME?.trim() || "teams_capture";
-  await io.runCommand("pulseaudio", ["--start"]);
-  const moduleOutput = await io.runCommand("pactl", [
-    "load-module",
-    "module-null-sink",
-    `sink_name=${sinkName}`,
-    "sink_properties=device.description=minutesbot_teams_capture"
-  ]);
+  await withProcessTimeout(env, io.runCommand("pulseaudio", ["--start"]), "pulseaudio");
+  const moduleOutput = await withProcessTimeout(
+    env,
+    io.runCommand("pactl", [
+      "load-module",
+      "module-null-sink",
+      `sink_name=${sinkName}`,
+      "sink_properties=device.description=minutesbot_teams_capture"
+    ]),
+    "pactl"
+  );
   const moduleId = typeof moduleOutput === "string" && moduleOutput.trim() ? moduleOutput.trim() : "0";
   return {
     sinkName,
-    cleanup: () => io.runCommand("pactl", ["unload-module", moduleId]).then(() => undefined)
+    cleanup: () => withProcessTimeout(env, io.runCommand("pactl", ["unload-module", moduleId]), "pactl").then(() => undefined)
   };
 }
 
@@ -570,6 +603,65 @@ function contentTypeForFormat(format: string): string {
 function timeoutMs(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function createJoinDeadline(seconds: number | undefined): JoinDeadline {
+  const normalizedSeconds = Number.isFinite(seconds) && seconds && seconds > 0 ? Math.ceil(seconds) : DEFAULT_JOIN_TIMEOUT_SECONDS;
+  return {
+    seconds: normalizedSeconds,
+    expiresAt: Date.now() + normalizedSeconds * 1_000
+  };
+}
+
+function remainingJoinMs(deadline: JoinDeadline): number {
+  return Math.max(1, deadline.expiresAt - Date.now());
+}
+
+function checkJoinDeadline(deadline: JoinDeadline): void {
+  if (Date.now() >= deadline.expiresAt) throw new Error(joinTimeoutMessage(deadline));
+}
+
+function joinTimeoutMessage(deadline: JoinDeadline): string {
+  return `Meeting bot did not join before the ${formatDurationSeconds(deadline.seconds)} timeout expired`;
+}
+
+function formatDurationSeconds(seconds: number): string {
+  if (seconds % 60 === 0) return `${seconds / 60} minute${seconds === 60 ? "" : "s"}`;
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+}
+
+async function waitForPoll(page: any, deadline: JoinDeadline): Promise<void> {
+  checkJoinDeadline(deadline);
+  await page.waitForTimeout(Math.min(PREJOIN_POLL_INTERVAL_MS, remainingJoinMs(deadline)));
+}
+
+async function withJoinDeadline<T>(promise: Promise<T>, deadline: JoinDeadline): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(joinTimeoutMessage(deadline))), remainingJoinMs(deadline));
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function withProcessTimeout<T>(env: RuntimeProcessEnv, promise: Promise<T>, command: string): Promise<T> {
+  const timeout = timeoutMs(env.BOT_PROCESS_TIMEOUT_MS, DEFAULT_PROCESS_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${command} timed out after ${timeout}ms`)), timeout);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export const __runtimeTest = {

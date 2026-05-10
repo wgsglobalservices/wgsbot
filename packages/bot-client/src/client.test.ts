@@ -118,6 +118,23 @@ describe("BotClient", () => {
     });
   });
 
+  it("serializes the join timeout when creating bots", async () => {
+    const fetcher = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
+      Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/x", state: "created" })
+    );
+    const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot/", fetcher });
+
+    await client.createBot({
+      meetingUrl: "https://teams.microsoft.com/l/meetup-join/x",
+      botName: "minutesbot",
+      joinTimeoutSeconds: 900
+    });
+
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toMatchObject({
+      join_timeout_seconds: 900
+    });
+  });
+
   it("normalizes rate limits into retryable typed errors", async () => {
     const fetcher = vi.fn(async () => new Response("rate limited", { status: 429 }));
     const client = new BotClient({ baseUrl: "https://meeting-api.minutes.bot", fetcher });
