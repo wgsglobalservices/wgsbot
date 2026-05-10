@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const legacySelfHostedBotBaseUrls = new Set<string>(["https://app.attendee.dev", "https://attendee.minutes.bot"]);
 const defaultTimeZone = "UTC";
+const defaultEmailSenderName = "minutesbot";
 
 const domainSchema = z
   .string()
@@ -123,6 +124,7 @@ export const appSettingsSchema = z.object({
   }),
   email: z.object({
     provider: z.enum(["cloudflare-email-service", "smtp", "mock"]),
+    senderName: z.string().trim().min(1).max(120).default(defaultEmailSenderName),
     senderEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
     testRecipient: z.string().trim().email().optional().or(z.literal(""))
   }),
@@ -198,6 +200,7 @@ export const defaultSettings: AppSettings = {
   },
   email: {
     provider: "mock",
+    senderName: defaultEmailSenderName,
     senderEmail: "notetaker@minutes.bot",
     testRecipient: defaultSampleRecapRecipient
   },

@@ -89,6 +89,7 @@ export function SettingsForm({
       <SettingsSection title="Email Provider" description="Controls outbound recap delivery and test email actions.">
         <div className="setupFieldGrid twoColumn">
           <SelectField label="Provider" value={value.email.provider} options={["mock", "cloudflare-email-service", "smtp"]} width="medium" onChange={(v) => update("email.provider", v)} />
+          <TextField label="Sender display name" value={value.email.senderName} width="medium" onChange={(v) => update("email.senderName", v)} />
           <TextField label="Sender email" value={value.email.senderEmail} width="medium" onChange={(v) => update("email.senderEmail", v)} />
         </div>
         <div className="inlineActions">

@@ -100,7 +100,7 @@ export async function generateAndSendSummary(
   let sentCount = 0;
   for (const recipient of filtered.included) {
     try {
-      const result = await sender.send({ from: formatEmailAddress("WGS Notetaker", settings.email.senderEmail), to: recipient.email, ...email });
+      const result = await sender.send({ from: formatEmailAddress(settings.email.senderName, settings.email.senderEmail), to: recipient.email, ...email });
       if (result.status === "sent") sentCount += 1;
       await createEmailDelivery(env.DB, {
         meeting_id: meetingId,

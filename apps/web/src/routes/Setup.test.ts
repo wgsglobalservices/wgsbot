@@ -84,6 +84,13 @@ describe("settings form", () => {
     expect(html).not.toContain("Webhook secret");
     expect(html).not.toContain("Not configured");
   });
+
+  it("renders the outbound email sender display name as a configurable setup field", () => {
+    const html = renderToStaticMarkup(React.createElement(SettingsForm, { value: defaultSettings, onChange: () => undefined }));
+
+    expect(html).toContain("Sender display name");
+    expect(html).toContain('value="minutesbot"');
+  });
 });
 
 describe("sample recap recipient", () => {

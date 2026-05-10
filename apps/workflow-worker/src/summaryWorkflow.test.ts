@@ -103,7 +103,13 @@ describe("summary workflow", () => {
   });
 
   it("sends recaps to organizer and allowed-domain attendees and records deliveries", async () => {
-    const db = new FakeD1();
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: {
+        ...defaultSettings.email,
+        senderName: "Plant Notes"
+      }
+    });
     const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
 
     await generateAndSendSummary(
@@ -129,7 +135,7 @@ describe("summary workflow", () => {
     expect(db.emailDeliveries.map((values) => values[2])).toEqual(["owner@wgs.bot", "alex@team.wgs.bot", "casey@partner.com", "no-show@wgs.bot"]);
     expect(db.emailDeliveries.every((values) => values[4] === "sent")).toBe(true);
     expect(send.mock.calls[0][0]).toMatchObject({
-      from: "WGS Notetaker <notetaker@minutes.bot>",
+      from: "Plant Notes <notetaker@minutes.bot>",
       text: expect.stringContaining("/api/artifacts/mtg_1/transcript.txt?token="),
       html: expect.stringContaining("Download Transcript")
     });

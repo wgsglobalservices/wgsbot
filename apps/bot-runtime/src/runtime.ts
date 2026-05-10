@@ -128,14 +128,7 @@ async function clickTeamsWebEntry(page: any): Promise<void> {
 }
 
 async function fillGuestName(page: any, botName: string): Promise<void> {
-  const filled = await fillAny(
-    [
-      page.getByRole("textbox", { name: /type your name|enter name|name/i }),
-      page.getByPlaceholder(/type your name|enter name|name/i)
-    ],
-    botName,
-    20_000
-  );
+  const filled = await fillAny(guestNameLocators(page), botName, 20_000);
   if (!filled) {
     const signedIn = await hasJoinedSignals(page, 1_000);
     if (!signedIn) throw new Error("Teams pre-join screen did not show a name field");
@@ -144,7 +137,7 @@ async function fillGuestName(page: any, botName: string): Promise<void> {
 
 async function joinFromPrejoin(page: any, botName: string): Promise<"waiting_room" | "joined"> {
   await dismissDevicePrompts(page);
-  await fillAny([page.getByRole("textbox", { name: /type your name|enter name|name/i }), page.getByPlaceholder(/type your name|enter name|name/i)], botName, 1_000);
+  await fillAny(guestNameLocators(page), botName, 1_000);
   const clickedJoin = await clickAny(
     [
       page.getByRole("button", { name: /^join now$/i }),
@@ -155,6 +148,35 @@ async function joinFromPrejoin(page: any, botName: string): Promise<"waiting_roo
   );
   if (!clickedJoin) throw new Error("Teams pre-join screen did not show a Join now button");
   return waitForJoinedOrLobby(page);
+}
+
+function guestNameLocators(page: any): any[] {
+  const selectors = [
+    'input[data-tid="prejoin-display-name-input"]',
+    'input[data-tid*="display-name" i]',
+    'input[data-tid*="username" i]',
+    'input[id*="displayName" i]',
+    'input[id*="display-name" i]',
+    'input[name*="displayName" i]',
+    'input[name*="display-name" i]',
+    'input[aria-label*="name" i]',
+    'input[placeholder*="name" i]',
+    '[contenteditable="true"][role="textbox"]'
+  ];
+  return locatorScopes(page).flatMap((scope) => [
+    scope.getByRole("textbox", { name: /type your name|enter name|name/i }),
+    scope.getByPlaceholder(/type your name|enter name|name/i),
+    ...selectors.map((selector) => scope.locator(selector))
+  ]);
+}
+
+function locatorScopes(page: any): any[] {
+  const scopes = [page];
+  const frames = typeof page.frames === "function" ? page.frames() : [];
+  for (const frame of frames) {
+    if (frame && frame !== page && typeof frame.locator === "function") scopes.push(frame);
+  }
+  return scopes;
 }
 
 async function dismissDevicePrompts(page: any): Promise<void> {
@@ -261,3 +283,7 @@ function timeoutMs(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
+
+export const __runtimeTest = {
+  fillGuestName
+};

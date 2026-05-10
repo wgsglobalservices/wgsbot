@@ -9,13 +9,14 @@ describe("settings validation", () => {
       allowedDomains: ["AcMe.COM", "acme.com"],
       recorderEmail: "NoteTaker@Meet.AcMe.COM",
       recorderAliasEmails: ["SalesNotes@Meet.AcMe.COM", "notetaker@meet.acme.com", "SalesNotes@meet.acme.com"],
-      email: { ...defaultSettings.email, senderEmail: "Notes@AcMe.COM" }
+      email: { ...defaultSettings.email, senderName: "  Plant Notes  ", senderEmail: "Notes@AcMe.COM" }
     });
 
     expect(settings.primaryDomain).toBe("acme.com");
     expect(settings.allowedDomains).toEqual(["acme.com"]);
     expect(settings.recorderEmail).toBe("notetaker@meet.acme.com");
     expect(settings.recorderAliasEmails).toEqual(["salesnotes@meet.acme.com"]);
+    expect(settings.email.senderName).toBe("Plant Notes");
     expect(settings.email.senderEmail).toBe("notes@acme.com");
   });
 
@@ -24,6 +25,14 @@ describe("settings validation", () => {
     delete legacySettings.recorderAliasEmails;
 
     expect(parseSettings(legacySettings).recorderAliasEmails).toEqual([]);
+  });
+
+  it("defaults legacy email settings to the minutesbot sender display name", () => {
+    const legacyEmail: Record<string, unknown> = { ...defaultSettings.email };
+    Reflect.deleteProperty(legacyEmail, "senderName");
+    const legacySettings = { ...defaultSettings, email: legacyEmail };
+
+    expect(parseSettings(legacySettings).email.senderName).toBe("minutesbot");
   });
 
   it("defaults legacy settings to UTC and validates configured time zones", () => {

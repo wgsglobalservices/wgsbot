@@ -157,6 +157,7 @@ describe("admin test actions", () => {
         email: {
           ...defaultSettings.email,
           provider: "cloudflare-email-service",
+          senderName: "Plant Notes",
           senderEmail: "recaps@wgs.bot"
         }
       }),
@@ -175,7 +176,7 @@ describe("admin test actions", () => {
     });
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({
-      from: "WGS Notetaker <recaps@wgs.bot>",
+      from: "Plant Notes <recaps@wgs.bot>",
       to: "reviewer@example.com",
       subject: "Meeting recap: Sample recap email"
     });

@@ -159,7 +159,7 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
     });
 
     try {
-      const result = await provider.send({ from: formatEmailAddress("WGS Notetaker", settings.email.senderEmail), to: parsed.data.to, ...email });
+      const result = await provider.send({ from: formatEmailAddress(settings.email.senderName, settings.email.senderEmail), to: parsed.data.to, ...email });
       if (result.status === "failed") {
         return c.json({ ok: false, message: result.failureReason ?? "Sample recap email failed to send" }, 502);
       }
