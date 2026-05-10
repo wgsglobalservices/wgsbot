@@ -52,6 +52,12 @@
       "bucket_name": "minutesbot-artifacts"
     }
   ],
+  "migrations": [
+    {
+      "tag": "remove-meeting-bot-container-from-minutesbot",
+      "deleted_classes": ["MeetingBotContainer"]
+    }
+  ],
   "queues": {
     "producers": [
       { "binding": "INVITE_QUEUE", "queue": "minutesbot-invites" },
