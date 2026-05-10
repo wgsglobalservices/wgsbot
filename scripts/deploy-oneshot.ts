@@ -65,7 +65,8 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   const loadedEnv = await loadOneshotEnv(options);
   const env = {
     ...loadedEnv,
-    BOT_INTERNAL_TOKEN: loadedEnv.BOT_INTERNAL_TOKEN?.trim() || generateInternalToken()
+    BOT_INTERNAL_TOKEN: loadedEnv.BOT_INTERNAL_TOKEN?.trim() || generateInternalToken(),
+    BOT_CONTAINER_INSTANCE_ID: loadedEnv.BOT_CONTAINER_INSTANCE_ID?.trim() || generateBotContainerInstanceId(environment)
   };
 
   validateOneshotEnv(env, environment);
@@ -233,6 +234,7 @@ export function buildBotWranglerConfig(env: OneshotEnv, environment: CloudflareE
     routes: uniqueRoutes([env.BOT_API_BASE_URL]),
     vars: {
       BOT_CONTAINER_SLEEP_AFTER: "24h",
+      BOT_CONTAINER_INSTANCE_ID: env.BOT_CONTAINER_INSTANCE_ID,
       BOT_API_BASE_URL: env.BOT_API_BASE_URL,
       BOT_RECORDING_BUCKET_NAME: env.BOT_RECORDING_BUCKET_NAME,
       TEAMS_RECORDER_EMAIL: env.TEAMS_RECORDER_EMAIL,
@@ -460,6 +462,11 @@ function unquote(value: string): string {
 
 function generateInternalToken(): string {
   return randomBytes(32).toString("base64url");
+}
+
+function generateBotContainerInstanceId(environment: CloudflareEnvironment): string {
+  const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
+  return `${environment}-${timestamp}-${randomBytes(4).toString("hex")}`;
 }
 
 async function runWithInput(command: string, args: string[], input: string): Promise<string> {

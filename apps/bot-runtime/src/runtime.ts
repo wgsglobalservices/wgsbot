@@ -281,5 +281,6 @@ function timeoutMs(value: string | undefined, fallback: number): number {
 }
 
 export const __runtimeTest = {
-  fillGuestName
+  fillGuestName,
+  joinAsGuest
 };

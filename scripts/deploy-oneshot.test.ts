@@ -56,7 +56,7 @@ describe("validateOneshotEnv", () => {
 describe("build oneshot Wrangler configs", () => {
   it("uses env-provided routes and removes legacy customer-specific defaults", () => {
     const minutesbotConfig = buildMinutesbotWranglerConfig(sampleEnv(), "production");
-    const botConfig = buildBotWranglerConfig(sampleEnv());
+    const botConfig = buildBotWranglerConfig(sampleEnv({ BOT_CONTAINER_INSTANCE_ID: "production-test-container" }));
 
     expect(minutesbotConfig).toContain("app.minutes.bot");
     expect(minutesbotConfig).toContain("api.minutes.bot");
@@ -66,6 +66,7 @@ describe("build oneshot Wrangler configs", () => {
     expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_ISSUER");
     expect(botConfig).toContain("meeting-api.minutes.bot");
     expect(botConfig).toContain("meeting.minutes.bot");
+    expect(botConfig).toContain('"BOT_CONTAINER_INSTANCE_ID": "production-test-container"');
     expect(minutesbotConfig).toContain('"binding": "BOT_RUNTIME"');
     expect(minutesbotConfig).toContain('"service": "minutesbot-meeting-bot"');
     expect(botConfig).toContain("../Dockerfile.bot");
@@ -171,6 +172,7 @@ describe("deployOneshot", () => {
     expect(fetches).toContain("POST https://meeting.minutes.bot/api/webhooks/bot");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-minutesbot.jsonc");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-bot.jsonc");
+    expect(writes.get(".wrangler/oneshot-bot.jsonc")).toMatch(/"BOT_CONTAINER_INSTANCE_ID": "production-\d{14}-[0-9a-f]{8}"/);
   });
 });
 
