@@ -6,6 +6,13 @@ import type { BotRuntimeDeps } from "./app";
 
 type RuntimeProcessEnv = Record<string, string | undefined>;
 type RuntimeRecorderInput = Parameters<BotRuntimeDeps["recorder"]["record"]>[0];
+type JoinMode = "guest" | "service_account";
+type JoinedState = "waiting_room" | "joined";
+
+const PREJOIN_MAX_ATTEMPTS = 60;
+const PREJOIN_POLL_INTERVAL_MS = 1_000;
+const CONTROL_PROBE_TIMEOUT_MS = 0;
+const CONTROL_ACTION_TIMEOUT_MS = 1_000;
 
 export function createDefaultDeps(env: RuntimeProcessEnv): BotRuntimeDeps {
   return {
@@ -104,49 +111,63 @@ async function joinWithServiceAccount(page: any, input: RuntimeRecorderInput): P
   await fillIfVisible(page.getByRole("textbox", { name: /password/i }), input.serviceAccount.password, 15_000);
   await clickIfVisible(page.getByRole("button", { name: /sign in/i }), 10_000);
   await clickIfVisible(page.getByRole("button", { name: /yes|stay signed in/i }), 5_000);
-  return joinFromPrejoin(page, input.botName);
+  return joinFromPrejoin(page, input.botName, "service_account");
 }
 
 async function joinAsGuest(page: any, input: RuntimeRecorderInput): Promise<"waiting_room" | "joined"> {
   if (!input.allowGuestJoin) throw new Error("Guest join is disabled and no service account credentials are configured");
-  await clickTeamsWebEntry(page);
-  await fillGuestName(page, input.botName);
-  return joinFromPrejoin(page, input.botName);
+  return joinFromPrejoin(page, input.botName, "guest");
 }
 
-async function clickTeamsWebEntry(page: any): Promise<void> {
+async function clickTeamsWebEntry(page: any, visibleTimeout = 20_000, actionTimeout = visibleTimeout): Promise<boolean> {
   const clicked = await clickAny(
     locatorScopes(page).flatMap((scope) => [
       scope.getByRole("button", { name: /continue on this browser|join on the web|use the web app|continue without audio or video/i }),
       scope.getByRole("link", { name: /continue on this browser|join on the web|use the web app/i }),
       scope.getByText(/continue on this browser|join on the web|use the web app/i)
     ]),
-    20_000
+    visibleTimeout,
+    actionTimeout
   );
-  if (!clicked) return;
-  await page.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => undefined);
+  if (!clicked) return false;
+  await page.waitForLoadState("domcontentloaded", { timeout: actionTimeout }).catch(() => undefined);
+  return true;
 }
 
 async function fillGuestName(page: any, botName: string): Promise<boolean> {
   return fillAny(guestNameLocators(page), botName, 20_000);
 }
 
-async function joinFromPrejoin(page: any, botName: string): Promise<"waiting_room" | "joined"> {
-  await dismissDevicePrompts(page);
-  const filledName = await fillAny(guestNameLocators(page), botName, 1_000);
-  const clickedJoin = await clickAny(joinButtonLocators(page), 30_000);
-  if (!clickedJoin && filledName) {
-    const pressedEnter = await pressEnterFromPrejoin(page);
-    if (pressedEnter) {
-      try {
-        return await waitForJoinedOrLobby(page);
-      } catch {
-        throw new Error(`Teams pre-join screen did not show a Join now button after pressing Enter. ${await prejoinDiagnostic(page)}`);
-      }
+async function joinFromPrejoin(page: any, botName: string, mode: JoinMode): Promise<JoinedState> {
+  let filledName = false;
+  let pressedEnter = false;
+
+  for (let attempt = 0; attempt < PREJOIN_MAX_ATTEMPTS; attempt += 1) {
+    await clickTeamsWebEntry(page, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS);
+
+    await dismissDevicePrompts(page, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS);
+
+    filledName = (await fillAny(guestNameLocators(page), botName, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS)) || filledName;
+
+    if (await clickAny(joinButtonLocators(page), CONTROL_PROBE_TIMEOUT_MS, 30_000)) {
+      return waitForJoinedOrLobby(page);
     }
+
+    if (filledName && !pressedEnter) {
+      pressedEnter = await pressEnterFromPrejoin(page, CONTROL_PROBE_TIMEOUT_MS, CONTROL_ACTION_TIMEOUT_MS);
+    }
+
+    const stateAfterActions = await joinedOrLobbyState(page, CONTROL_PROBE_TIMEOUT_MS);
+    if (stateAfterActions) return stateAfterActions;
+
+    const blocker = await prejoinBlocker(page, mode, CONTROL_PROBE_TIMEOUT_MS);
+    if (blocker) throw new Error(`${blocker} ${await prejoinDiagnostic(page)}`);
+
+    await page.waitForTimeout(PREJOIN_POLL_INTERVAL_MS);
   }
-  if (!clickedJoin) throw new Error(`Teams pre-join screen did not show a Join now button. ${await prejoinDiagnostic(page)}`);
-  return waitForJoinedOrLobby(page);
+
+  const suffix = pressedEnter ? " after pressing Enter" : "";
+  throw new Error(`Teams pre-join screen did not show a Join now button${suffix}. ${await prejoinDiagnostic(page)}`);
 }
 
 function joinButtonLocators(page: any): any[] {
@@ -194,25 +215,30 @@ function locatorScopes(page: any): any[] {
   return scopes;
 }
 
-async function dismissDevicePrompts(page: any): Promise<void> {
-  await clickAny(locatorScopes(page).map((scope) => scope.getByRole("button", { name: /continue without audio or video/i })), 3_000);
+async function dismissDevicePrompts(page: any, visibleTimeout = 3_000, actionTimeout = visibleTimeout): Promise<void> {
+  await clickAny(locatorScopes(page).map((scope) => scope.getByRole("button", { name: /continue without audio or video/i })), visibleTimeout, actionTimeout);
   for (const scope of locatorScopes(page)) {
     for (const label of [/microphone/i, /camera/i]) {
       const toggle = scope.getByRole("switch", { name: label });
-      const checked = await toggle.isChecked({ timeout: 1_000 }).catch(() => false);
-      if (checked) await toggle.click({ timeout: 1_000 }).catch(() => undefined);
+      const checked = await toggle.isChecked({ timeout: visibleTimeout }).catch(() => false);
+      if (checked) await toggle.click({ timeout: actionTimeout }).catch(() => undefined);
     }
   }
 }
 
 async function waitForJoinedOrLobby(page: any): Promise<"waiting_room" | "joined"> {
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    if (await hasJoinedSignals(page, 1_000)) return "joined";
-    if (await hasLobbySignals(page, 1_000)) return "waiting_room";
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const state = await joinedOrLobbyState(page, CONTROL_PROBE_TIMEOUT_MS);
+    if (state) return state;
     await page.waitForTimeout(1_000);
   }
   throw new Error("Teams did not confirm joined or waiting room state after Join now");
+}
+
+async function joinedOrLobbyState(page: any, timeout: number): Promise<JoinedState | null> {
+  if (await hasJoinedSignals(page, timeout)) return "joined";
+  if (await hasLobbySignals(page, timeout)) return "waiting_room";
+  return null;
 }
 
 async function hasJoinedSignals(page: any, timeout: number): Promise<boolean> {
@@ -234,11 +260,26 @@ async function hasLobbySignals(page: any, timeout: number): Promise<boolean> {
   return false;
 }
 
-async function pressEnterFromPrejoin(page: any): Promise<boolean> {
+async function prejoinBlocker(page: any, mode: JoinMode, timeout: number): Promise<string | null> {
+  if (mode !== "guest") return null;
+  for (const scope of locatorScopes(page)) {
+    if (
+      await scope
+        .getByText(/sign in to join|join without signing in is not available|anonymous users.*(disabled|not allowed)|guest.*(disabled|not allowed)|ask your admin|not authorized/i)
+        .isVisible({ timeout })
+        .catch(() => false)
+    ) {
+      return "Teams guest join is blocked or requires sign-in.";
+    }
+  }
+  return null;
+}
+
+async function pressEnterFromPrejoin(page: any, visibleTimeout = 500, actionTimeout = 1_000): Promise<boolean> {
   for (const scope of locatorScopes(page)) {
     for (const target of guestNameLocatorsForScope(scope)) {
-      if (await target.first().isVisible({ timeout: 500 }).catch(() => false)) {
-        await target.first().press("Enter", { timeout: 1_000 }).catch(() => undefined);
+      if (await target.first().isVisible({ timeout: visibleTimeout }).catch(() => false)) {
+        await target.first().press("Enter", { timeout: actionTimeout }).catch(() => undefined);
         return true;
       }
     }
@@ -281,11 +322,13 @@ async function diagnosticForScope(scope: any, index: number): Promise<string> {
         id: element.id ?? ""
       }));
   });
+  const ready = sanitizeDiagnosticText(String((await safeEvaluate(scope, () => document.readyState)) ?? "unknown"));
+  const body = sanitizeDiagnosticText(String((await safeEvaluate(scope, () => document.body?.innerText ?? "")) ?? ""));
   const snippets = Array.isArray(visibleControls)
     ? visibleControls.map((control) => compactControl(control as Record<string, string>)).filter(Boolean).slice(0, 8)
     : [];
   const counts = await selectorCounts(scope, [...guestNameSelectors(), ...joinButtonSelectors()]);
-  return `scope${index}{url=${url || "unknown"} counts=${counts.join(",")} controls=${snippets.join(";") || "none"}}`;
+  return `scope${index}{url=${url || "unknown"} ready=${ready || "unknown"} counts=${counts.join(",")} controls=${snippets.join(";") || "none"} body=${body || "empty"}}`;
 }
 
 function joinButtonSelectors(): string[] {
@@ -360,29 +403,29 @@ function truncateDiagnostic(value: string): string {
   return value.length > 1_500 ? `${value.slice(0, 1_497)}...` : value;
 }
 
-async function clickAny(locators: any[], timeout: number): Promise<boolean> {
+async function clickAny(locators: any[], visibleTimeout: number, actionTimeout = visibleTimeout): Promise<boolean> {
   for (const locator of locators) {
-    if (await clickIfVisible(locator, timeout)) return true;
+    if (await clickIfVisible(locator, visibleTimeout, actionTimeout)) return true;
   }
   return false;
 }
 
-async function fillAny(locators: any[], value: string, timeout: number): Promise<boolean> {
+async function fillAny(locators: any[], value: string, visibleTimeout: number, actionTimeout = visibleTimeout): Promise<boolean> {
   for (const locator of locators) {
-    if (await fillIfVisible(locator, value, timeout)) return true;
+    if (await fillIfVisible(locator, value, visibleTimeout, actionTimeout)) return true;
   }
   return false;
 }
 
-async function clickIfVisible(locator: any, timeout: number): Promise<boolean> {
-  if (!(await locator.first().isVisible({ timeout }).catch(() => false))) return false;
-  await locator.first().click({ timeout });
+async function clickIfVisible(locator: any, visibleTimeout: number, actionTimeout = visibleTimeout): Promise<boolean> {
+  if (!(await locator.first().isVisible({ timeout: visibleTimeout }).catch(() => false))) return false;
+  await locator.first().click({ timeout: actionTimeout });
   return true;
 }
 
-async function fillIfVisible(locator: any, value: string, timeout: number): Promise<boolean> {
-  if (!(await locator.first().isVisible({ timeout }).catch(() => false))) return false;
-  await locator.first().fill(value, { timeout });
+async function fillIfVisible(locator: any, value: string, visibleTimeout: number, actionTimeout = visibleTimeout): Promise<boolean> {
+  if (!(await locator.first().isVisible({ timeout: visibleTimeout }).catch(() => false))) return false;
+  await locator.first().fill(value, { timeout: actionTimeout });
   return true;
 }
 
