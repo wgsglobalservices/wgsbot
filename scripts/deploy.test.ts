@@ -10,9 +10,6 @@ describe("deployMinutesbot", () => {
       ensureResources: async ({ environment }) => {
         events.push(`ensure:${environment}`);
       },
-      ensureBotRuntimeWorker: async (command, args) => {
-        events.push(`${command} ${args.join(" ")}`);
-      },
       runCommand: async (command, args) => {
         events.push(`${command} ${args.join(" ")}`);
       },
@@ -20,11 +17,7 @@ describe("deployMinutesbot", () => {
       error: () => undefined
     });
 
-    expect(events).toEqual([
-      "ensure:production",
-      "wrangler deploy --config deploy/bot-container/wrangler.jsonc",
-      "wrangler deploy --env production"
-    ]);
+    expect(events).toEqual(["ensure:production", "wrangler deploy --env production"]);
   });
 
   it("ensures staging queues before deploying staging", async () => {
@@ -35,9 +28,6 @@ describe("deployMinutesbot", () => {
       ensureResources: async ({ environment }) => {
         events.push(`ensure:${environment}`);
       },
-      ensureBotRuntimeWorker: async (command, args) => {
-        events.push(`${command} ${args.join(" ")}`);
-      },
       runCommand: async (command, args) => {
         events.push(`${command} ${args.join(" ")}`);
       },
@@ -45,11 +35,7 @@ describe("deployMinutesbot", () => {
       error: () => undefined
     });
 
-    expect(events).toEqual([
-      "ensure:staging",
-      "wrangler deploy --config deploy/bot-container/wrangler.jsonc",
-      "wrangler deploy --env staging"
-    ]);
+    expect(events).toEqual(["ensure:staging", "wrangler deploy --env staging"]);
   });
 
   it("fails invalid environments before deployment", async () => {

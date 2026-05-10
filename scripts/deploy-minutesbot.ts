@@ -12,24 +12,19 @@ type EnsureResources = (options: EnsureCloudflareResourcesOptions) => Promise<vo
 type DeployMinutesbotOptions = {
   environment?: CloudflareEnvironment;
   ensureResources?: EnsureResources;
-  ensureBotRuntimeWorker?: RunCommand;
   runCommand?: RunCommand;
   log?: (message: string) => void;
   error?: (message: string) => void;
 };
 
-const BOT_RUNTIME_CONFIG_PATH = "deploy/bot-container/wrangler.jsonc";
-
 export async function deployMinutesbot(options: DeployMinutesbotOptions = {}): Promise<void> {
   const environment = options.environment ?? "production";
   const ensureResources = options.ensureResources ?? ensureCloudflareResources;
   const runCommand = options.runCommand ?? runWrangler;
-  const ensureBotRuntimeWorker = options.ensureBotRuntimeWorker ?? runCommand;
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
 
   await ensureResources({ environment, runCommand, log, error });
-  await ensureBotRuntimeWorker("wrangler", ["deploy", "--config", BOT_RUNTIME_CONFIG_PATH]);
   await runCommand("wrangler", ["deploy", "--env", environment]);
 }
 
