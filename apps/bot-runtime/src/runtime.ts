@@ -116,38 +116,62 @@ async function joinAsGuest(page: any, input: RuntimeRecorderInput): Promise<"wai
 
 async function clickTeamsWebEntry(page: any): Promise<void> {
   const clicked = await clickAny(
-    [
-      page.getByRole("button", { name: /continue on this browser|join on the web|use the web app|continue without audio or video/i }),
-      page.getByRole("link", { name: /continue on this browser|join on the web|use the web app/i }),
-      page.getByText(/continue on this browser|join on the web|use the web app/i)
-    ],
+    locatorScopes(page).flatMap((scope) => [
+      scope.getByRole("button", { name: /continue on this browser|join on the web|use the web app|continue without audio or video/i }),
+      scope.getByRole("link", { name: /continue on this browser|join on the web|use the web app/i }),
+      scope.getByText(/continue on this browser|join on the web|use the web app/i)
+    ]),
     20_000
   );
   if (!clicked) return;
   await page.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => undefined);
 }
 
-async function fillGuestName(page: any, botName: string): Promise<void> {
-  await fillAny(guestNameLocators(page), botName, 20_000);
+async function fillGuestName(page: any, botName: string): Promise<boolean> {
+  return fillAny(guestNameLocators(page), botName, 20_000);
 }
 
 async function joinFromPrejoin(page: any, botName: string): Promise<"waiting_room" | "joined"> {
   await dismissDevicePrompts(page);
-  await fillAny(guestNameLocators(page), botName, 1_000);
-  const clickedJoin = await clickAny(
-    [
-      page.getByRole("button", { name: /^join now$/i }),
-      page.getByRole("button", { name: /^join$/i }),
-      page.getByText(/^join now$/i)
-    ],
-    30_000
-  );
-  if (!clickedJoin) throw new Error("Teams pre-join screen did not show a Join now button");
+  const filledName = await fillAny(guestNameLocators(page), botName, 1_000);
+  const clickedJoin = await clickAny(joinButtonLocators(page), 30_000);
+  if (!clickedJoin && filledName) {
+    const pressedEnter = await pressEnterFromPrejoin(page);
+    if (pressedEnter) {
+      try {
+        return await waitForJoinedOrLobby(page);
+      } catch {
+        throw new Error(`Teams pre-join screen did not show a Join now button after pressing Enter. ${await prejoinDiagnostic(page)}`);
+      }
+    }
+  }
+  if (!clickedJoin) throw new Error(`Teams pre-join screen did not show a Join now button. ${await prejoinDiagnostic(page)}`);
   return waitForJoinedOrLobby(page);
 }
 
+function joinButtonLocators(page: any): any[] {
+  return locatorScopes(page).flatMap((scope) => [
+    scope.getByRole("button", { name: /join now|ask to join|join/i }),
+    scope.getByRole("link", { name: /join now|ask to join|join/i }),
+    scope.getByText(/^(join now|ask to join|join)$/i),
+    ...joinButtonSelectors().map((selector) => scope.locator(selector))
+  ]);
+}
+
 function guestNameLocators(page: any): any[] {
-  const selectors = [
+  return locatorScopes(page).flatMap(guestNameLocatorsForScope);
+}
+
+function guestNameLocatorsForScope(scope: any): any[] {
+  return [
+    scope.getByRole("textbox", { name: /type your name|enter name|name/i }),
+    scope.getByPlaceholder(/type your name|enter name|name/i),
+    ...guestNameSelectors().map((selector) => scope.locator(selector))
+  ];
+}
+
+function guestNameSelectors(): string[] {
+  return [
     'input[data-tid="prejoin-display-name-input"]',
     'input[data-tid*="display-name" i]',
     'input[data-tid*="username" i]',
@@ -159,11 +183,6 @@ function guestNameLocators(page: any): any[] {
     'input[placeholder*="name" i]',
     '[contenteditable="true"][role="textbox"]'
   ];
-  return locatorScopes(page).flatMap((scope) => [
-    scope.getByRole("textbox", { name: /type your name|enter name|name/i }),
-    scope.getByPlaceholder(/type your name|enter name|name/i),
-    ...selectors.map((selector) => scope.locator(selector))
-  ]);
 }
 
 function locatorScopes(page: any): any[] {
@@ -176,11 +195,13 @@ function locatorScopes(page: any): any[] {
 }
 
 async function dismissDevicePrompts(page: any): Promise<void> {
-  await clickIfVisible(page.getByRole("button", { name: /continue without audio or video/i }), 3_000);
-  for (const label of [/microphone/i, /camera/i]) {
-    const toggle = page.getByRole("switch", { name: label });
-    const checked = await toggle.isChecked({ timeout: 1_000 }).catch(() => false);
-    if (checked) await toggle.click({ timeout: 1_000 }).catch(() => undefined);
+  await clickAny(locatorScopes(page).map((scope) => scope.getByRole("button", { name: /continue without audio or video/i })), 3_000);
+  for (const scope of locatorScopes(page)) {
+    for (const label of [/microphone/i, /camera/i]) {
+      const toggle = scope.getByRole("switch", { name: label });
+      const checked = await toggle.isChecked({ timeout: 1_000 }).catch(() => false);
+      if (checked) await toggle.click({ timeout: 1_000 }).catch(() => undefined);
+    }
   }
 }
 
@@ -195,18 +216,148 @@ async function waitForJoinedOrLobby(page: any): Promise<"waiting_room" | "joined
 }
 
 async function hasJoinedSignals(page: any, timeout: number): Promise<boolean> {
-  return (
-    (await page.getByRole("button", { name: /leave|hang up/i }).isVisible({ timeout }).catch(() => false)) ||
-    (await page.getByRole("button", { name: /people|participants|chat/i }).isVisible({ timeout }).catch(() => false)) ||
-    (await page.getByText(/you(?:'|’)re the only one here|meeting chat|participants/i).isVisible({ timeout }).catch(() => false))
-  );
+  for (const scope of locatorScopes(page)) {
+    if (await scope.getByRole("button", { name: /leave|hang up/i }).isVisible({ timeout }).catch(() => false)) return true;
+    if (await scope.getByRole("button", { name: /people|participants|chat/i }).isVisible({ timeout }).catch(() => false)) return true;
+    if (await scope.getByText(/you(?:'|’)re the only one here|meeting chat|participants/i).isVisible({ timeout }).catch(() => false)) return true;
+  }
+  return false;
 }
 
 async function hasLobbySignals(page: any, timeout: number): Promise<boolean> {
-  return (
-    (await page.getByText(/someone.*let you in|waiting.*lobby|you(?:'|’)re in the lobby|when the meeting starts/i).isVisible({ timeout }).catch(() => false)) ||
-    (await page.getByText(/ask to join|admit/i).isVisible({ timeout }).catch(() => false))
+  for (const scope of locatorScopes(page)) {
+    if (await scope.getByText(/someone.*let you in|waiting.*lobby|you(?:'|’)re in the lobby|when the meeting starts/i).isVisible({ timeout }).catch(() => false)) {
+      return true;
+    }
+    if (await scope.getByText(/ask to join|admit/i).isVisible({ timeout }).catch(() => false)) return true;
+  }
+  return false;
+}
+
+async function pressEnterFromPrejoin(page: any): Promise<boolean> {
+  for (const scope of locatorScopes(page)) {
+    for (const target of guestNameLocatorsForScope(scope)) {
+      if (await target.first().isVisible({ timeout: 500 }).catch(() => false)) {
+        await target.first().press("Enter", { timeout: 1_000 }).catch(() => undefined);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function prejoinDiagnostic(page: any): Promise<string> {
+  const scopeDetails = await Promise.all(locatorScopes(page).map((scope, index) => diagnosticForScope(scope, index)));
+  return truncateDiagnostic(
+    [
+      `url=${redactUrl(await safeString(() => page.url()))}`,
+      `frames=${frameUrls(page).map(redactUrl).join(",") || "none"}`,
+      ...scopeDetails
+    ]
+      .filter(Boolean)
+      .join(" | ")
   );
+}
+
+async function diagnosticForScope(scope: any, index: number): Promise<string> {
+  const url = redactUrl(await safeString(() => typeof scope.url === "function" ? scope.url() : ""));
+  const visibleControls = await safeEvaluate(scope, () => {
+    const controls = Array.from(document.querySelectorAll("button,a,[role='button'],[role='link'],input,[aria-label],[title]"));
+    return controls
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      })
+      .slice(0, 16)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        role: element.getAttribute("role") ?? "",
+        text: element.textContent ?? "",
+        aria: element.getAttribute("aria-label") ?? "",
+        title: element.getAttribute("title") ?? "",
+        placeholder: element.getAttribute("placeholder") ?? "",
+        tid: element.getAttribute("data-tid") ?? "",
+        id: element.id ?? ""
+      }));
+  });
+  const snippets = Array.isArray(visibleControls)
+    ? visibleControls.map((control) => compactControl(control as Record<string, string>)).filter(Boolean).slice(0, 8)
+    : [];
+  const counts = await selectorCounts(scope, [...guestNameSelectors(), ...joinButtonSelectors()]);
+  return `scope${index}{url=${url || "unknown"} counts=${counts.join(",")} controls=${snippets.join(";") || "none"}}`;
+}
+
+function joinButtonSelectors(): string[] {
+  return [
+    'button[data-tid*="join" i]',
+    '[role="button"][data-tid*="join" i]',
+    'button[id*="join" i]',
+    '[role="button"][id*="join" i]',
+    'button[aria-label*="join" i]',
+    '[role="button"][aria-label*="join" i]',
+    'button[title*="join" i]',
+    '[role="button"][title*="join" i]',
+    'a[data-tid*="join" i]',
+    'a[id*="join" i]',
+    'a[aria-label*="join" i]',
+    'a[title*="join" i]'
+  ];
+}
+
+async function selectorCounts(scope: any, selectors: string[]): Promise<string[]> {
+  const counts = await Promise.all(
+    selectors.map(async (selector) => {
+      const count = await scope.locator(selector).count({ timeout: 500 }).catch(() => 0);
+      return count > 0 ? `${selector}:${count}` : "";
+    })
+  );
+  return counts.filter(Boolean).slice(0, 8);
+}
+
+function compactControl(control: Record<string, string>): string {
+  return sanitizeDiagnosticText(
+    [control.tag, control.role, control.text, control.aria, control.title, control.placeholder, control.tid, control.id]
+      .filter(Boolean)
+      .join("/")
+  );
+}
+
+async function safeEvaluate<T>(scope: any, fn: () => T): Promise<T | null> {
+  if (typeof scope.evaluate !== "function") return null;
+  return scope.evaluate(fn).catch(() => null);
+}
+
+async function safeString(fn: () => string): Promise<string> {
+  try {
+    return fn();
+  } catch {
+    return "";
+  }
+}
+
+function frameUrls(page: any): string[] {
+  const frames = typeof page.frames === "function" ? page.frames() : [];
+  return frames.map((frame: any) => (frame && frame !== page && typeof frame.url === "function" ? frame.url() : "")).filter(Boolean);
+}
+
+function redactUrl(value: string): string {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    const path = url.pathname.split("/").filter(Boolean).slice(0, 2).join("/");
+    return `${url.hostname}${path ? `/${path}` : ""}${url.search ? "?..." : ""}`;
+  } catch {
+    return sanitizeDiagnosticText(value);
+  }
+}
+
+function sanitizeDiagnosticText(value: string): string {
+  return value.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]").replace(/\s+/g, " ").trim().slice(0, 140);
+}
+
+function truncateDiagnostic(value: string): string {
+  return value.length > 1_500 ? `${value.slice(0, 1_497)}...` : value;
 }
 
 async function clickAny(locators: any[], timeout: number): Promise<boolean> {
