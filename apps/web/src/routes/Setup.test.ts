@@ -3,7 +3,7 @@ import { File as NodeFile } from "node:buffer";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { defaultSampleRecapRecipient, defaultSettings, type AppSettings } from "@minutesbot/shared";
-import { SettingsForm, configuredLabel, getTimeZoneOptions, parseAllowedDomains, parseEmailList, resolveSampleRecapRecipient } from "../components/SettingsForm";
+import { SettingsForm, configuredLabel, getTimeZoneOptions, parseAllowedDomains, parseEmailList, resolveListTextDraft, resolveSampleRecapRecipient } from "../components/SettingsForm";
 import { fileToBotImageUpload, saveSetupSettings } from "./Setup";
 
 describe("setup save status", () => {
@@ -34,6 +34,11 @@ describe("allowed domains parsing", () => {
       "subsidiary.example",
       "partner.example"
     ]);
+  });
+
+  it("preserves typed delimiters while the parsed domain list has not changed", () => {
+    expect(resolveListTextDraft("minutes.bot", "minutes.bot,", ["minutes.bot"])).toBe("minutes.bot,");
+    expect(resolveListTextDraft("minutes.bot", "minutes.bot\n", ["minutes.bot"])).toBe("minutes.bot\n");
   });
 });
 

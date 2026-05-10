@@ -146,17 +146,26 @@ export function SettingsForm({
 }
 
 export function parseAllowedDomains(value: string): string[] {
+  return parseDelimitedList(value);
+}
+
+export function parseEmailList(value: string): string[] {
+  return parseDelimitedList(value);
+}
+
+export function resolveListTextDraft(formattedValue: string, draftValue: string, parsedValues: string[]): string {
+  return listsMatch(parseDelimitedList(draftValue), parsedValues) ? draftValue : formattedValue;
+}
+
+function parseDelimitedList(value: string): string[] {
   return value
     .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-export function parseEmailList(value: string): string[] {
-  return value
-    .split(/[\n,]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function listsMatch(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 export function getTimeZoneOptions(currentTimeZone: string): string[] {
@@ -267,11 +276,26 @@ function AllowedDomainsField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(value);
+  const displayValue = resolveListTextDraft(value, draftValue, domains);
+
+  useEffect(() => {
+    setDraftValue((current) => resolveListTextDraft(value, current, domains));
+  }, [domains, value]);
+
   return (
     <div className="allowedDomainsControl">
       <label className="setupField fieldWidth-domains">
         <span>Allowed domains</span>
-        <textarea rows={3} value={value} onChange={(event) => onChange(event.target.value)} />
+        <textarea
+          rows={3}
+          value={displayValue}
+          onBlur={() => setDraftValue(value)}
+          onChange={(event) => {
+            setDraftValue(event.target.value);
+            onChange(event.target.value);
+          }}
+        />
       </label>
       <span className="fieldHelp">Enter one domain per line, or separate domains with commas.</span>
       <div className="domainChips" aria-label="Parsed allowed domains">
@@ -290,11 +314,26 @@ function EmailAliasesField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(value);
+  const displayValue = resolveListTextDraft(value, draftValue, emails);
+
+  useEffect(() => {
+    setDraftValue((current) => resolveListTextDraft(value, current, emails));
+  }, [emails, value]);
+
   return (
     <div className="allowedDomainsControl">
       <label className="setupField fieldWidth-domains">
         <span>Notetaker aliases</span>
-        <textarea rows={3} value={value} onChange={(event) => onChange(event.target.value)} />
+        <textarea
+          rows={3}
+          value={displayValue}
+          onBlur={() => setDraftValue(value)}
+          onChange={(event) => {
+            setDraftValue(event.target.value);
+            onChange(event.target.value);
+          }}
+        />
       </label>
       <span className="fieldHelp">Invite aliases that route to the notetaker mailbox. Enter one email per line, or separate emails with commas.</span>
       <div className="domainChips" aria-label="Parsed notetaker aliases">
