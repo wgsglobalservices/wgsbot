@@ -72,6 +72,67 @@ class MeetingDetailD1 {
   }
 }
 
+class RetriedMeetingDetailD1 {
+  prepare(sql: string) {
+    return {
+      bind() {
+        return this;
+      },
+      async first() {
+        if (sql.includes("FROM meetings WHERE id")) {
+          return {
+            id: "mtg_1",
+            calendar_uid: "teams-link-1",
+            subject: "Retried bot",
+            status: "BOT_JOINING",
+            latest_error: null,
+            attendee_bot_id: "bot_new",
+            attendee_bot_state: "joining",
+            transcript_status: "not_started",
+            summary_status: "not_started",
+            created_at: "2026-05-10T03:26:00.000Z",
+            updated_at: "2026-05-10T03:30:00.000Z"
+          };
+        }
+        return null;
+      },
+      async run() {
+        return { success: true };
+      },
+      async all() {
+        if (sql.includes("FROM attendee_webhook_events")) {
+          return {
+            results: [
+              {
+                id: "wh_new",
+                meeting_id: "mtg_1",
+                attendee_bot_id: "bot_new",
+                event_type: "state_change",
+                payload: JSON.stringify({ data: { event_type: "state_change", new_state: "joining" } }),
+                created_at: "2026-05-10T03:30:00.000Z"
+              },
+              {
+                id: "wh_old",
+                meeting_id: "mtg_1",
+                attendee_bot_id: "bot_old",
+                event_type: "fatal_error",
+                payload: JSON.stringify({
+                  data: {
+                    event_type: "fatal_error",
+                    latest_error: "Teams pre-join screen did not show a Join now button"
+                  }
+                }),
+                created_at: "2026-05-10T03:26:22.959Z"
+              }
+            ]
+          };
+        }
+        return { results: [] };
+      }
+    };
+  }
+}
+
 describe("api worker", () => {
   it("returns health", async () => {
     const response = await app.request("/api/health");
@@ -193,6 +254,29 @@ describe("api worker", () => {
     await expect(response.json()).resolves.toMatchObject({
       meeting: {
         latest_error: "Teams pre-join screen did not show a Join now button"
+      }
+    });
+  });
+
+  it("does not show stale fatal webhook errors after a bot retry starts joining", async () => {
+    const response = await app.request(
+      "/api/meetings/mtg_1",
+      { headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: new RetriedMeetingDetailD1() as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      meeting: {
+        status: "BOT_JOINING",
+        latest_error: null
       }
     });
   });

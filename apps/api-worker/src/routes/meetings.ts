@@ -20,7 +20,7 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
     return c.json({
       meeting: {
         ...meeting,
-        latest_error: meeting.latest_error ?? latestWebhookError(webhookEvents)
+        latest_error: meeting.latest_error ?? (meeting.status === "BOT_FATAL_ERROR" ? latestWebhookError(webhookEvents, meeting.attendee_bot_id ?? null) : null)
       },
       attendees: await listMeetingAttendees(c.env.DB, id),
       transcriptSegments: await listTranscriptSegments(c.env.DB, id),
@@ -54,8 +54,9 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
   })
   .delete("/:id/artifacts", async (c) => c.json({ ok: true, deleted: await deleteMeetingArtifacts(c.env, c.req.param("id")) }));
 
-function latestWebhookError(events: Array<{ payload?: unknown }>): string | null {
+function latestWebhookError(events: Array<{ attendee_bot_id?: string | null; payload?: unknown }>, botId: string | null): string | null {
   for (const event of events) {
+    if (botId && event.attendee_bot_id && event.attendee_bot_id !== botId) continue;
     const payload = typeof event.payload === "string" ? parseJsonObject(event.payload) : null;
     const data = payload && typeof payload.data === "object" && payload.data ? payload.data as Record<string, unknown> : null;
     if (typeof data?.latest_error === "string" && data.latest_error.trim()) return data.latest_error;
