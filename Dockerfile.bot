@@ -15,7 +15,7 @@ COPY apps/bot-runtime ./apps/bot-runtime
 
 RUN corepack enable \
   && corepack prepare pnpm@9.15.4 --activate \
-  && pnpm install --frozen-lockfile \
+  && pnpm --filter @minutesbot/bot-runtime... install --frozen-lockfile \
   && pnpm --filter @minutesbot/bot-runtime build
 
 ENV PORT=8787
