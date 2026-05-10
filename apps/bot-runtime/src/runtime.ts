@@ -291,6 +291,7 @@ async function prejoinDiagnostic(page: any): Promise<string> {
   const scopeDetails = await Promise.all(locatorScopes(page).map((scope, index) => diagnosticForScope(scope, index)));
   return truncateDiagnostic(
     [
+      `diagnosticVersion=${sanitizeDiagnosticText(runtimeDiagnosticVersion())}`,
       `url=${redactUrl(await safeString(() => page.url()))}`,
       `frames=${frameUrls(page).map(redactUrl).join(",") || "none"}`,
       ...scopeDetails
@@ -401,6 +402,10 @@ function sanitizeDiagnosticText(value: string): string {
 
 function truncateDiagnostic(value: string): string {
   return value.length > 1_500 ? `${value.slice(0, 1_497)}...` : value;
+}
+
+function runtimeDiagnosticVersion(): string {
+  return process.env.BOT_RUNTIME_VERSION?.trim() || "unknown";
 }
 
 async function clickAny(locators: any[], visibleTimeout: number, actionTimeout = visibleTimeout): Promise<boolean> {

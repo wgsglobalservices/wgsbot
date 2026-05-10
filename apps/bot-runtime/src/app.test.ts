@@ -23,7 +23,11 @@ describe("bot runtime app", () => {
 
   it("passes health in guest mode without a recorder password", async () => {
     const app = createBotRuntimeApp({
-      env: { BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts" },
+      env: {
+        BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
+        BOT_RUNTIME_VERSION: "041f23c",
+        BOT_CONTAINER_INSTANCE_ID: "production-test-container"
+      },
       checkBinary: async () => true,
       recorder: fakeRecorder(),
       recordingStore: fakeRecordingStore(),
@@ -37,7 +41,10 @@ describe("bot runtime app", () => {
       ok: true,
       runtime: "meeting-bot-container",
       missing: [],
-      auth: "guest"
+      auth: "guest",
+      version: "041f23c",
+      diagnosticVersion: "041f23c",
+      containerInstanceId: "production-test-container"
     });
   });
 

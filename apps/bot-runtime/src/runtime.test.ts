@@ -132,6 +132,8 @@ describe("Teams runtime browser flow", () => {
   });
 
   it("includes a compact pre-join diagnostic when no Join control is discoverable", async () => {
+    const previousVersion = process.env.BOT_RUNTIME_VERSION;
+    process.env.BOT_RUNTIME_VERSION = "041f23c";
     const page = fakePage({
       url: "https://teams.microsoft.com/l/meetup-join/secret?context=private",
       controls: [
@@ -140,12 +142,18 @@ describe("Teams runtime browser flow", () => {
       ]
     });
 
-    await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow(
-      "url=teams.microsoft.com/l/meetup-join?..."
-    );
-    await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("controls=button/Continue without audio or video");
-    await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("ready=");
-    await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("body=");
+    try {
+      await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow(
+        "url=teams.microsoft.com/l/meetup-join?..."
+      );
+      await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("controls=button/Continue without audio or video");
+      await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("ready=");
+      await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("body=");
+      await expect(__runtimeTest.joinAsGuest(page, guestInput())).rejects.toThrow("diagnosticVersion=041f23c");
+    } finally {
+      if (previousVersion === undefined) delete process.env.BOT_RUNTIME_VERSION;
+      else process.env.BOT_RUNTIME_VERSION = previousVersion;
+    }
   });
 
   it("fills the guest display name from Teams pre-join input selectors when accessibility locators miss it", async () => {

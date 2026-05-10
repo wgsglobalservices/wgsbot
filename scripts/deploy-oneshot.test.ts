@@ -67,6 +67,7 @@ describe("build oneshot Wrangler configs", () => {
     expect(botConfig).toContain("meeting-api.minutes.bot");
     expect(botConfig).toContain("meeting.minutes.bot");
     expect(botConfig).toContain('"BOT_CONTAINER_INSTANCE_ID": "production-test-container"');
+    expect(botConfig).toContain('"BOT_RUNTIME_VERSION": "runtime-test-version"');
     expect(minutesbotConfig).toContain('"binding": "BOT_RUNTIME"');
     expect(minutesbotConfig).toContain('"service": "minutesbot-meeting-bot"');
     expect(botConfig).toContain("../Dockerfile.bot");
@@ -174,6 +175,34 @@ describe("deployOneshot", () => {
     expect([...writes.keys()]).toContain(".wrangler/oneshot-bot.jsonc");
     expect(writes.get(".wrangler/oneshot-bot.jsonc")).toMatch(/"BOT_CONTAINER_INSTANCE_ID": "production-\d{14}-[0-9a-f]{8}"/);
   });
+
+  it("generates a fresh bot container instance id even when the env file has an old one", async () => {
+    const writes = new Map<string, string>();
+
+    await deployOneshot({
+      env: sampleEnv({ BOT_CONTAINER_INSTANCE_ID: "production-stale-container" }),
+      runCommand: async (command, args) => {
+        if (args[0] === "d1" && args[1] === "list") return JSON.stringify([{ name: "minutesbot", uuid: "db-id" }]);
+      },
+      runCommandWithInput: async () => undefined,
+      fetchHealth: async () => Response.json({ ok: true }),
+      readTextFile: async (path) => {
+        const contents = writes.get(path);
+        if (!contents) throw new Error(`missing ${path}`);
+        return contents;
+      },
+      makeDir: async () => undefined,
+      writeTextFile: async (path, contents) => {
+        writes.set(path, contents);
+      },
+      log: () => undefined,
+      error: () => undefined
+    });
+
+    const botConfig = writes.get(".wrangler/oneshot-bot.jsonc") ?? "";
+    expect(botConfig).not.toContain("production-stale-container");
+    expect(botConfig).toMatch(/"BOT_CONTAINER_INSTANCE_ID": "production-\d{14}-[0-9a-f]{8}"/);
+  });
 });
 
 function sampleEnv(overrides: Record<string, string> = {}): Record<string, string> {
@@ -191,6 +220,7 @@ function sampleEnv(overrides: Record<string, string> = {}): Record<string, strin
     TEAMS_RECORDER_PASSWORD: "teams-recorder-password",
     OPENROUTER_API_KEY: "openrouter-key",
     SESSION_SECRET: "session-secret",
+    BOT_RUNTIME_VERSION: "runtime-test-version",
     ...overrides
   };
 }

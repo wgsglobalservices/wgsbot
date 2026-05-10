@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -66,7 +66,8 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   const env = {
     ...loadedEnv,
     BOT_INTERNAL_TOKEN: loadedEnv.BOT_INTERNAL_TOKEN?.trim() || generateInternalToken(),
-    BOT_CONTAINER_INSTANCE_ID: loadedEnv.BOT_CONTAINER_INSTANCE_ID?.trim() || generateBotContainerInstanceId(environment)
+    BOT_CONTAINER_INSTANCE_ID: generateBotContainerInstanceId(environment),
+    BOT_RUNTIME_VERSION: loadedEnv.BOT_RUNTIME_VERSION?.trim() || currentGitShortSha()
   };
 
   validateOneshotEnv(env, environment);
@@ -235,6 +236,7 @@ export function buildBotWranglerConfig(env: OneshotEnv, environment: CloudflareE
     vars: {
       BOT_CONTAINER_SLEEP_AFTER: "24h",
       BOT_CONTAINER_INSTANCE_ID: env.BOT_CONTAINER_INSTANCE_ID,
+      BOT_RUNTIME_VERSION: env.BOT_RUNTIME_VERSION,
       BOT_API_BASE_URL: env.BOT_API_BASE_URL,
       BOT_RECORDING_BUCKET_NAME: env.BOT_RECORDING_BUCKET_NAME,
       TEAMS_RECORDER_EMAIL: env.TEAMS_RECORDER_EMAIL,
@@ -467,6 +469,13 @@ function generateInternalToken(): string {
 function generateBotContainerInstanceId(environment: CloudflareEnvironment): string {
   const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
   return `${environment}-${timestamp}-${randomBytes(4).toString("hex")}`;
+}
+
+function currentGitShortSha(): string {
+  const result = spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
+  const sha = result.status === 0 ? result.stdout.trim() : "";
+  if (!sha) throw new Error("Unable to determine BOT_RUNTIME_VERSION from git. Set BOT_RUNTIME_VERSION in .env.oneshot and retry.");
+  return sha;
 }
 
 async function runWithInput(command: string, args: string[], input: string): Promise<string> {

@@ -51,6 +51,10 @@ export type BotHealth = {
   ok: boolean;
   runtime?: string;
   missing?: string[];
+  auth?: string;
+  version?: string;
+  diagnosticVersion?: string;
+  containerInstanceId?: string;
 };
 
 export type BotTranscriptSegment = {

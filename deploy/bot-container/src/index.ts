@@ -8,6 +8,7 @@ type BotContainerEnv = {
   BOT_INTERNAL_TOKEN?: string;
   BOT_API_BASE_URL?: string;
   BOT_RECORDING_BUCKET_NAME?: string;
+  BOT_RUNTIME_VERSION?: string;
   BOT_CONTAINER_SLEEP_AFTER?: string;
   BOT_CONTAINER_INSTANCE_ID?: string;
   BOT_WEBHOOK_BASE_URL?: string;
@@ -57,6 +58,8 @@ function stringEnv(env: BotContainerEnv): Record<string, string> {
       "BOT_INTERNAL_TOKEN",
       "BOT_API_BASE_URL",
       "BOT_RECORDING_BUCKET_NAME",
+      "BOT_RUNTIME_VERSION",
+      "BOT_CONTAINER_INSTANCE_ID",
       "BOT_WEBHOOK_BASE_URL",
       "TEAMS_RECORDER_EMAIL",
       "TEAMS_RECORDER_PASSWORD",

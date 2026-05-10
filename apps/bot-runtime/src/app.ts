@@ -5,6 +5,8 @@ import { timingSafeEqualString } from "@minutesbot/shared";
 type RuntimeEnv = {
   BOT_INTERNAL_TOKEN?: string;
   BOT_RECORDING_BUCKET_NAME?: string;
+  BOT_RUNTIME_VERSION?: string;
+  BOT_CONTAINER_INSTANCE_ID?: string;
   TEAMS_RECORDER_EMAIL?: string;
   TEAMS_RECORDER_PASSWORD?: string;
   BOT_ALLOW_GUEST_JOIN?: string;
@@ -76,7 +78,10 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
         ok: missing.length === 0,
         runtime: "meeting-bot-container",
         missing,
-        auth: deps.env.TEAMS_RECORDER_EMAIL && deps.env.TEAMS_RECORDER_PASSWORD ? "service_account" : "guest"
+        auth: deps.env.TEAMS_RECORDER_EMAIL && deps.env.TEAMS_RECORDER_PASSWORD ? "service_account" : "guest",
+        version: runtimeVersion(deps.env),
+        diagnosticVersion: runtimeVersion(deps.env),
+        containerInstanceId: deps.env.BOT_CONTAINER_INSTANCE_ID?.trim() || "unknown"
       },
       missing.length === 0 ? 200 : 503
     );
@@ -207,4 +212,8 @@ function publicBot(bot: BotRecord) {
     recording_state: bot.recording_state,
     latest_error: bot.latest_error
   };
+}
+
+function runtimeVersion(env: RuntimeEnv): string {
+  return env.BOT_RUNTIME_VERSION?.trim() || "unknown";
 }
