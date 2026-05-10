@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "@minutesbot/shared";
 import { createMeetingBot } from "./botCreation";
+import type { MeetingRow } from "@minutesbot/db";
 import type { WorkflowEnv } from "./env";
 
 class BotCreationD1 {
-  meeting = {
+  meeting: Partial<MeetingRow> = {
     id: "mtg_1",
     calendar_uid: "teams-link-1",
     teams_join_url: "https://teams.microsoft.com/l/meetup-join/abc",
@@ -12,6 +13,13 @@ class BotCreationD1 {
   };
   settings = defaultSettings;
   statusUpdates: Array<{ status: string; latestError: string | null }> = [];
+  botStateUpdates: Array<{
+    botId: string | null;
+    state: string | null;
+    transcriptionState: string | null;
+    recordingState: string | null;
+    status: string | null;
+  }> = [];
   auditLogs: Array<{ eventType: string; metadata: unknown }> = [];
 
   prepare(sql: string) {
@@ -32,6 +40,23 @@ class BotCreationD1 {
       async run() {
         if (sql.startsWith("UPDATE meetings SET status")) {
           db.statusUpdates.push({ status: this.values[0] as string, latestError: this.values[1] as string | null });
+          db.meeting.status = this.values[0] as MeetingRow["status"];
+          db.meeting.latest_error = this.values[1] as string | null;
+        }
+        if (sql.includes("attendee_bot_id = COALESCE")) {
+          const update = {
+            botId: this.values[0] as string | null,
+            state: this.values[1] as string | null,
+            transcriptionState: this.values[2] as string | null,
+            recordingState: this.values[3] as string | null,
+            status: this.values[5] as string | null
+          };
+          db.botStateUpdates.push(update);
+          db.meeting.attendee_bot_id = update.botId ?? db.meeting.attendee_bot_id;
+          db.meeting.attendee_bot_state = update.state ?? db.meeting.attendee_bot_state;
+          db.meeting.attendee_transcription_state = update.transcriptionState ?? db.meeting.attendee_transcription_state;
+          db.meeting.attendee_recording_state = update.recordingState ?? db.meeting.attendee_recording_state;
+          db.meeting.status = (update.status as MeetingRow["status"] | null) ?? db.meeting.status;
         }
         if (sql.startsWith("INSERT INTO audit_logs")) {
           db.auditLogs.push({ eventType: this.values[2] as string, metadata: this.values[5] ? JSON.parse(this.values[5] as string) : null });
@@ -118,7 +143,7 @@ describe("createMeetingBot failure handling", () => {
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
         requests.push({ url: String(url), init });
         if (String(url).endsWith("/_ops/health")) return Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] });
-        return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "joining" }, { status: 201 });
+        return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "queued" }, { status: 201 });
       })
     );
 
@@ -143,6 +168,49 @@ describe("createMeetingBot failure handling", () => {
           url: "https://minutesbot-webhook.example.com/api/webhooks/bot"
         }
       ]
+    });
+    expect(db.meeting).toMatchObject({
+      attendee_bot_id: "bot_1",
+      attendee_bot_state: "queued",
+      status: "BOT_CREATED"
+    });
+  });
+
+  it("does not downgrade bot state when a lifecycle webhook wins the creation race", async () => {
+    const db = new BotCreationD1();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith("/_ops/health")) return Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] });
+        db.meeting = {
+          ...db.meeting,
+          attendee_bot_id: "bot_1",
+          attendee_bot_state: "joining",
+          attendee_transcription_state: "pending",
+          attendee_recording_state: "pending",
+          status: "BOT_JOINING"
+        };
+        return Response.json(
+          {
+            id: "bot_1",
+            meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+            state: "queued",
+            transcription_state: "pending",
+            recording_state: "pending"
+          },
+          { status: 201 }
+        );
+      })
+    );
+
+    await createMeetingBot(env({}, db), "mtg_1");
+
+    expect(db.meeting).toMatchObject({
+      attendee_bot_id: "bot_1",
+      attendee_bot_state: "joining",
+      attendee_transcription_state: "pending",
+      attendee_recording_state: "pending",
+      status: "BOT_JOINING"
     });
   });
 

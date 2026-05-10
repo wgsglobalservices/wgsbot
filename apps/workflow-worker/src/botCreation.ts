@@ -1,5 +1,5 @@
 import { BOT_WEBHOOK_TRIGGERS, BotClient, BotClientError, type BotRun } from "@minutesbot/bot-client";
-import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
+import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus, type MeetingRow } from "@minutesbot/db";
 import { AppError, botWebhookUrl, minutesBefore, recordingR2Key, resolveBotBaseUrl } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
@@ -68,14 +68,23 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
     throw error;
   }
 
-  await updateMeetingBotState(env.DB, meetingId, {
-    botId: bot.id,
-    state: bot.state,
-    transcriptionState: bot.transcription_state,
-    recordingState: bot.recording_state,
-    status: "BOT_CREATED"
+  const latestMeeting = await getMeeting(env.DB, meetingId);
+  const lifecycleWebhookAlreadyAdvanced = hasLifecycleWebhookState(latestMeeting, bot);
+  if (!lifecycleWebhookAlreadyAdvanced) {
+    await updateMeetingBotState(env.DB, meetingId, {
+      botId: bot.id,
+      state: bot.state,
+      transcriptionState: bot.transcription_state,
+      recordingState: bot.recording_state,
+      status: "BOT_CREATED"
+    });
+  }
+  await createAuditLog(env.DB, {
+    eventType: "bot.created",
+    resourceType: "meeting",
+    resourceId: meetingId,
+    metadata: { botId: bot.id, state: lifecycleWebhookAlreadyAdvanced ? latestMeeting?.attendee_bot_state : bot.state }
   });
-  await createAuditLog(env.DB, { eventType: "bot.created", resourceType: "meeting", resourceId: meetingId, metadata: { botId: bot.id, state: bot.state } });
 }
 
 export function createBotClient(env: Pick<WorkflowEnv, "BOT_INTERNAL_TOKEN" | "BOT_RUNTIME">, baseUrl: string): BotClient {
@@ -111,6 +120,11 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 function secondsUntil(iso: string): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+}
+
+function hasLifecycleWebhookState(meeting: MeetingRow | null, bot: BotRun): boolean {
+  if (meeting?.attendee_bot_id !== bot.id || !meeting.attendee_bot_state) return false;
+  return meeting.attendee_bot_state !== bot.state || !["BOT_CREATE_QUEUED", "BOT_CREATED"].includes(meeting.status);
 }
 
 function botCreationFailure(error: unknown): { latestError: string; auditMetadata: Record<string, unknown> } {
