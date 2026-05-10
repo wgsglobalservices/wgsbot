@@ -43,7 +43,8 @@ export async function processBotWebhook(env: Env, payload: BotWebhookPayload): P
       state,
       transcriptionState: typeof payload.data.transcription_state === "string" ? payload.data.transcription_state : undefined,
       recordingState: typeof payload.data.recording_state === "string" ? payload.data.recording_state : undefined,
-      status: mapBotStateToMeetingStatus(state, String(payload.data.event_type ?? ""))
+      status: mapBotStateToMeetingStatus(state, String(payload.data.event_type ?? "")),
+      latestError: typeof payload.data.latest_error === "string" ? payload.data.latest_error : undefined
     });
     if (payload.data.event_type === "post_processing_completed") {
       await env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: meeting.id, botId: payload.bot_id });
@@ -80,11 +81,15 @@ export async function eligibleRecipientCount(env: Env, meetingId: string): Promi
 
 function mapBotStateToMeetingStatus(state?: string, eventType?: string) {
   if (eventType === "post_processing_completed") return "BOT_ENDED";
+  if (eventType === "fatal_error") return "BOT_FATAL_ERROR";
   if (!state) return undefined;
+  if (state === "failed" || state.includes("fatal") || state.includes("error")) return "BOT_FATAL_ERROR";
+  if (state === "joining") return "BOT_JOINING";
   if (state.includes("waiting")) return "BOT_WAITING_ROOM";
+  if (state === "joined") return "BOT_JOINED";
   if (state.includes("record")) return "BOT_RECORDING";
-  if (state.includes("join")) return "BOT_JOINED";
-  if (state.includes("fatal") || state.includes("error")) return "BOT_FATAL_ERROR";
+  if (state.includes("post_processing")) return "BOT_POST_PROCESSING";
+  if (state === "ended") return "BOT_ENDED";
   if (state.includes("leave")) return "BOT_LEAVING";
   return "BOT_CREATED";
 }

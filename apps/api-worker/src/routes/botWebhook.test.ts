@@ -115,6 +115,51 @@ describe("meeting bot webhook route", () => {
     expect(db.webhookEvents).toHaveLength(1);
   });
 
+  it("stores fatal meeting bot errors on the meeting", async () => {
+    const db = new WebhookD1();
+    const summaryQueue = { send: vi.fn(async () => undefined) };
+    const payload = {
+      idempotency_key: "wh_failed_1",
+      bot_id: "bot_1",
+      bot_metadata: { minutesbot_meeting_id: "mtg_1", calendar_uid: "teams-link-1" },
+      trigger: "bot.state_change",
+      data: {
+        event_type: "fatal_error",
+        new_state: "failed",
+        transcription_state: "failed",
+        recording_state: "failed",
+        latest_error: "Teams pre-join screen did not show a Join now button"
+      }
+    };
+
+    const response = await app.request(
+      "/api/webhooks/bot",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer managed-token"
+        },
+        body: JSON.stringify(payload)
+      },
+      env(db, summaryQueue)
+    );
+
+    expect(response.status).toBe(200);
+    expect(summaryQueue.send).not.toHaveBeenCalled();
+    expect(db.meetingUpdates.at(-1)).toEqual([
+      "bot_1",
+      "failed",
+      "failed",
+      "failed",
+      expect.any(String),
+      "BOT_FATAL_ERROR",
+      "Teams pre-join screen did not show a Join now button",
+      expect.any(String),
+      "mtg_1"
+    ]);
+  });
+
   it("returns Worker JSON for malformed managed webhook bodies", async () => {
     const db = new WebhookD1();
     const rawBody = "{bad-json";

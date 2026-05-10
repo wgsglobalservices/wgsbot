@@ -83,7 +83,7 @@ export async function updateMeetingStatus(db: D1Database, id: string, status: Me
 export async function updateMeetingBotState(
   db: D1Database,
   id: string,
-  input: { botId?: string; state?: string; transcriptionState?: string; recordingState?: string; status?: MeetingStatus }
+  input: { botId?: string; state?: string; transcriptionState?: string; recordingState?: string; status?: MeetingStatus; latestError?: string }
 ): Promise<void> {
   await db
     .prepare(
@@ -94,10 +94,21 @@ export async function updateMeetingBotState(
            attendee_recording_state = COALESCE(?, attendee_recording_state),
            attendee_last_event_at = ?,
            status = COALESCE(?, status),
+           latest_error = COALESCE(?, latest_error),
            updated_at = ?
        WHERE id = ?`
     )
-    .bind(input.botId ?? null, input.state ?? null, input.transcriptionState ?? null, input.recordingState ?? null, nowIso(), input.status ?? null, nowIso(), id)
+    .bind(
+      input.botId ?? null,
+      input.state ?? null,
+      input.transcriptionState ?? null,
+      input.recordingState ?? null,
+      nowIso(),
+      input.status ?? null,
+      input.latestError ?? null,
+      nowIso(),
+      id
+    )
     .run();
 }
 
