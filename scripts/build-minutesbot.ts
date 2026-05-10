@@ -12,14 +12,18 @@ type EnsureResources = (options: EnsureCloudflareResourcesOptions) => Promise<vo
 type BuildMinutesbotOptions = {
   env?: Record<string, string | undefined>;
   ensureResources?: EnsureResources;
+  ensureBotRuntimeWorker?: RunCommand;
   runBuildCommand?: RunCommand;
   log?: (message: string) => void;
   error?: (message: string) => void;
 };
 
+const BOT_RUNTIME_CONFIG_PATH = "deploy/bot-container/wrangler.jsonc";
+
 export async function buildMinutesbot(options: BuildMinutesbotOptions = {}): Promise<void> {
   const env = options.env ?? process.env;
   const ensureResources = options.ensureResources ?? ensureCloudflareResources;
+  const ensureBotRuntimeWorker = options.ensureBotRuntimeWorker ?? runInheritedCommand;
   const runBuildCommand = options.runBuildCommand ?? runInheritedCommand;
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
@@ -28,6 +32,8 @@ export async function buildMinutesbot(options: BuildMinutesbotOptions = {}): Pro
   if (env.WORKERS_CI === "1") {
     log(`Workers Builds detected. Ensuring Cloudflare resources for ${environment}...`);
     await ensureResources({ environment, log, error });
+    log(`Workers Builds detected. Ensuring meeting bot runtime Worker for ${environment}...`);
+    await ensureBotRuntimeWorker("wrangler", ["deploy", "--config", BOT_RUNTIME_CONFIG_PATH]);
   }
 
   await runBuildCommand("pnpm", ["run", "build:workspace"]);

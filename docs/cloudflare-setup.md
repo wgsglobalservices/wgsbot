@@ -2,7 +2,7 @@
 
 Run `pnpm setup:cloudflare` for guided commands. The script prints commands and intentionally does not accept secrets as command-line arguments.
 
-Use `pnpm deploy:oneshot --env production` for first-time Cloudflare-first deployments that include the first-party meeting bot container. Use `pnpm run deploy` for later minutesbot-only deployments. In Cloudflare build settings, set the deploy command to `pnpm run deploy`, not `npx wrangler deploy`, because the package script first runs the idempotent Cloudflare queue check required by this project.
+Use `pnpm deploy:oneshot --env production` for first-time Cloudflare-first deployments that include the first-party meeting bot container. Use `pnpm run deploy` for later minutesbot-only deployments. In Cloudflare Workers Builds, `pnpm run build` performs the idempotent D1/R2/queue setup and deploys the first-party meeting bot Worker before the platform runs `npx wrangler deploy`, so the `BOT_RUNTIME` service binding target exists when minutesbot is deployed.
 
 The Worker serves the API and Vite admin UI through Workers Static Assets. D1, R2, Queues, Workflows, Email Routing, and the meeting bot container are the production runtime.
 

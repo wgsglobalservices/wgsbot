@@ -10,6 +10,9 @@ describe("buildMinutesbot", () => {
       ensureResources: async ({ environment }) => {
         events.push(`ensure:${environment}`);
       },
+      ensureBotRuntimeWorker: async (command, args) => {
+        events.push(`${command} ${args.join(" ")}`);
+      },
       runBuildCommand: async (command, args) => {
         events.push(`${command} ${args.join(" ")}`);
       },
@@ -28,6 +31,9 @@ describe("buildMinutesbot", () => {
       ensureResources: async ({ environment }) => {
         events.push(`ensure:${environment}`);
       },
+      ensureBotRuntimeWorker: async (command, args) => {
+        events.push(`${command} ${args.join(" ")}`);
+      },
       runBuildCommand: async (command, args) => {
         events.push(`${command} ${args.join(" ")}`);
       },
@@ -35,7 +41,11 @@ describe("buildMinutesbot", () => {
       error: () => undefined
     });
 
-    expect(events).toEqual(["ensure:production", "pnpm run build:workspace"]);
+    expect(events).toEqual([
+      "ensure:production",
+      "wrangler deploy --config deploy/bot-container/wrangler.jsonc",
+      "pnpm run build:workspace"
+    ]);
   });
 
   it("ensures staging queues before Workers Builds workspace build when requested", async () => {
@@ -46,6 +56,9 @@ describe("buildMinutesbot", () => {
       ensureResources: async ({ environment }) => {
         events.push(`ensure:${environment}`);
       },
+      ensureBotRuntimeWorker: async (command, args) => {
+        events.push(`${command} ${args.join(" ")}`);
+      },
       runBuildCommand: async (command, args) => {
         events.push(`${command} ${args.join(" ")}`);
       },
@@ -53,7 +66,11 @@ describe("buildMinutesbot", () => {
       error: () => undefined
     });
 
-    expect(events).toEqual(["ensure:staging", "pnpm run build:workspace"]);
+    expect(events).toEqual([
+      "ensure:staging",
+      "wrangler deploy --config deploy/bot-container/wrangler.jsonc",
+      "pnpm run build:workspace"
+    ]);
   });
 
   it("fails invalid deploy environments before provisioning or building", async () => {
@@ -64,6 +81,9 @@ describe("buildMinutesbot", () => {
         env: { WORKERS_CI: "1", MINUTESBOT_DEPLOY_ENV: "preview" },
         ensureResources: async ({ environment }) => {
           events.push(`ensure:${environment}`);
+        },
+        ensureBotRuntimeWorker: async (command, args) => {
+          events.push(`${command} ${args.join(" ")}`);
         },
         runBuildCommand: async (command, args) => {
           events.push(`${command} ${args.join(" ")}`);
