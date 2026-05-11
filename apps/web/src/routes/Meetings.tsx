@@ -4,6 +4,14 @@ import { apiDelete, apiGet } from "../lib/api";
 
 type Meeting = Record<string, string | number | null | undefined>;
 
+type RemoveMeetingFromHistoryInput = {
+  meeting: Meeting;
+  deleteMeeting: (id: string) => Promise<unknown>;
+  setMeetings: (updater: (current: Meeting[]) => Meeting[]) => void;
+  setDeletingId: (id: string | null) => void;
+  setError: (message: string) => void;
+};
+
 export function Meetings() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -17,21 +25,13 @@ export function Meetings() {
   }, []);
 
   async function removeMeeting(meeting: Meeting) {
-    const id = String(meeting.id ?? "");
-    if (!id) return;
-    const subject = String(meeting.subject ?? "this meeting");
-    const confirmed = window.confirm(`Remove "${subject}" from meeting history? This deletes the meeting record and stored artifacts.`);
-    if (!confirmed) return;
-    setDeletingId(id);
-    setError("");
-    try {
-      await apiDelete(`/api/meetings/${encodeURIComponent(id)}`);
-      setMeetings((current) => current.filter((item) => String(item.id) !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove meeting");
-    } finally {
-      setDeletingId(null);
-    }
+    await removeMeetingFromHistory({
+      meeting,
+      deleteMeeting: (id) => apiDelete(`/api/meetings/${encodeURIComponent(id)}`),
+      setMeetings,
+      setDeletingId,
+      setError
+    });
   }
 
   return (
@@ -41,4 +41,25 @@ export function Meetings() {
       <MeetingTable meetings={meetings} onRemoveMeeting={removeMeeting} deletingMeetingId={deletingId} />
     </div>
   );
+}
+
+export async function removeMeetingFromHistory({
+  meeting,
+  deleteMeeting,
+  setMeetings,
+  setDeletingId,
+  setError
+}: RemoveMeetingFromHistoryInput): Promise<void> {
+  const id = String(meeting.id ?? "");
+  if (!id) return;
+  setDeletingId(id);
+  setError("");
+  try {
+    await deleteMeeting(id);
+    setMeetings((current) => current.filter((item) => String(item.id) !== id));
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "Failed to remove meeting");
+  } finally {
+    setDeletingId(null);
+  }
 }
