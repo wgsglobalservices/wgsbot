@@ -1,4 +1,6 @@
-const teamsUrlPattern = /https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s<>"')]+/i;
+import { normalizeTeamsJoinUrl } from "./normalizeTeamsJoinUrl";
+
+const teamsUrlPattern = /https?:\/\/(?:teams\.microsoft\.com|teams\.live\.com|teams\.cloud\.microsoft)\/[^\s<>"')]+/gi;
 
 function decodeIcsText(input: string): string {
   return input
@@ -11,15 +13,11 @@ function decodeIcsText(input: string): string {
 }
 
 export function extractTeamsJoinUrl(input: string): string | null {
-  const decoded = decodeIcsText(decodeURIComponentSafe(input));
-  const match = decoded.match(teamsUrlPattern);
-  return match ? match[0].replace(/[\\,;]+$/, "") : null;
-}
-
-function decodeURIComponentSafe(input: string): string {
-  try {
-    return decodeURIComponent(input);
-  } catch {
-    return input;
+  const decoded = decodeIcsText(input);
+  const matches = decoded.matchAll(teamsUrlPattern);
+  for (const match of matches) {
+    const normalized = normalizeTeamsJoinUrl(match[0]);
+    if (normalized) return normalized;
   }
+  return null;
 }

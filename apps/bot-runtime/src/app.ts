@@ -46,7 +46,7 @@ export type BotRuntimeDeps = {
       botImage?: { type: "image/png" | "image/jpeg"; data: string };
       allowGuestJoin: boolean;
       joinTimeoutSeconds?: number;
-      onState?: (state: Extract<BotState, "prejoin" | "waiting_room" | "joined">) => Promise<void>;
+      onState?: (state: Extract<BotState, "prejoin" | "waiting_room" | "joined" | "recording">) => Promise<void>;
       onLog?: (log: BotRuntimeLog) => Promise<void>;
     }): Promise<RecordingResult>;
   };
@@ -148,14 +148,16 @@ async function runBotLifecycle(deps: BotRuntimeDeps, bot: BotRecord, input: z.in
       allowGuestJoin: deps.env.BOT_ALLOW_GUEST_JOIN !== "false",
       joinTimeoutSeconds: input.join_timeout_seconds,
       onState: async (state) => {
-        await updateBot(deps, bot, input, { state });
+        await updateBot(deps, bot, input, { state, ...(state === "recording" ? { recording_state: "recording" } : {}) });
       },
       onLog: async (log) => {
         await emitBotLog(deps, input, bot, log);
       }
     });
-    await emitBotLog(deps, input, bot, { level: "info", message: "Teams joined; starting recording", details: { state: bot.state } });
-    await updateBot(deps, bot, input, { state: "recording", recording_state: "recording" });
+    if (bot.state !== "recording") {
+      await emitBotLog(deps, input, bot, { level: "info", message: "Teams joined; starting recording", details: { state: bot.state } });
+      await updateBot(deps, bot, input, { state: "recording", recording_state: "recording" });
+    }
     await emitBotLog(deps, input, bot, { level: "info", message: "Uploading recording to R2", details: { recordingKey: input.external_media_storage_settings?.recording_file_name ?? `recordings/${bot.id}/recording.mp3` } });
     await deps.recordingStore.putRecording({
       bucketName: input.external_media_storage_settings?.bucket_name ?? deps.env.BOT_RECORDING_BUCKET_NAME ?? "",

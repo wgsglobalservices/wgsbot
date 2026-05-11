@@ -163,10 +163,6 @@ describe("createMeetingBot failure handling", () => {
     expect(JSON.parse(createRequest?.init?.body as string)).toMatchObject({
       meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
       bot_name: "minutesbot",
-      bot_chat_message: {
-        to: "everyone",
-        message: "Hi, I'm minutesbot, an automated meeting notetaker. I record and transcribe this meeting so the team can receive a recap."
-      },
       recording_settings: { format: "mp3" },
       external_media_storage_settings: {
         bucket_name: "minutesbot-artifacts",
@@ -179,6 +175,7 @@ describe("createMeetingBot failure handling", () => {
         }
       ]
     });
+    expect(JSON.parse(createRequest?.init?.body as string)).not.toHaveProperty("bot_chat_message");
     expect(db.meeting).toMatchObject({
       attendee_bot_id: "bot_1",
       attendee_bot_state: "queued",

@@ -2,6 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { __runtimeTest } from "./runtime";
 
 describe("Teams runtime browser flow", () => {
+  it("uses hardened Chromium launch args while preserving existing media and sandbox flags", () => {
+    expect(__runtimeTest.chromiumLaunchArgs).toEqual(
+      expect.arrayContaining([
+        "--autoplay-policy=no-user-gesture-required",
+        "--use-fake-ui-for-media-stream",
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--use-fake-device-for-media-stream",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-application-cache",
+        "--disable-setuid-sandbox",
+        "--window-size=1930,1090"
+      ])
+    );
+  });
+
   it("uses exact Teams guest selectors, grants media permissions, disables media, and confirms in-meeting controls", async () => {
     const mediaPermissions = vi.fn(async () => undefined);
     const nameInput = visibleLocator();
@@ -28,9 +46,9 @@ describe("Teams runtime browser flow", () => {
 
     await expect(__runtimeTest.joinAsGuest(page, guestInput())).resolves.toBe("joined");
 
-    expect(mediaPermissions).toHaveBeenCalledWith(["geolocation", "microphone", "camera"], {
-      origin: "https://teams.microsoft.com"
-    });
+    expect(mediaPermissions).toHaveBeenCalledWith(["geolocation", "microphone", "camera"], { origin: "https://teams.microsoft.com" });
+    expect(mediaPermissions).toHaveBeenCalledWith(["geolocation", "microphone", "camera"], { origin: "https://teams.live.com" });
+    expect(mediaPermissions).toHaveBeenCalledWith(["geolocation", "microphone", "camera"], { origin: "https://teams.cloud.microsoft" });
     expect(nameInput.fill).toHaveBeenCalledWith("minutesbot", { timeout: 1_000 });
     expect(microphoneToggle.click).toHaveBeenCalledWith({ timeout: 1_000 });
     expect(cameraToggle.click).toHaveBeenCalledWith({ timeout: 1_000 });
@@ -462,6 +480,34 @@ describe("Teams runtime browser flow", () => {
     ).resolves.toBe("joined");
 
     expect(states).toEqual(["prejoin", "waiting_room"]);
+  });
+
+  it("emits recording after confirmed join and before ffmpeg capture starts", async () => {
+    const states: string[] = [];
+    const events: string[] = [];
+    const result = await __runtimeTest.recordBrowserJoinedAudio(
+      { BOT_RECORDING_SECONDS: "3", BOT_AUDIO_SINK_NAME: "teams_capture" },
+      {
+        mkdtemp: async () => "/tmp/minutesbot-recording",
+        readFile: async () => {
+          events.push("readFile");
+          return new Uint8Array([1]);
+        },
+        rm: vi.fn(async () => undefined),
+        runCommand: async (command) => {
+          events.push(command);
+        }
+      },
+      async (state) => {
+        states.push(state);
+        events.push(`state:${state}`);
+      }
+    );
+
+    expect(result).toEqual(new Uint8Array([1]));
+    expect(states).toEqual(["recording"]);
+    expect(events.indexOf("state:recording")).toBeGreaterThan(events.indexOf("pactl"));
+    expect(events.indexOf("state:recording")).toBeLessThan(events.indexOf("ffmpeg"));
   });
 
   it("starts PulseAudio capture from the Teams monitor and records MP3 bytes", async () => {

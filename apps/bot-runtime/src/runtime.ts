@@ -28,6 +28,20 @@ const CONTROL_ACTION_TIMEOUT_MS = 1_000;
 const DEFAULT_JOIN_TIMEOUT_SECONDS = 15 * 60;
 const DEFAULT_PROCESS_TIMEOUT_MS = 30_000;
 const DEFAULT_JOIN_RETRY_ATTEMPTS = 3;
+const TEAMS_MEDIA_PERMISSION_ORIGINS = ["https://teams.microsoft.com", "https://teams.live.com", "https://teams.cloud.microsoft"] as const;
+const CHROMIUM_LAUNCH_ARGS = [
+  "--autoplay-policy=no-user-gesture-required",
+  "--use-fake-ui-for-media-stream",
+  "--use-fake-device-for-media-stream",
+  "--disable-blink-features=AutomationControlled",
+  "--no-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+  "--disable-extensions",
+  "--disable-application-cache",
+  "--disable-setuid-sandbox",
+  "--window-size=1930,1090"
+] as const;
 
 class TeamsJoinError extends Error {
   constructor(message: string, readonly retryable: boolean) {
@@ -88,13 +102,7 @@ function createBrowserRecorder(env: RuntimeProcessEnv): BotRuntimeDeps["recorder
                 headless: env.BOT_HEADLESS !== "false",
                 executablePath: env.CHROMIUM_EXECUTABLE_PATH,
                 env: { ...process.env, PULSE_SINK: audio.sinkName },
-                args: [
-                  "--autoplay-policy=no-user-gesture-required",
-                  "--use-fake-ui-for-media-stream",
-                  "--disable-blink-features=AutomationControlled",
-                  "--no-sandbox",
-                  "--disable-dev-shm-usage"
-                ]
+                args: [...CHROMIUM_LAUNCH_ARGS]
               }),
               joinDeadline
             );
@@ -112,6 +120,7 @@ function createBrowserRecorder(env: RuntimeProcessEnv): BotRuntimeDeps["recorder
           }
         );
         await input.onState?.(joinedState);
+        await input.onState?.("recording");
         const bytes = await captureBrowserAudio(env, defaultAudioIo, audio.sinkName);
         return {
           bytes,
@@ -187,13 +196,15 @@ async function joinWithRetries(
 
 async function grantTeamsMediaPermissions(context: any, meetingUrl: string): Promise<void> {
   if (!context || typeof context.grantPermissions !== "function") return;
-  let origin: string;
+  const origins = new Set<string>(TEAMS_MEDIA_PERMISSION_ORIGINS);
   try {
-    origin = new URL(meetingUrl).origin;
+    origins.add(new URL(meetingUrl).origin);
   } catch {
-    return;
+    // Still grant the known Teams origins when the meeting URL is malformed.
   }
-  await context.grantPermissions(["geolocation", "microphone", "camera"], { origin }).catch(() => undefined);
+  for (const origin of origins) {
+    await context.grantPermissions(["geolocation", "microphone", "camera"], { origin }).catch(() => undefined);
+  }
 }
 
 async function clickTeamsWebEntry(page: any, visibleTimeout = 20_000, actionTimeout = visibleTimeout): Promise<boolean> {
@@ -635,6 +646,20 @@ async function recordBrowserAudio(env: RuntimeProcessEnv, io: AudioIo = defaultA
   }
 }
 
+async function recordBrowserJoinedAudio(
+  env: RuntimeProcessEnv,
+  io: AudioIo = defaultAudioIo,
+  onState?: (state: "recording") => Promise<void>
+): Promise<Uint8Array> {
+  const audio = await startPulseAudioSink(env, io);
+  try {
+    await onState?.("recording");
+    return await captureBrowserAudio(env, io, audio.sinkName);
+  } finally {
+    await audio.cleanup().catch(() => undefined);
+  }
+}
+
 async function startPulseAudioSink(
   env: RuntimeProcessEnv,
   io: AudioIo = defaultAudioIo
@@ -788,9 +813,11 @@ async function withProcessTimeout<T>(env: RuntimeProcessEnv, promise: Promise<T>
 }
 
 export const __runtimeTest = {
+  chromiumLaunchArgs: CHROMIUM_LAUNCH_ARGS,
   createJoinDeadline,
   fillGuestName,
   joinAsGuest,
   joinWithRetries,
+  recordBrowserJoinedAudio,
   recordBrowserAudio
 };

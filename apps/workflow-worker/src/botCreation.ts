@@ -43,7 +43,6 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
       meetingUrl: meeting.teams_join_url ?? "",
       botName: settings.attendee.botName,
       botImage: await loadBotImage(env, settings.attendee.botImage),
-      botChatMessage: botJoinChatMessage(settings.attendee.botName),
       joinTimeoutSeconds,
       recordingSettings: { format: "mp3" },
       externalMediaStorageSettings: {
@@ -168,10 +167,6 @@ export function createBotClient(env: Pick<WorkflowEnv, "BOT_INTERNAL_TOKEN" | "B
     internalToken: env.BOT_INTERNAL_TOKEN,
     fetcher: env.BOT_RUNTIME ? (input, init) => env.BOT_RUNTIME!.fetch(input, init) : undefined
   });
-}
-
-function botJoinChatMessage(botName: string): string {
-  return `Hi, I'm ${botName}, an automated meeting notetaker. I record and transcribe this meeting so the team can receive a recap.`;
 }
 
 async function loadBotImage(

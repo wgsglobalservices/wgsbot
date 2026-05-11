@@ -143,6 +143,56 @@ describe("bot runtime app", () => {
     expect(completion?.internalToken).toBe("managed-token");
   });
 
+  it("applies recorder-emitted recording state before uploading captured audio", async () => {
+    const events: string[] = [];
+    const webhooks: Array<{ body: string }> = [];
+    const app = createBotRuntimeApp({
+      env: {
+        BOT_INTERNAL_TOKEN: "managed-token",
+        BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts"
+      },
+      checkBinary: async () => true,
+      recorder: {
+        record: async (input) => {
+          await input.onState?.("joined");
+          await input.onState?.("recording");
+          events.push("recorder:recording");
+          return { bytes: new Uint8Array([1]), contentType: "audio/mpeg", joinMode: "guest" };
+        }
+      },
+      recordingStore: {
+        putRecording: async () => {
+          events.push("store:upload");
+        }
+      },
+      sendWebhook: async (input) => {
+        webhooks.push(input);
+      },
+      randomUUID: () => "bot_recording"
+    });
+
+    const response = await app.request("/api/v1/bots", {
+      method: "POST",
+      headers: { authorization: "Bearer managed-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+        bot_name: "minutesbot",
+        webhooks: [{ url: "https://meeting.minutes.bot/api/webhooks/bot", triggers: ["bot.state_change"] }],
+        external_media_storage_settings: { bucket_name: "minutesbot-artifacts" }
+      })
+    });
+
+    expect(response.status).toBe(201);
+    await vi.waitFor(() => expect(events).toContain("store:upload"));
+    const recordingWebhook = JSON.parse(webhooks.find((webhook) => webhook.body.includes('"new_state":"recording"'))?.body ?? "{}");
+    expect(recordingWebhook.data).toMatchObject({
+      event_type: "state_change",
+      new_state: "recording",
+      recording_state: "recording"
+    });
+    expect(events.indexOf("recorder:recording")).toBeLessThan(events.indexOf("store:upload"));
+  });
+
   it("passes the configured join timeout into the recorder", async () => {
     let joinTimeoutSeconds: number | undefined;
     const app = createBotRuntimeApp({
