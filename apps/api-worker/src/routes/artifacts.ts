@@ -7,8 +7,9 @@ export const artifactsRoute = new Hono<{ Bindings: Env }>()
   .get("/:meetingId", async (c) => c.json({ artifacts: await listArtifacts(c.env.DB, c.req.param("meetingId")) }))
   .get("/:meetingId/transcript.txt", async (c) => {
     const token = c.req.query("token");
-    if (!token || !c.env.SESSION_SECRET) throw new AppError("UNAUTHORIZED", "Transcript download link is invalid or expired.", 401);
-    const payload = await verifyTranscriptDownloadToken(token, c.env.SESSION_SECRET);
+    if (!c.env.TRANSCRIPT_LINK_SECRET) throw new AppError("TRANSCRIPT_LINKS_NOT_CONFIGURED", "Transcript download links are not configured.", 503);
+    if (!token) throw new AppError("UNAUTHORIZED", "Transcript download link is invalid or expired.", 401);
+    const payload = await verifyTranscriptDownloadToken(token, c.env.TRANSCRIPT_LINK_SECRET);
     const meetingId = c.req.param("meetingId");
     if (!payload || payload.meetingId !== meetingId) throw new AppError("UNAUTHORIZED", "Transcript download link is invalid or expired.", 401);
 
@@ -21,6 +22,8 @@ export const artifactsRoute = new Hono<{ Bindings: Env }>()
     return new Response(transcript, {
       headers: {
         "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
         "content-disposition": `attachment; filename="${safeFilename(meetingId)}-transcript.txt"`
       }
     });

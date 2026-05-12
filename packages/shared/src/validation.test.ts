@@ -187,6 +187,18 @@ describe("settings validation", () => {
     expect(settings.recap.transcriptDownloadExpirationHours).toBe(24);
   });
 
+  it("caps transcript download links to one day", () => {
+    expect(() =>
+      parseSettings({
+        ...defaultSettings,
+        recap: {
+          ...defaultSettings.recap,
+          transcriptDownloadExpirationHours: 25
+        }
+      })
+    ).toThrow();
+  });
+
   it("upgrades the legacy built-in recap prompt but preserves custom prompts", () => {
     const legacyPrompt = [
       "You generate meeting recaps from transcripts. Return strict JSON only.",

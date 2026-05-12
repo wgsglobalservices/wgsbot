@@ -55,6 +55,25 @@ describe("auth middleware", () => {
     ).rejects.toMatchObject(new AppError("UNAUTHORIZED", "Enter the admin token to access minutesbot.", 401));
   });
 
+  it("compares bearer tokens without relying on direct string equality", async () => {
+    const next = vi.fn();
+    const middleware = createAuthMiddleware();
+
+    await expect(
+      middleware(
+        ({
+          req: {
+            path: "/api/settings",
+            raw: new Request("https://app.example.com/api/settings", { headers: { authorization: "Bearer secret-token-extra" } })
+          },
+          env: { SESSION_SECRET: "secret-token", APP_BASE_URL: "https://app.example.com" }
+        } as any),
+        next
+      )
+    ).rejects.toMatchObject(new AppError("UNAUTHORIZED", "Enter the admin token to access minutesbot.", 401));
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("exports the default admin token middleware", () => {
     expect(adminTokenAuthMiddleware).toBeTypeOf("function");
   });

@@ -6,6 +6,7 @@ export type MeetingStatus =
   | "REJECTED_EXTERNAL_ORGANIZER"
   | "REJECTED_NO_TEAMS_LINK"
   | "REJECTED_PARSE_ERROR"
+  | "REJECTED_UNAUTHENTICATED_SENDER"
   | "REJECTED_NO_ELIGIBLE_RECIPIENTS"
   | "WAITING_TO_CREATE_BOT"
   | "BOT_CREATE_QUEUED"
@@ -58,6 +59,7 @@ export const auditEventTypes = [
   "email.failed",
   "artifact.deleted",
   "attendee.delete_data_called",
+  "attendee.data_deleted",
   "cleanup.completed"
 ] as const;
 

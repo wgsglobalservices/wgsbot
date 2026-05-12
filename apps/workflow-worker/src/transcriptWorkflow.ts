@@ -10,6 +10,7 @@ type Params = { meetingId: string; botId?: string; attempt?: number };
 
 const RECORDING_RETRY_DELAY_SECONDS = 60;
 const MAX_RECORDING_FETCH_ATTEMPTS = 10;
+const maxRecordingBytes = 100 * 1024 * 1024;
 
 export class TranscriptWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
@@ -37,6 +38,9 @@ export async function fetchAndStoreTranscript(
     }
 
     const contentType = recordingContentType(recordingObject, recordingKey);
+    if (recordingObject.size > maxRecordingBytes) {
+      throw new AppError("RECORDING_TOO_LARGE", "Recording artifact is too large to transcribe automatically.", 413);
+    }
     if (!contentType) {
       await updateTranscriptStatus(env.DB, meetingId, "unavailable", "NO_TRANSCRIPT_AVAILABLE");
       await createAuditLog(env.DB, {
@@ -120,13 +124,13 @@ async function handleMissingRecording(env: WorkflowEnv, meetingId: string, atten
   );
 }
 
-async function deleteAttendeeData(
+export async function deleteAttendeeData(
   env: WorkflowEnv,
   settings: Awaited<ReturnType<typeof getSettings>>,
   attendeeBotId: string
 ): Promise<void> {
   if (!env.ATTENDEE_API_KEY) throw new AppError("ATTENDEE_API_KEY_MISSING", "ATTENDEE_API_KEY secret is not configured", 500);
-  const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY });
+  const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY, fetcher: env.ATTENDEE_FETCHER });
   await client.deleteBotData(attendeeBotId);
 }
 

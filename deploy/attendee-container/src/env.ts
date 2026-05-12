@@ -22,6 +22,7 @@ export type AttendeeContainerSettings = {
   OPENAI_MODEL_NAME?: string;
   ZOOM_CLIENT_ID?: string;
   ZOOM_CLIENT_SECRET?: string;
+  ATTENDEE_OPS_TOKEN?: string;
 };
 
 const requiredSettings = ["DATABASE_URL", "REDIS_URL", "DJANGO_SECRET_KEY", "CREDENTIALS_ENCRYPTION_KEY"] as const;
@@ -78,4 +79,22 @@ export function runtimeStatus(env: AttendeeContainerSettings): RuntimeStatus {
     runtime: "cloudflare-containers",
     missing
   };
+}
+
+export async function isAuthorizedOpsRequest(request: Request, env: Pick<AttendeeContainerSettings, "ATTENDEE_OPS_TOKEN">): Promise<boolean> {
+  if (!env.ATTENDEE_OPS_TOKEN) return false;
+  const header = request.headers.get("authorization") ?? "";
+  const [scheme, token] = header.split(/\s+/, 2);
+  if (scheme.toLowerCase() !== "bearer" || !token) return false;
+  return constantTimeEqual(token, env.ATTENDEE_OPS_TOKEN);
+}
+
+async function constantTimeEqual(left: string, right: string): Promise<boolean> {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+  let diff = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) diff |= leftBytes[index] ^ rightBytes[index];
+  await crypto.subtle.digest("SHA-256", leftBytes);
+  return diff === 0;
 }

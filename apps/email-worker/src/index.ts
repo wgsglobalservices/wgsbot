@@ -7,6 +7,7 @@ type Env = {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
   INVITE_QUEUE: { send(message: unknown): Promise<void> };
+  ENVIRONMENT?: string;
 };
 
 type EmailMessage = {
@@ -18,22 +19,24 @@ type EmailMessage = {
 
 export default {
   async email(message: EmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
-    const rawEmail = await new Response(message.raw).text();
+    const rawEmail = await readTextWithLimit(message.raw, 5 * 1024 * 1024);
     ctx.waitUntil(handleInvite(message, env, rawEmail));
   }
 };
 
 export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "setReject">, env: Env, rawEmail: string): Promise<void> {
   const settings = await getSettings(env.DB);
-  const rawKey = `raw-invites/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.eml`;
-  await env.ARTIFACTS.put(rawKey, rawEmail, { httpMetadata: { contentType: "message/rfc822" } });
-  await createAuditLog(env.DB, { actorEmail: message.from, eventType: "invite.received", resourceType: "raw_invite", resourceId: rawKey });
 
   let parsed: ReturnType<typeof parseIncomingInvite>;
   try {
     parsed = parseIncomingInvite(rawEmail);
   } catch (error) {
     await ignoreInvite(env, message, "REJECTED_PARSE_ERROR", error instanceof Error ? error.message : "Parse error");
+    return;
+  }
+
+  if (!isAuthenticatedInvite(rawEmail, parsed.rawSender, parsed.organizer.email, env.ENVIRONMENT)) {
+    await rejectInvite(env, message, "REJECTED_UNAUTHENTICATED_SENDER", "Inbound sender authentication did not pass or does not align with the organizer");
     return;
   }
 
@@ -69,6 +72,10 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     await rejectInvite(env, message, "REJECTED_NO_ELIGIBLE_RECIPIENTS", "No eligible same-company summary recipients");
     return;
   }
+
+  const rawKey = `raw-invites/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.eml`;
+  await env.ARTIFACTS.put(rawKey, rawEmail, { httpMetadata: { contentType: "message/rfc822" } });
+  await createAuditLog(env.DB, { actorEmail: message.from, eventType: "invite.received", resourceType: "raw_invite", resourceId: rawKey });
 
   const meeting = await upsertMeeting(env.DB, {
     calendar_uid: parsed.calendarUid,
@@ -150,4 +157,46 @@ async function recordRejectedInvite(env: Env, actorEmail: string, status: Meetin
     resourceId: createId("rej"),
     metadata: { status, reason }
   });
+}
+
+async function readTextWithLimit(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > maxBytes) throw new Error("Inbound email exceeds the maximum supported size.");
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+function isAuthenticatedInvite(rawEmail: string, senderEmail: string, organizerEmail: string, environment?: string): boolean {
+  if (environment !== "production") return true;
+  const senderDomain = getEmailDomain(senderEmail);
+  const organizerDomain = getEmailDomain(organizerEmail);
+  if (!senderDomain || !organizerDomain || senderDomain !== organizerDomain) return false;
+  return authenticatedDomains(rawEmail).has(senderDomain);
+}
+
+function authenticatedDomains(rawEmail: string): Set<string> {
+  const headers = rawEmail.split(/\r?\n\r?\n/, 1)[0]?.replace(/\r?\n[ \t]+/g, " ") ?? "";
+  const domains = new Set<string>();
+  for (const line of headers.split(/\r?\n/)) {
+    if (!line.toLowerCase().startsWith("authentication-results:")) continue;
+    collectAuthDomain(line, /\bdmarc=pass\b[^;]*\bheader\.from=([a-z0-9.-]+)/gi, domains);
+    collectAuthDomain(line, /\bdkim=pass\b[^;]*\bheader\.d=([a-z0-9.-]+)/gi, domains);
+    collectAuthDomain(line, /\bspf=pass\b[^;]*\bsmtp\.mailfrom=([a-z0-9.-]+)/gi, domains);
+  }
+  return domains;
+}
+
+function collectAuthDomain(line: string, pattern: RegExp, domains: Set<string>): void {
+  for (const match of line.matchAll(pattern)) {
+    const domain = match[1]?.toLowerCase().replace(/\.+$/, "");
+    if (domain) domains.add(domain);
+  }
 }

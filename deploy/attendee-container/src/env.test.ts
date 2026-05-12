@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildContainerEnv, missingSettings, runtimeStatus } from "./env";
+import { buildContainerEnv, isAuthorizedOpsRequest, missingSettings, runtimeStatus } from "./env";
 
 describe("attendee container env", () => {
   it("passes canonical upstream Attendee settings into the container", () => {
@@ -80,5 +80,17 @@ describe("attendee container env", () => {
       runtime: "cloudflare-containers",
       missing: []
     });
+  });
+
+  it("authorizes ops requests only with the configured bearer token", async () => {
+    const env = { ATTENDEE_OPS_TOKEN: "ops-secret" };
+
+    await expect(isAuthorizedOpsRequest(new Request("https://attendee.example/_ops/start-workers"), env)).resolves.toBe(false);
+    await expect(
+      isAuthorizedOpsRequest(new Request("https://attendee.example/_ops/start-workers", { headers: { authorization: "Bearer wrong" } }), env)
+    ).resolves.toBe(false);
+    await expect(
+      isAuthorizedOpsRequest(new Request("https://attendee.example/_ops/start-workers", { headers: { authorization: "Bearer ops-secret" } }), env)
+    ).resolves.toBe(true);
   });
 });

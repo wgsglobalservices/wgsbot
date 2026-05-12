@@ -120,6 +120,7 @@ describe("summary workflow", () => {
         API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
         AI_API_KEY: "test-ai-key",
         SESSION_SECRET: "session-secret",
+        TRANSCRIPT_LINK_SECRET: "transcript-secret",
         SEND_EMAIL: { send }
       },
       "mtg_1"
@@ -160,6 +161,7 @@ describe("summary workflow", () => {
         API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
         AI_API_KEY: "test-ai-key",
         SESSION_SECRET: "session-secret",
+        TRANSCRIPT_LINK_SECRET: "transcript-secret",
         SEND_EMAIL: { send }
       },
       "mtg_1"
@@ -168,7 +170,7 @@ describe("summary workflow", () => {
     const text = send.mock.calls[0][0] as { text: string };
     const token = text.text.match(/token=([^)\s]+)/)?.[1];
     expect(token).toBeTruthy();
-    const payload = await verifyTranscriptDownloadToken(decodeURIComponent(token!), "session-secret");
+    const payload = await verifyTranscriptDownloadToken(decodeURIComponent(token!), "transcript-secret");
 
     expect(payload?.expiresAt).toBeGreaterThanOrEqual(now + 6 * 60 * 60 * 1000 - 1000);
     expect(payload?.expiresAt).toBeLessThanOrEqual(now + 6 * 60 * 60 * 1000 + 1000);
@@ -207,5 +209,31 @@ describe("summary workflow", () => {
       speakerTurnCount: 2,
       wordCount: 2
     });
+  });
+
+  it("does not mint transcript links from the admin session secret", async () => {
+    const db = new FakeD1();
+    const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
+
+    await generateAndSendSummary(
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {
+          get: vi.fn(async () => ({ text: async () => "Alex: hello" })),
+          put: vi.fn(async () => undefined)
+        } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        AI_API_KEY: "test-ai-key",
+        SESSION_SECRET: "session-secret",
+        SEND_EMAIL: { send }
+      },
+      "mtg_1"
+    );
+
+    expect((send.mock.calls[0][0] as { text: string }).text).not.toContain("/api/artifacts/mtg_1/transcript.txt?token=");
   });
 });

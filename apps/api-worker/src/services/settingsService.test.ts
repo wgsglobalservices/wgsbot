@@ -93,4 +93,35 @@ describe("settings service", () => {
     });
     expect(JSON.stringify(settings)).not.toContain("AQID");
   });
+
+  it("rejects oversized bot image uploads before writing to R2", async () => {
+    const put = vi.fn(async () => undefined);
+    const testEnv = env({ ARTIFACTS: { put } as unknown as R2Bucket });
+
+    await expect(
+      uploadBotImage(testEnv, {
+        contentType: "image/jpeg",
+        data: btoa("x".repeat(2_000_001)),
+        fileName: "too-large.jpg"
+      })
+    ).rejects.toMatchObject({ code: "BOT_IMAGE_TOO_LARGE" });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("rejects provider URLs outside the production allowlist", async () => {
+    const testEnv = env({ ATTENDEE_API_BASE_URL: "https://app.attendee.dev" });
+
+    await expect(
+      writeSettings(testEnv, {
+        ...defaultSettings,
+        attendee: { ...defaultSettings.attendee, baseUrl: "https://evil.example.net" }
+      })
+    ).rejects.toMatchObject({ code: "UNAPPROVED_PROVIDER_URL" });
+    await expect(
+      writeSettings(testEnv, {
+        ...defaultSettings,
+        ai: { ...defaultSettings.ai, baseUrl: "http://127.0.0.1:8080/v1" }
+      })
+    ).rejects.toMatchObject({ code: "UNAPPROVED_PROVIDER_URL" });
+  });
 });

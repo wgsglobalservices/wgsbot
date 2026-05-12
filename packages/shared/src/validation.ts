@@ -152,7 +152,7 @@ export const appSettingsSchema = z.object({
       enabledTemplates: z.array(z.enum(recapTemplateKeys)).optional().default(defaultRecapConfig.enabledTemplates),
       shortMeetingBriefRecapEnabled: z.boolean().optional().default(defaultRecapConfig.shortMeetingBriefRecapEnabled),
       shortMeetingDurationThresholdMinutes: z.number().int().min(1).max(30).optional().default(defaultRecapConfig.shortMeetingDurationThresholdMinutes),
-      transcriptDownloadExpirationHours: z.number().int().min(1).max(720).optional().default(defaultRecapConfig.transcriptDownloadExpirationHours),
+      transcriptDownloadExpirationHours: z.number().int().min(1).max(24).optional().default(defaultRecapConfig.transcriptDownloadExpirationHours),
       sections: z.array(recapSectionSchema).min(1)
     })
     .optional()

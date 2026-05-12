@@ -9,6 +9,7 @@ import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
 type Params = { meetingId: string };
+const maxTranscriptTextBytes = 1_000_000;
 
 export class SummaryWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
@@ -28,8 +29,14 @@ export async function generateAndSendSummary(
   const transcriptArtifact = artifacts.find((artifact) => artifact.type === "transcript_text" && !artifact.deleted_at);
   if (!transcriptArtifact) throw new AppError("TRANSCRIPT_MISSING", "Transcript text artifact is missing", 400);
   const transcriptObject = await env.ARTIFACTS.get(transcriptArtifact.r2_key);
+  if (transcriptObject && transcriptObject.size > maxTranscriptTextBytes) {
+    throw new AppError("TRANSCRIPT_TOO_LARGE", "Transcript artifact is too large to summarize automatically.", 413);
+  }
   const transcriptText = await transcriptObject?.text();
   if (!transcriptText) throw new AppError("TRANSCRIPT_MISSING", "Transcript artifact is empty", 400);
+  if (new TextEncoder().encode(transcriptText).byteLength > maxTranscriptTextBytes) {
+    throw new AppError("TRANSCRIPT_TOO_LARGE", "Transcript artifact is too large to summarize automatically.", 413);
+  }
 
   await updateSummaryStatus(env.DB, meetingId, "generating");
   const attendees = await listMeetingAttendees(env.DB, meetingId);
@@ -157,8 +164,9 @@ function calculateTranscriptMetrics(transcriptText: string, segments: Array<Reco
 }
 
 async function buildTranscriptDownloadUrl(env: WorkflowEnv, meetingId: string, expirationHours: number): Promise<string | undefined> {
-  if (!env.SESSION_SECRET || !env.API_BASE_URL) return undefined;
-  const expiresAt = Date.now() + expirationHours * 60 * 60 * 1000;
-  const token = await createTranscriptDownloadToken({ meetingId, artifactType: "transcript_text", expiresAt }, env.SESSION_SECRET);
+  if (!env.TRANSCRIPT_LINK_SECRET || !env.API_BASE_URL) return undefined;
+  const cappedExpirationHours = Math.min(Math.max(expirationHours, 1), 24);
+  const expiresAt = Date.now() + cappedExpirationHours * 60 * 60 * 1000;
+  const token = await createTranscriptDownloadToken({ meetingId, artifactType: "transcript_text", expiresAt }, env.TRANSCRIPT_LINK_SECRET);
   return `${env.API_BASE_URL.replace(/\/+$/, "")}/api/artifacts/${encodeURIComponent(meetingId)}/transcript.txt?token=${encodeURIComponent(token)}`;
 }

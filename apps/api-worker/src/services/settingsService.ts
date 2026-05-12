@@ -3,6 +3,7 @@ import { AppError, parseSettings, resolveAttendeeBaseUrl, type AppSettings } fro
 import type { Env } from "../env";
 
 const botImageContentTypes = new Set(["image/png", "image/jpeg"]);
+const maxBotImageBytes = 2_000_000;
 
 export async function readSettings(env: Env): Promise<AppSettings> {
   const settings = await getSettings(env.DB);
@@ -23,6 +24,7 @@ export async function readSettings(env: Env): Promise<AppSettings> {
 
 export async function writeSettings(env: Env, input: unknown): Promise<AppSettings> {
   const parsed = parseSettings(input);
+  assertApprovedProviderUrls(env, parsed);
   await saveSettings(env.DB, {
     ...parsed,
     ai: {
@@ -44,6 +46,9 @@ export async function uploadBotImage(
   const extension = input.contentType === "image/png" ? "png" : "jpg";
   const r2Key = `settings/attendee-bot-image.${extension}`;
   const bytes = base64ToBytes(input.data);
+  if (bytes.byteLength > maxBotImageBytes) {
+    throw new AppError("BOT_IMAGE_TOO_LARGE", "Bot image must be 2 MB or smaller after compression.", 413);
+  }
   await env.ARTIFACTS.put(r2Key, bytes, {
     httpMetadata: { contentType: input.contentType },
     customMetadata: input.fileName ? { fileName: input.fileName } : undefined
@@ -77,4 +82,53 @@ function base64ToBytes(value: string): Uint8Array {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function assertApprovedProviderUrls(env: Env, settings: AppSettings): void {
+  assertApprovedUrl("Attendee base URL", settings.attendee.baseUrl, [
+    "https://app.attendee.dev",
+    "https://attendee.wgsglobal.app",
+    "https://attendee.wgs.bot",
+    env.ATTENDEE_API_BASE_URL,
+    ...(env.ATTENDEE_BASE_URL_ALLOWLIST ?? "").split(",")
+  ]);
+  if (settings.ai.baseUrl) {
+    assertApprovedUrl("AI base URL", settings.ai.baseUrl, [
+      "https://api.openai.com",
+      "https://api.openai.com/v1",
+      "https://openrouter.ai",
+      "https://openrouter.ai/api/v1",
+      ...(env.AI_BASE_URL_ALLOWLIST ?? "").split(",")
+    ]);
+  }
+}
+
+function assertApprovedUrl(label: string, value: string, allowedValues: Array<string | undefined>): void {
+  const normalized = normalizeProviderUrl(value);
+  const allowed = new Set(
+    allowedValues
+      .map((item) => normalizeProviderUrl(item ?? ""))
+      .filter((item): item is URL => Boolean(item))
+      .map(providerKey)
+  );
+  if (!normalized || normalized.protocol !== "https:" || isBlockedProviderHost(normalized.hostname) || !allowed.has(providerKey(normalized))) {
+    throw new AppError("UNAPPROVED_PROVIDER_URL", `${label} is not in the approved provider allowlist.`, 400);
+  }
+}
+
+function normalizeProviderUrl(value: string): URL | null {
+  try {
+    return new URL(value.trim().replace(/\/+$/, ""));
+  } catch {
+    return null;
+  }
+}
+
+function providerKey(url: URL): string {
+  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
+}
+
+function isBlockedProviderHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "localhost" || host === "0.0.0.0" || host === "127.0.0.1" || host === "::1" || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
 }

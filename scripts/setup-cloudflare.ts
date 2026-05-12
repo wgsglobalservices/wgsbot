@@ -7,6 +7,7 @@ const commands = [
   "wrangler secret put ATTENDEE_WEBHOOK_SECRET",
   "wrangler secret put AI_API_KEY",
   "wrangler secret put SESSION_SECRET",
+  "wrangler secret put TRANSCRIPT_LINK_SECRET",
   "pnpm db:migrate:remote",
   "pnpm run deploy",
   "pnpm deploy:staging",
@@ -17,6 +18,7 @@ const commands = [
   "python .attendee/upstream/init_env.py",
   "wrangler secret put DJANGO_SECRET_KEY --config deploy/attendee-container/wrangler.jsonc",
   "wrangler secret put CREDENTIALS_ENCRYPTION_KEY --config deploy/attendee-container/wrangler.jsonc",
+  "wrangler secret put ATTENDEE_OPS_TOKEN --config deploy/attendee-container/wrangler.jsonc",
   "pnpm attendee:deploy"
 ];
 

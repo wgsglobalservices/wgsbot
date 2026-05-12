@@ -14,7 +14,7 @@ export function createAuthMiddleware() {
       throw new AppError("AUTH_NOT_CONFIGURED", "Configure SESSION_SECRET before exposing admin routes.", 503);
     }
 
-    if (readBearerToken(c.req.raw) !== env.SESSION_SECRET) {
+    if (!(await constantTimeEqual(readBearerToken(c.req.raw), env.SESSION_SECRET))) {
       throw new AppError("UNAUTHORIZED", "Enter the admin token to access minutesbot.", 401);
     }
 
@@ -39,4 +39,15 @@ function readBearerToken(request: Request): string | null {
   const [scheme, token] = header.split(/\s+/, 2);
   if (scheme.toLowerCase() !== "bearer" || !token) return null;
   return token;
+}
+
+async function constantTimeEqual(left: string | null, right: string): Promise<boolean> {
+  if (!left) return false;
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+  let diff = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) diff |= leftBytes[index] ^ rightBytes[index];
+  await crypto.subtle.digest("SHA-256", leftBytes);
+  return diff === 0;
 }

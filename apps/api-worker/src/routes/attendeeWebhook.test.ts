@@ -150,6 +150,41 @@ describe("Attendee webhook route", () => {
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: "UNAUTHORIZED" } });
   });
+
+  it("fails closed when the webhook secret is not configured", async () => {
+    const payload = postProcessingPayload("wh_missing_secret");
+    const response = await app.request(
+      "/api/webhooks/attendee",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      },
+      { ...env(new WebhookD1(), { send: vi.fn(async () => undefined) }), ATTENDEE_WEBHOOK_SECRET: undefined }
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: "WEBHOOK_SECRET_NOT_CONFIGURED" } });
+  });
+
+  it("rejects signed webhooks without an idempotency key", async () => {
+    const { idempotency_key: _idempotencyKey, ...payload } = postProcessingPayload("wh_without_key");
+    const response = await app.request(
+      "/api/webhooks/attendee",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-webhook-signature": await signWebhook(payload)
+        },
+        body: JSON.stringify(payload)
+      },
+      env(new WebhookD1(), { send: vi.fn(async () => undefined) })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+  });
 });
 
 function postProcessingPayload(idempotencyKey: string) {

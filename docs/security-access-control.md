@@ -13,7 +13,7 @@ Set a strong `SESSION_SECRET` Cloudflare Worker secret:
 wrangler secret put SESSION_SECRET
 ```
 
-The admin console stores the entered token in browser local storage and sends it as a bearer token to protected API routes. Rotate `SESSION_SECRET` if the token is exposed.
+The admin console stores the entered token in browser session storage and sends it as a bearer token to protected API routes. Rotate `SESSION_SECRET` if the token is exposed.
 
 The API protects every `/api/*` route except:
 

@@ -12,5 +12,7 @@ export type WorkflowEnv = {
   API_BASE_URL: string;
   AI_API_KEY?: string;
   SESSION_SECRET?: string;
+  TRANSCRIPT_LINK_SECRET?: string;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };
+  ATTENDEE_FETCHER?: typeof fetch;
 };

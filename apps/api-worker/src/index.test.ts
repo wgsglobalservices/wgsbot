@@ -27,12 +27,16 @@ describe("api worker", () => {
   it("returns health", async () => {
     const response = await app.request("/api/health");
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
 
   it("requires auth configuration for protected admin routes", async () => {
     const response = await app.request("/api/settings");
     expect(response.status).toBe(503);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     await expect(response.json()).resolves.toEqual({
       error: {
         code: "AUTH_NOT_CONFIGURED",
@@ -111,27 +115,29 @@ describe("api worker", () => {
   });
 
   it("downloads raw transcript text with a valid signed token", async () => {
-    const token = await createTranscriptDownloadToken({ meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 }, "test-secret");
+    const token = await createTranscriptDownloadToken({ meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 }, "download-secret");
     const response = await app.request(
       `/api/artifacts/mtg_1/transcript.txt?token=${encodeURIComponent(token)}`,
       {},
       {
         DB: artifactDb() as unknown as D1Database,
         ARTIFACTS: { get: vi.fn(async () => ({ text: async () => "Alex: hello <raw>" })) } as unknown as R2Bucket,
-        SESSION_SECRET: "test-secret"
+        SESSION_SECRET: "test-secret",
+        TRANSCRIPT_LINK_SECRET: "download-secret"
       }
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("content-disposition")).toContain("attachment");
     expect(await response.text()).toBe("Alex: hello <raw>");
   });
 
   it("rejects raw transcript downloads with invalid or expired tokens", async () => {
-    const expired = await createTranscriptDownloadToken({ meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() - 1 }, "test-secret");
-    const invalid = await app.request("/api/artifacts/mtg_1/transcript.txt?token=bad", {}, { DB: artifactDb() as unknown as D1Database, ARTIFACTS: {} as R2Bucket, SESSION_SECRET: "test-secret" });
-    const expiredResponse = await app.request(`/api/artifacts/mtg_1/transcript.txt?token=${encodeURIComponent(expired)}`, {}, { DB: artifactDb() as unknown as D1Database, ARTIFACTS: {} as R2Bucket, SESSION_SECRET: "test-secret" });
+    const expired = await createTranscriptDownloadToken({ meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() - 1 }, "download-secret");
+    const invalid = await app.request("/api/artifacts/mtg_1/transcript.txt?token=bad", {}, { DB: artifactDb() as unknown as D1Database, ARTIFACTS: {} as R2Bucket, SESSION_SECRET: "test-secret", TRANSCRIPT_LINK_SECRET: "download-secret" });
+    const expiredResponse = await app.request(`/api/artifacts/mtg_1/transcript.txt?token=${encodeURIComponent(expired)}`, {}, { DB: artifactDb() as unknown as D1Database, ARTIFACTS: {} as R2Bucket, SESSION_SECRET: "test-secret", TRANSCRIPT_LINK_SECRET: "download-secret" });
 
     expect(invalid.status).toBe(401);
     expect(expiredResponse.status).toBe(401);

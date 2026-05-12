@@ -11,7 +11,7 @@ export function useAdminSession(): { signOut: () => void } {
 }
 
 export function getStoredAdminToken(): string | null {
-  return typeof window === "undefined" ? null : window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+  return typeof window === "undefined" ? null : window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
 }
 
 export function setStoredAdminTokenProvider(): void {
@@ -21,20 +21,20 @@ export function setStoredAdminTokenProvider(): void {
 setStoredAdminTokenProvider();
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) ?? "");
+  const [token, setToken] = useState(() => window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) ?? "");
   const [draftToken, setDraftToken] = useState("");
 
   function saveToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextToken = draftToken.trim();
     if (!nextToken) return;
-    window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, nextToken);
+    window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, nextToken);
     setToken(nextToken);
     setDraftToken("");
   }
 
   function clearToken() {
-    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
     setToken("");
   }
 

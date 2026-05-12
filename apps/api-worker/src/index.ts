@@ -11,6 +11,7 @@ import { testActionsRoute } from "./routes/testActions";
 import { corsMiddleware } from "./middleware/cors";
 import { errorMiddleware } from "./middleware/errors";
 import { adminTokenAuthMiddleware, isPublicApiPath } from "./middleware/auth";
+import { applySecurityHeaders, securityHeadersMiddleware } from "./middleware/securityHeaders";
 import { cleanupOldArtifacts, handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
 import emailWorker from "../../email-worker/src/index";
 
@@ -22,14 +23,16 @@ export { TranscriptWorkflow } from "../../workflow-worker/src/transcriptWorkflow
 export const app = new Hono<{ Bindings: Env }>();
 
 app.onError((error, c) => {
-  const response = toErrorResponse(error);
+  const response = toErrorResponse(error, c.env?.ENVIRONMENT);
+  applySecurityHeaders(c);
   return c.json(response.body, response.status as 400);
 });
 
 app.use("*", errorMiddleware);
+app.use("*", securityHeadersMiddleware);
 app.use("*", corsMiddleware);
-app.use("/api/*", adminTokenAuthMiddleware);
 app.options("*", (c) => c.body(null, 204));
+app.use("/api/*", adminTokenAuthMiddleware);
 
 app.route("/api/health", healthRoute);
 app.route("/api/settings", settingsRoute);

@@ -26,6 +26,7 @@ wrangler secret put DATABASE_URL --config deploy/attendee-container/wrangler.jso
 wrangler secret put REDIS_URL --config deploy/attendee-container/wrangler.jsonc
 wrangler secret put DJANGO_SECRET_KEY --config deploy/attendee-container/wrangler.jsonc
 wrangler secret put CREDENTIALS_ENCRYPTION_KEY --config deploy/attendee-container/wrangler.jsonc
+wrangler secret put ATTENDEE_OPS_TOKEN --config deploy/attendee-container/wrangler.jsonc
 pnpm attendee:deploy
 ```
 
@@ -46,7 +47,7 @@ Use R2 S3 API credentials for the AWS/S3 settings if you want Attendee object st
 ## Operations
 
 - Health/config check: `https://attendee.wgsglobal.app/_ops/health`
-- Start or restart background containers: `POST https://attendee.wgsglobal.app/_ops/start-workers`
+- Start or restart background containers: `POST https://attendee.wgsglobal.app/_ops/start-workers` with `Authorization: Bearer <ATTENDEE_OPS_TOKEN>`
 - The cron trigger calls the same background start path every 30 minutes as a best-effort keepalive.
 
 After Attendee is reachable, set the minutesbot Worker secret/config to point at this domain:
@@ -55,6 +56,7 @@ After Attendee is reachable, set the minutesbot Worker secret/config to point at
 ATTENDEE_API_BASE_URL=https://attendee.wgsglobal.app
 wrangler secret put ATTENDEE_API_KEY
 wrangler secret put ATTENDEE_WEBHOOK_SECRET
+wrangler secret put TRANSCRIPT_LINK_SECRET
 ```
 
 The minutesbot webhook URL for Attendee is:

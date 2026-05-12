@@ -17,7 +17,7 @@
     "@minutesbot/recipient-policy": "workspace:*",
     "@minutesbot/shared": "workspace:*",
     "@minutesbot/summary-engine": "workspace:*",
-    "hono": "^4.6.20",
+    "hono": "^4.12.18",
     "zod": "^3.24.1"
   }
 }

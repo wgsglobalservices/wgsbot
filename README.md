@@ -37,6 +37,7 @@ wrangler secret put ATTENDEE_API_KEY
 wrangler secret put ATTENDEE_WEBHOOK_SECRET
 wrangler secret put AI_API_KEY
 wrangler secret put SESSION_SECRET
+wrangler secret put TRANSCRIPT_LINK_SECRET
 ```
 
 ## Commands

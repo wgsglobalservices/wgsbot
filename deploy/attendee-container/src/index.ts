@@ -1,6 +1,6 @@
 import { Container, getContainer, getRandom } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
-import { buildContainerEnv, runtimeStatus, type AttendeeContainerSettings } from "./env";
+import { buildContainerEnv, isAuthorizedOpsRequest, runtimeStatus, type AttendeeContainerSettings } from "./env";
 
 type AttendeeContainerEnv = AttendeeContainerSettings & {
   ATTENDEE_WEB: DurableObjectNamespace<AttendeeWebContainer>;
@@ -37,6 +37,9 @@ export default {
     }
 
     if (url.pathname === "/_ops/start-workers" && request.method === "POST") {
+      if (!(await isAuthorizedOpsRequest(request, env))) {
+        return Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+      }
       const status = runtimeStatus(env);
       if (!status.ok) return Response.json(status, { status: 503 });
       await startBackgroundContainers(env);

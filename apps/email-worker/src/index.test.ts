@@ -235,4 +235,109 @@ END:VCALENDAR`
       ["vendor@example.net", 0, "excluded_external_domain"]
     ]);
   });
+
+  it("rejects unauthenticated production invites before queueing bots", async () => {
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite },
+      ENVIRONMENT: "production"
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-unauthenticated
+SUMMARY:Forged Test
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).toHaveBeenCalledWith("Inbound sender authentication did not pass or does not align with the organizer");
+    expect(queueInvite).not.toHaveBeenCalled();
+    expect(db.meetings).toHaveLength(0);
+  });
+
+  it("accepts production invites with aligned DMARC authentication", async () => {
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite },
+      ENVIRONMENT: "production"
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `Authentication-Results: mx.cloudflare.net; dmarc=pass header.from=wgs.bot; spf=pass smtp.mailfrom=wgs.bot; dkim=pass header.d=wgs.bot
+From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-authenticated
+SUMMARY:Authenticated Test
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
+  });
+
+  it("rejects production invites when the authenticated sender and organizer domains differ", async () => {
+    const setReject = vi.fn();
+    const env = {
+      DB: new FakeD1() as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: vi.fn(async () => undefined) },
+      ENVIRONMENT: "production"
+    };
+
+    await handleInvite(
+      { from: "attacker@example.net", to: "notetaker@wgs.bot", setReject },
+      env,
+      `Authentication-Results: mx.cloudflare.net; dmarc=pass header.from=example.net
+From: Mallory <attacker@example.net>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-auth-mismatch
+SUMMARY:Mismatch Test
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).toHaveBeenCalledWith("Inbound sender authentication did not pass or does not align with the organizer");
+  });
 });

@@ -24,4 +24,8 @@ export type Env = {
   EMAIL_API_KEY?: string;
   SMTP_PASSWORD?: string;
   SESSION_SECRET?: string;
+  TRANSCRIPT_LINK_SECRET?: string;
+  ADMIN_ALLOWED_ORIGINS?: string;
+  AI_BASE_URL_ALLOWLIST?: string;
+  ATTENDEE_BASE_URL_ALLOWLIST?: string;
 };

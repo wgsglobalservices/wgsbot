@@ -72,6 +72,7 @@ wrangler secret put DATABASE_URL --config deploy/attendee-container/wrangler.jso
 wrangler secret put REDIS_URL --config deploy/attendee-container/wrangler.jsonc
 wrangler secret put DJANGO_SECRET_KEY --config deploy/attendee-container/wrangler.jsonc
 wrangler secret put CREDENTIALS_ENCRYPTION_KEY --config deploy/attendee-container/wrangler.jsonc
+wrangler secret put ATTENDEE_OPS_TOKEN --config deploy/attendee-container/wrangler.jsonc
 pnpm attendee:deploy
 ```
 
