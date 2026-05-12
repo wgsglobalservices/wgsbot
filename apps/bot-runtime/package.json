@@ -12,6 +12,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@minutesbot/invite-parser": "workspace:*",
     "@minutesbot/shared": "workspace:*",
     "hono": "^4.6.20",
     "playwright": "1.49.1",

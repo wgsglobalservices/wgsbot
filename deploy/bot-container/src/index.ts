@@ -1,6 +1,6 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
-import { timingSafeEqualString } from "@minutesbot/shared";
+import { limitReadableStream, timingSafeEqualString } from "@minutesbot/shared";
 
 type BotContainerEnv = {
   MEETING_BOT: DurableObjectNamespace<MeetingBotContainer>;
@@ -14,6 +14,8 @@ type BotContainerEnv = {
   BOT_WEBHOOK_BASE_URL?: string;
   BOT_ALLOW_GUEST_JOIN?: string;
 };
+
+const MAX_RECORDING_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 export class MeetingBotContainer extends Container {
   defaultPort = 8787;
@@ -36,18 +38,29 @@ export default {
 };
 
 async function storeRecording(request: Request, env: BotContainerEnv): Promise<Response> {
-  if (env.BOT_INTERNAL_TOKEN && !timingSafeEqualString(request.headers.get("authorization") ?? "", `Bearer ${env.BOT_INTERNAL_TOKEN}`)) {
+  if (!env.BOT_INTERNAL_TOKEN) {
+    return Response.json({ detail: "Recording upload authorization is not configured" }, { status: 503 });
+  }
+  if (!timingSafeEqualString(request.headers.get("authorization") ?? "", `Bearer ${env.BOT_INTERNAL_TOKEN}`)) {
     return Response.json({ detail: "Unauthorized" }, { status: 401 });
   }
   const bucket = request.headers.get("x-recording-bucket");
   const key = request.headers.get("x-recording-key");
-  if (!bucket || bucket !== env.BOT_RECORDING_BUCKET_NAME || !key) {
+  if (!bucket || bucket !== env.BOT_RECORDING_BUCKET_NAME || !isRecordingKey(key)) {
     return Response.json({ detail: "Invalid recording target" }, { status: 400 });
   }
-  await env.ARTIFACTS.put(key, request.body, {
+  const length = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(length) && length > MAX_RECORDING_UPLOAD_BYTES) {
+    return Response.json({ detail: "Recording upload is too large" }, { status: 413 });
+  }
+  await env.ARTIFACTS.put(key, limitReadableStream(request.body, MAX_RECORDING_UPLOAD_BYTES), {
     httpMetadata: { contentType: request.headers.get("content-type") ?? "audio/mpeg" }
   });
   return Response.json({ ok: true, key });
+}
+
+function isRecordingKey(key: string): boolean {
+  return /^recordings\/mtg_[a-z0-9]+\/recording\.mp3$/i.test(key);
 }
 
 function stringEnv(env: BotContainerEnv): Record<string, string> {

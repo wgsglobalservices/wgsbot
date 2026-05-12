@@ -92,13 +92,13 @@ describe("settings service", () => {
 
     const settings = await uploadBotImage(testEnv, {
       contentType: "image/png",
-      data: "AQID",
+      data: "iVBORw0KGgo=",
       fileName: "minutesbot.png"
     });
 
     expect(put).toHaveBeenCalledWith(
       "settings/meeting-bot-image.png",
-      new Uint8Array([1, 2, 3]),
+      new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
       expect.objectContaining({ httpMetadata: { contentType: "image/png" } })
     );
     expect(settings.attendee.botImage).toMatchObject({
@@ -106,6 +106,6 @@ describe("settings service", () => {
       contentType: "image/png",
       fileName: "minutesbot.png"
     });
-    expect(JSON.stringify(settings)).not.toContain("AQID");
+    expect(JSON.stringify(settings)).not.toContain("iVBORw0KGgo=");
   });
 });

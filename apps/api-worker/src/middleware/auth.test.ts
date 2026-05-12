@@ -110,6 +110,30 @@ describe("auth middleware", () => {
     ).rejects.toMatchObject(new AppError("AUTH_NOT_CONFIGURED", "Configure SESSION_SECRET before exposing admin routes.", 503));
   });
 
+  it("requires Cloudflare Access for production admin routes unless break-glass token auth is explicitly enabled", async () => {
+    const middleware = createAuthMiddleware();
+
+    await expect(
+      middleware(
+        ({
+          req: { path: "/api/settings", raw: new Request("https://app.example.com/api/settings", { headers: { authorization: "Bearer secret-token" } }) },
+          env: { SESSION_SECRET: "secret-token", APP_BASE_URL: "https://app.example.com", ENVIRONMENT: "production" }
+        } as any),
+        vi.fn()
+      )
+    ).rejects.toMatchObject(new AppError("CLOUDFLARE_ACCESS_REQUIRED", "Configure Cloudflare Access before exposing production admin routes.", 503));
+
+    const next = vi.fn();
+    await middleware(
+      ({
+        req: { path: "/api/settings", raw: new Request("https://app.example.com/api/settings", { headers: { authorization: "Bearer secret-token" } }) },
+        env: { SESSION_SECRET: "secret-token", APP_BASE_URL: "https://app.example.com", ENVIRONMENT: "production", ALLOW_ADMIN_TOKEN_AUTH: "true" }
+      } as any),
+      next
+    );
+    expect(next).toHaveBeenCalledOnce();
+  });
+
   it("rejects requests without the configured admin token", async () => {
     const middleware = createAuthMiddleware();
 

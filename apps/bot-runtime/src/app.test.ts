@@ -48,6 +48,44 @@ describe("bot runtime app", () => {
     });
   });
 
+  it("fails closed when internal bot API authorization is not configured", async () => {
+    const app = createBotRuntimeApp({
+      env: { BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts" },
+      checkBinary: async () => true,
+      recorder: fakeRecorder(),
+      recordingStore: fakeRecordingStore(),
+      sendWebhook: vi.fn()
+    });
+
+    const response = await app.request("/api/v1/bots/minutesbot-preflight");
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ detail: "Meeting bot authorization is not configured" });
+  });
+
+  it("rejects non-Teams meeting URLs before launching a browser", async () => {
+    const recorder = fakeRecorder();
+    const app = createBotRuntimeApp({
+      env: { BOT_INTERNAL_TOKEN: "managed-token", BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts" },
+      checkBinary: async () => true,
+      recorder,
+      recordingStore: fakeRecordingStore(),
+      sendWebhook: vi.fn()
+    });
+
+    const response = await app.request("/api/v1/bots", {
+      method: "POST",
+      headers: { authorization: "Bearer managed-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        meeting_url: "https://example.com/not-teams",
+        bot_name: "minutesbot",
+        external_media_storage_settings: { bucket_name: "minutesbot-artifacts" }
+      })
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it("uses guest mode even when legacy recorder credentials are present", async () => {
     let recorderInput: Parameters<BotRuntimeDeps["recorder"]["record"]>[0] | null = null;
     const app = createBotRuntimeApp({

@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import { BOT_WEBHOOK_TRIGGERS } from "@minutesbot/bot-client";
-import { AppError, timingSafeEqualString } from "@minutesbot/shared";
+import { AppError, readTextWithLimit, timingSafeEqualString } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { processBotWebhook } from "../services/meetingService";
+
+const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 
 const payloadSchema = z.object({
   idempotency_key: z.string().optional(),
@@ -15,10 +17,14 @@ const payloadSchema = z.object({
 });
 
 async function handleBotWebhook(c: Context<{ Bindings: Env }>) {
-  const rawBody = await c.req.text();
-  if (c.env.BOT_INTERNAL_TOKEN && !timingSafeEqualString(c.req.header("authorization") ?? "", `Bearer ${c.env.BOT_INTERNAL_TOKEN}`)) {
+  const expectedToken = c.env.BOT_INTERNAL_TOKEN;
+  if (!expectedToken) {
+    throw new AppError("BOT_WEBHOOK_AUTH_NOT_CONFIGURED", "Meeting bot webhook authorization is not configured.", 503);
+  }
+  if (!timingSafeEqualString(c.req.header("authorization") ?? "", `Bearer ${expectedToken}`)) {
     throw new AppError("INVALID_BOT_WEBHOOK_AUTH", "Invalid meeting bot webhook authorization", 401);
   }
+  const rawBody = await readTextWithLimit(c.req.raw, MAX_WEBHOOK_BODY_BYTES, "BOT_WEBHOOK_PAYLOAD_TOO_LARGE");
   let body: unknown;
   try {
     body = JSON.parse(rawBody);

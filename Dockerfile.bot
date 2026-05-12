@@ -21,4 +21,6 @@ RUN corepack enable \
 ENV PORT=8787
 EXPOSE 8787
 
+USER pwuser
+
 CMD ["pnpm", "--filter", "@minutesbot/bot-runtime", "exec", "tsx", "src/server.ts"]

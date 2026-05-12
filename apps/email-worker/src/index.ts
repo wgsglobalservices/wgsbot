@@ -1,7 +1,7 @@
 import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, upsertMeeting } from "@minutesbot/db";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
-import { createId, type MeetingStatus } from "@minutesbot/shared";
+import { createId, readStreamTextWithLimit, type MeetingStatus } from "@minutesbot/shared";
 
 type Env = {
   DB: D1Database;
@@ -16,9 +16,11 @@ type EmailMessage = {
   setReject(reason: string): void;
 };
 
+const MAX_RAW_EMAIL_BYTES = 10 * 1024 * 1024;
+
 export default {
   async email(message: EmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
-    const rawEmail = await new Response(message.raw).text();
+    const rawEmail = await readStreamTextWithLimit(message.raw, MAX_RAW_EMAIL_BYTES, "RAW_INVITE_TOO_LARGE");
     ctx.waitUntil(handleInvite(message, env, rawEmail));
   }
 };

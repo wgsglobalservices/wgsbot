@@ -65,6 +65,28 @@ curl -s https://meeting-api.minutes.bot/_ops/health | jq
 
 Confirm `version`, `diagnosticVersion`, and `containerInstanceId` changed from the previous deploy.
 
+## Uptime
+
+Use an external uptime monitor against the public API health endpoint:
+
+```text
+https://api.minutes.bot/api/health
+```
+
+The expected response is HTTP `200` with `{ "ok": true }`. Locally, the same check is available through:
+
+```bash
+API_BASE_URL=https://api.minutes.bot pnpm check
+```
+
+Monitor the first-party meeting bot runtime separately:
+
+```text
+https://meeting-api.minutes.bot/_ops/health
+```
+
+Alert if the response is not HTTP `200`, `ok` is not `true`, or the `missing` array is not empty. The bot runtime response also includes `version`, `diagnosticVersion`, and `containerInstanceId`; after a deploy, those fields should match the container version you expect to be serving traffic.
+
 ## Docs
 
 - [Architecture](docs/architecture.md)

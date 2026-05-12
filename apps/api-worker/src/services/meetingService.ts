@@ -1,13 +1,14 @@
 import {
+  createArtifact,
   findMeetingByBot,
   getMeeting,
-  insertTranscriptSegment,
   insertWebhookEvent,
   listMeetingAttendees,
   updateMeetingBotState,
   updateMeetingStatus
 } from "@minutesbot/db";
 import type { BotWebhookTrigger } from "@minutesbot/bot-client";
+import { createId } from "@minutesbot/shared";
 import type { Env } from "../env";
 
 export type BotWebhookPayload = {
@@ -46,21 +47,37 @@ export async function processBotWebhook(env: Env, payload: BotWebhookPayload): P
     const transcription = payload.data.transcription;
     const text = typeof transcription === "string" ? transcription : typeof transcription === "object" && transcription ? String((transcription as { transcript?: unknown }).transcript ?? "") : "";
     if (text) {
-      await insertTranscriptSegment(env.DB, {
-        meeting_id: meeting.id,
-        attendee_bot_id: payload.bot_id,
-        speaker_name: stringOrNull(payload.data.speaker_name),
-        speaker_uuid: stringOrNull(payload.data.speaker_uuid),
-        speaker_user_uuid: stringOrNull(payload.data.speaker_user_uuid),
-        timestamp_ms: numberOrNull(payload.data.timestamp_ms),
-        duration_ms: numberOrNull(payload.data.duration_ms),
-        text,
-        source: "webhook"
-      });
+      await storeWebhookTranscriptSegment(env, meeting.id, payload, text);
     }
   }
 
   return { duplicate: !event, meetingId: meeting.id };
+}
+
+async function storeWebhookTranscriptSegment(env: Env, meetingId: string, payload: BotWebhookPayload, text: string): Promise<void> {
+  const segmentId = createId("seg");
+  const body = JSON.stringify({
+    id: segmentId,
+    meeting_id: meetingId,
+    attendee_bot_id: payload.bot_id,
+    speaker_name: stringOrNull(payload.data.speaker_name),
+    speaker_uuid: stringOrNull(payload.data.speaker_uuid),
+    speaker_user_uuid: stringOrNull(payload.data.speaker_user_uuid),
+    timestamp_ms: numberOrNull(payload.data.timestamp_ms),
+    duration_ms: numberOrNull(payload.data.duration_ms),
+    text,
+    source: "webhook"
+  });
+  const r2Key = `transcript-segments/${meetingId}/${segmentId}.json`;
+  await env.ARTIFACTS.put(r2Key, body, { httpMetadata: { contentType: "application/json" } });
+  await createArtifact(env.DB, {
+    meeting_id: meetingId,
+    type: "transcript_segment",
+    r2_key: r2Key,
+    content_type: "application/json",
+    size_bytes: new TextEncoder().encode(body).byteLength,
+    deleted_at: null
+  });
 }
 
 export const processAttendeeWebhook = processBotWebhook;

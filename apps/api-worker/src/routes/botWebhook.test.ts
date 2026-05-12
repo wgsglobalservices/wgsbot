@@ -4,6 +4,7 @@ import { app } from "../index";
 class WebhookD1 {
   webhookEvents: unknown[][] = [];
   meetingUpdates: unknown[][] = [];
+  artifacts: unknown[][] = [];
 
   prepare(sql: string) {
     const db = this;
@@ -29,6 +30,7 @@ class WebhookD1 {
       async run() {
         if (sql.includes("INSERT INTO attendee_webhook_events")) db.webhookEvents.push(this.values);
         if (sql.includes("UPDATE meetings")) db.meetingUpdates.push(this.values);
+        if (sql.includes("INSERT INTO artifacts")) db.artifacts.push(this.values);
         return { success: true };
       }
     };
@@ -293,6 +295,44 @@ describe("meeting bot webhook route", () => {
     expect(await response.json()).toMatchObject({ error: { code: "INVALID_BOT_WEBHOOK_PAYLOAD" } });
   });
 
+  it("stores transcript update text in R2 artifacts instead of D1 transcript rows", async () => {
+    const db = new WebhookD1();
+    const put = vi.fn(async () => undefined);
+    const payload = {
+      idempotency_key: "wh_transcript_1",
+      bot_id: "bot_1",
+      bot_metadata: { minutesbot_meeting_id: "mtg_1", calendar_uid: "teams-link-1" },
+      trigger: "transcript.update",
+      data: {
+        speaker_name: "Alex",
+        timestamp_ms: 1000,
+        duration_ms: 2000,
+        transcription: { transcript: "Sensitive meeting words" }
+      }
+    };
+
+    const response = await app.request(
+      "/api/webhooks/bot",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer managed-token"
+        },
+        body: JSON.stringify(payload)
+      },
+      { ...env(db, { send: vi.fn(async () => undefined) }), ARTIFACTS: { put } as unknown as R2Bucket }
+    );
+
+    expect(response.status).toBe(200);
+    expect(put).toHaveBeenCalledWith(
+      expect.stringMatching(/^transcript-segments\/mtg_1\/seg_[a-f0-9]+\.json$/),
+      expect.stringContaining("Sensitive meeting words"),
+      expect.objectContaining({ httpMetadata: { contentType: "application/json" } })
+    );
+    expect(db.artifacts).toHaveLength(1);
+  });
+
   it("rejects webhooks with the wrong managed authorization token", async () => {
     const db = new WebhookD1();
     const payload = postProcessingPayload("wh_bad_auth");
@@ -312,6 +352,26 @@ describe("meeting bot webhook route", () => {
 
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: "INVALID_BOT_WEBHOOK_AUTH" } });
+  });
+
+  it("fails closed when meeting bot webhook authorization is not configured", async () => {
+    const db = new WebhookD1();
+    const payload = postProcessingPayload("wh_missing_auth");
+    const testEnv = env(db, { send: vi.fn(async () => undefined) });
+    delete (testEnv as Partial<ReturnType<typeof env>>).BOT_INTERNAL_TOKEN;
+
+    const response = await app.request(
+      "/api/webhooks/bot",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      },
+      testEnv
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: "BOT_WEBHOOK_AUTH_NOT_CONFIGURED" } });
   });
 
   it("keeps protected admin APIs behind the admin token", async () => {

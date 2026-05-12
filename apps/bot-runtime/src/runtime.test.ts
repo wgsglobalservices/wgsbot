@@ -2,22 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import { __runtimeTest } from "./runtime";
 
 describe("Teams runtime browser flow", () => {
-  it("uses hardened Chromium launch args while preserving existing media and sandbox flags", () => {
+  it("uses hardened Chromium launch args while preserving existing media flags", () => {
     expect(__runtimeTest.chromiumLaunchArgs).toEqual(
       expect.arrayContaining([
         "--autoplay-policy=no-user-gesture-required",
         "--use-fake-ui-for-media-stream",
         "--disable-blink-features=AutomationControlled",
-        "--no-sandbox",
         "--disable-dev-shm-usage",
         "--use-fake-device-for-media-stream",
         "--disable-gpu",
         "--disable-extensions",
         "--disable-application-cache",
-        "--disable-setuid-sandbox",
         "--window-size=1930,1090"
       ])
     );
+    expect(__runtimeTest.chromiumLaunchArgs).not.toContain("--no-sandbox");
+    expect(__runtimeTest.chromiumLaunchArgs).not.toContain("--disable-setuid-sandbox");
   });
 
   it("uses exact Teams guest selectors, grants media permissions, disables media, and confirms in-meeting controls", async () => {

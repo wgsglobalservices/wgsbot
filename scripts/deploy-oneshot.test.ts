@@ -61,8 +61,8 @@ describe("build oneshot Wrangler configs", () => {
     expect(minutesbotConfig).toContain("app.minutes.bot");
     expect(minutesbotConfig).toContain("api.minutes.bot");
     expect(minutesbotConfig).toContain("meeting.minutes.bot");
-    expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_AUD");
-    expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_JWKS_URL");
+    expect(minutesbotConfig).toContain("CLOUDFLARE_ACCESS_AUD");
+    expect(minutesbotConfig).toContain("CLOUDFLARE_ACCESS_JWKS_URL");
     expect(minutesbotConfig).not.toContain("CLOUDFLARE_ACCESS_ISSUER");
     expect(botConfig).toContain("meeting-api.minutes.bot");
     expect(botConfig).toContain("meeting.minutes.bot");
@@ -223,6 +223,8 @@ function sampleEnv(overrides: Record<string, string> = {}): Record<string, strin
     DEFAULT_SENDER_EMAIL: "notetaker@minutes.bot",
     OPENROUTER_API_KEY: "openrouter-key",
     SESSION_SECRET: "session-secret",
+    CLOUDFLARE_ACCESS_AUD: "access-aud",
+    CLOUDFLARE_ACCESS_JWKS_URL: "https://team.cloudflareaccess.com/cdn-cgi/access/certs",
     BOT_RUNTIME_VERSION: "runtime-test-version",
     ...overrides
   };

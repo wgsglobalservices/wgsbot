@@ -37,6 +37,8 @@ function sampleEnv(overrides: Record<string, string> = {}): Record<string, strin
     BOT_WEBHOOK_BASE_URL: "https://meeting.minutes.bot",
     BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
+    CLOUDFLARE_ACCESS_AUD: "access-aud",
+    CLOUDFLARE_ACCESS_JWKS_URL: "https://team.cloudflareaccess.com/cdn-cgi/access/certs",
     DEFAULT_RECORDER_EMAIL: "notetaker@minutes.bot",
     DEFAULT_SENDER_EMAIL: "notetaker@minutes.bot",
     OPENROUTER_API_KEY: "openrouter-key",

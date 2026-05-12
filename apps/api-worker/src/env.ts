@@ -24,6 +24,7 @@ export type Env = {
   EMAIL_API_KEY?: string;
   SMTP_PASSWORD?: string;
   SESSION_SECRET?: string;
+  ALLOW_ADMIN_TOKEN_AUTH?: string;
   CLOUDFLARE_ACCESS_AUD?: string;
   CLOUDFLARE_ACCESS_JWKS_URL?: string;
   CLOUDFLARE_ACCESS_ISSUER?: string;

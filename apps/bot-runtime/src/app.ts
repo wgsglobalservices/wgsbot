@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { normalizeTeamsJoinUrl } from "@minutesbot/invite-parser";
 import { timingSafeEqualString } from "@minutesbot/shared";
 
 type RuntimeEnv = {
@@ -9,6 +10,8 @@ type RuntimeEnv = {
   BOT_CONTAINER_INSTANCE_ID?: string;
   BOT_ALLOW_GUEST_JOIN?: string;
 };
+
+const MAX_CREATE_BOT_BODY_BYTES = 5 * 1024 * 1024;
 
 export type BotState = "queued" | "prejoin" | "joining" | "waiting_room" | "joined" | "recording" | "cancelling" | "cancelled" | "post_processing" | "ended" | "failed";
 
@@ -65,7 +68,14 @@ export type BotRuntimeDeps = {
 };
 
 const createBotSchema = z.object({
-  meeting_url: z.string().trim().url(),
+  meeting_url: z.string().trim().url().transform((value, ctx) => {
+    const normalized = normalizeTeamsJoinUrl(value);
+    if (!normalized) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Meeting URL must be a supported Microsoft Teams join URL." });
+      return z.NEVER;
+    }
+    return normalized;
+  }),
   bot_name: z.string().trim().min(1),
   bot_image: z.object({ type: z.enum(["image/png", "image/jpeg"]), data: z.string() }).optional(),
   recording_settings: z.object({ format: z.enum(["mp3", "mp4", "webm"]).default("mp3") }).optional(),
@@ -104,12 +114,19 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
   app.use("/api/*", async (c, next) => {
     const expected = deps.env.BOT_INTERNAL_TOKEN;
     const actual = c.req.header("authorization") ?? "";
-    if (expected && !timingSafeEqualString(actual, `Bearer ${expected}`)) return c.json({ detail: "Unauthorized" }, 401);
+    if (!expected) return c.json({ detail: "Meeting bot authorization is not configured" }, 503);
+    if (!timingSafeEqualString(actual, `Bearer ${expected}`)) return c.json({ detail: "Unauthorized" }, 401);
     await next();
   });
 
   app.post("/api/v1/bots", async (c) => {
-    const input = createBotSchema.parse(await c.req.json());
+    const length = Number(c.req.header("content-length") ?? "0");
+    if (Number.isFinite(length) && length > MAX_CREATE_BOT_BODY_BYTES) return c.json({ detail: "Request body is too large" }, 413);
+    const parsed = createBotSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ detail: "Invalid bot creation request", issues: parsed.error.issues }, 400);
+    }
+    const input = parsed.data;
     const id = deps.randomUUID?.() ?? crypto.randomUUID();
     const bot: BotRecord = {
       id,

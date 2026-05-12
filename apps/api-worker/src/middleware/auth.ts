@@ -1,4 +1,4 @@
-import { AppError } from "@minutesbot/shared";
+import { AppError, timingSafeEqualString } from "@minutesbot/shared";
 import type { Context, Next } from "hono";
 import type { Env } from "../env";
 import { isCloudflareAccessConfigured, requireCloudflareAccess } from "./cloudflareAccess";
@@ -22,11 +22,20 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
       return;
     }
 
+    if (requiresCloudflareAccess(env)) {
+      throw new AppError(
+        "CLOUDFLARE_ACCESS_REQUIRED",
+        "Configure Cloudflare Access before exposing production admin routes.",
+        503
+      );
+    }
+
     if (!env.SESSION_SECRET) {
       throw new AppError("AUTH_NOT_CONFIGURED", "Configure SESSION_SECRET before exposing admin routes.", 503);
     }
 
-    if (readBearerToken(c.req.raw) !== env.SESSION_SECRET) {
+    const token = readBearerToken(c.req.raw);
+    if (!token || !timingSafeEqualString(token, env.SESSION_SECRET)) {
       throw new AppError("UNAUTHORIZED", "Enter the admin token to access minutesbot.", 401);
     }
 
@@ -47,6 +56,10 @@ export function isPublicApiPath(path: string): boolean {
 }
 
 export const adminTokenAuthMiddleware = createAuthMiddleware();
+
+function requiresCloudflareAccess(env: Pick<Env, "ENVIRONMENT" | "ALLOW_ADMIN_TOKEN_AUTH">): boolean {
+  return env.ENVIRONMENT === "production" && env.ALLOW_ADMIN_TOKEN_AUTH !== "true";
+}
 
 function readBearerToken(request: Request): string | null {
   const header = request.headers.get("authorization") ?? "";

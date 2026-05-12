@@ -36,12 +36,10 @@ const CHROMIUM_LAUNCH_ARGS = [
   "--use-fake-ui-for-media-stream",
   "--use-fake-device-for-media-stream",
   "--disable-blink-features=AutomationControlled",
-  "--no-sandbox",
   "--disable-dev-shm-usage",
   "--disable-gpu",
   "--disable-extensions",
   "--disable-application-cache",
-  "--disable-setuid-sandbox",
   "--window-size=1930,1090"
 ] as const;
 

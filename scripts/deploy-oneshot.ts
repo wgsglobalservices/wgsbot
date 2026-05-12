@@ -49,7 +49,9 @@ const REQUIRED_ENV_KEYS = [
   "DEFAULT_RECORDER_EMAIL",
   "DEFAULT_SENDER_EMAIL",
   "OPENROUTER_API_KEY",
-  "SESSION_SECRET"
+  "SESSION_SECRET",
+  "CLOUDFLARE_ACCESS_AUD",
+  "CLOUDFLARE_ACCESS_JWKS_URL"
 ] as const;
 
 export async function deployOneshot(options: OneshotDeployOptions = {}): Promise<void> {
@@ -204,7 +206,10 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
       BOT_RECORDING_BUCKET_NAME: env.BOT_RECORDING_BUCKET_NAME,
       DEFAULT_RECORDER_EMAIL: env.DEFAULT_RECORDER_EMAIL,
       DEFAULT_SENDER_EMAIL: env.DEFAULT_SENDER_EMAIL,
-      ENVIRONMENT: environment
+      ENVIRONMENT: environment,
+      CLOUDFLARE_ACCESS_AUD: env.CLOUDFLARE_ACCESS_AUD,
+      CLOUDFLARE_ACCESS_JWKS_URL: env.CLOUDFLARE_ACCESS_JWKS_URL,
+      ...(env.CLOUDFLARE_ACCESS_ISSUER ? { CLOUDFLARE_ACCESS_ISSUER: env.CLOUDFLARE_ACCESS_ISSUER } : {})
     },
     d1_databases: [
       {
