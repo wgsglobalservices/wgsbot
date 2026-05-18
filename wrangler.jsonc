@@ -29,6 +29,9 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "triggers": {
+    "crons": ["* * * * *", "17 3 * * *"]
+  },
   "vars": {
     "APP_BASE_URL": "https://minutesbot-admin.wgsglobal.app",
     "API_BASE_URL": "https://minutesbot-api.wgsglobal.app",
@@ -88,6 +91,9 @@
         "DEFAULT_SENDER_EMAIL": "notetaker-staging@wgs.bot",
         "ENVIRONMENT": "staging"
       },
+      "triggers": {
+        "crons": ["* * * * *", "17 3 * * *"]
+      },
       "d1_databases": [
         {
           "binding": "DB",
@@ -145,6 +151,9 @@
         "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
         "ENVIRONMENT": "production"
+      },
+      "triggers": {
+        "crons": ["* * * * *", "17 3 * * *"]
       },
       "d1_databases": [
         {

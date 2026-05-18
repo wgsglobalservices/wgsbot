@@ -13,6 +13,7 @@ import { errorMiddleware } from "./middleware/errors";
 import { adminTokenAuthMiddleware, isPublicApiPath } from "./middleware/auth";
 import { applySecurityHeaders, securityHeadersMiddleware } from "./middleware/securityHeaders";
 import { cleanupOldArtifacts, handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
+import { queueDueBotCreations } from "../../workflow-worker/src/botCreation";
 import emailWorker from "../../email-worker/src/index";
 
 export { CleanupWorkflow } from "../../workflow-worker/src/cleanupWorkflow";
@@ -21,6 +22,8 @@ export { SummaryWorkflow } from "../../workflow-worker/src/summaryWorkflow";
 export { TranscriptWorkflow } from "../../workflow-worker/src/transcriptWorkflow";
 
 export const app = new Hono<{ Bindings: Env }>();
+const BOT_SCHEDULER_CRON = "* * * * *";
+const CLEANUP_CRON = "17 3 * * *";
 
 app.onError((error, c) => {
   const response = toErrorResponse(error, c.env?.ENVIRONMENT);
@@ -51,8 +54,9 @@ export default {
   async queue(batch, env) {
     await handleQueueBatch(batch, env);
   },
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(cleanupOldArtifacts(env));
+  async scheduled(event, env, ctx) {
+    if (event.cron === BOT_SCHEDULER_CRON) ctx.waitUntil(queueDueBotCreations(env));
+    if (event.cron === CLEANUP_CRON) ctx.waitUntil(cleanupOldArtifacts(env));
   }
 } satisfies ExportedHandler<Env>;
 

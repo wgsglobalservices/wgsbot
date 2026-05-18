@@ -1,7 +1,7 @@
-import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, upsertMeeting } from "@minutesbot/db";
+import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, updateMeetingStatus, upsertMeeting } from "@minutesbot/db";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
-import { createId, type MeetingStatus } from "@minutesbot/shared";
+import { createId, shouldCreateBotNow, type MeetingStatus } from "@minutesbot/shared";
 
 type Env = {
   DB: D1Database;
@@ -125,7 +125,11 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     return;
   }
 
-  await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
+  if (shouldCreateBotNow(meeting.start_time, settings.attendee.createBotMinutesBeforeStart)) {
+    await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
+  } else {
+    await updateMeetingStatus(env.DB, meeting.id, "WAITING_TO_CREATE_BOT");
+  }
   await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.scheduled", resourceType: "meeting", resourceId: meeting.id });
 }
 

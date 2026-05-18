@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "@minutesbot/shared";
-import { createMeetingBot } from "./botCreation";
+import { createMeetingBot, handleCreateBotQueueMessage, queueDueBotCreations } from "./botCreation";
 import type { WorkflowEnv } from "./env";
 
 class BotCreationD1 {
@@ -8,11 +8,15 @@ class BotCreationD1 {
     id: "mtg_1",
     calendar_uid: "teams-link-1",
     teams_join_url: "https://teams.microsoft.com/l/meetup-join/abc",
-    status: "SCHEDULED"
+    start_time: "2026-05-18T15:00:00.000Z",
+    status: "SCHEDULED",
+    attendee_bot_id: null as string | null
   };
   settings = defaultSettings;
   statusUpdates: Array<{ status: string; latestError: string | null }> = [];
   auditLogs: Array<{ eventType: string; metadata: unknown }> = [];
+  dueMeetings: Array<{ id: string }> = [];
+  claims = 0;
 
   prepare(sql: string) {
     const db = this;
@@ -29,9 +33,20 @@ class BotCreationD1 {
         }
         return null;
       },
+      async all<T>() {
+        if (sql.includes("FROM meetings")) return { results: db.dueMeetings as T[] };
+        return { results: [] as T[] };
+      },
       async run() {
         if (sql.startsWith("UPDATE meetings SET status")) {
           db.statusUpdates.push({ status: this.values[0] as string, latestError: this.values[1] as string | null });
+        }
+        if (sql.includes("WHERE id = ?") && sql.includes("attendee_bot_id IS NULL") && sql.includes("status IN")) {
+          db.claims += 1;
+          db.statusUpdates.push({ status: this.values[0] as string, latestError: this.values[1] as string | null });
+          const claimable = ["SCHEDULED", "WAITING_TO_CREATE_BOT", "FAILED"].includes(db.meeting.status);
+          if (claimable) db.meeting.status = this.values[0] as string;
+          return { success: true, meta: { changes: "attendee_bot_id" in db.meeting && db.meeting.attendee_bot_id ? 0 : claimable ? 1 : 0 } };
         }
         if (sql.startsWith("INSERT INTO audit_logs")) {
           db.auditLogs.push({ eventType: this.values[2] as string, metadata: this.values[5] ? JSON.parse(this.values[5] as string) : null });
@@ -232,5 +247,118 @@ describe("createMeetingBot failure handling", () => {
       eventType: "bot.fatal_error",
       metadata: { code: "ATTENDEE_UNHEALTHY" }
     });
+  });
+});
+
+describe("bot creation scheduling", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("waits until the configured early-join time for future meetings", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T14:30:00.000Z"));
+    const db = new BotCreationD1();
+    db.meeting.start_time = "2026-05-18T15:00:00.000Z";
+    db.settings = {
+      ...defaultSettings,
+      attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+    };
+    const queueSend = vi.fn(async () => undefined);
+
+    await handleCreateBotQueueMessage(env({ INVITE_QUEUE: { send: queueSend } }, db), "mtg_1");
+
+    expect(queueSend).toHaveBeenCalledWith({ type: "create_bot", meetingId: "mtg_1" }, { delaySeconds: 1500 });
+    expect(db.statusUpdates.at(-1)).toEqual({ status: "WAITING_TO_CREATE_BOT", latestError: null });
+  });
+
+  it("creates the bot immediately when the invite arrives after the configured early-join time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T14:56:00.000Z"));
+    const db = new BotCreationD1();
+    db.meeting.start_time = "2026-05-18T15:00:00.000Z";
+    db.settings = {
+      ...defaultSettings,
+      attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] }))
+        .mockResolvedValueOnce(Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "joining" }, { status: 201 }))
+    );
+
+    await handleCreateBotQueueMessage(env({}, db), "mtg_1");
+
+    expect(db.auditLogs.some((log) => log.eventType === "bot.created")).toBe(true);
+  });
+
+  it("honors forced bot creation for manual retries before the scheduled join time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T14:30:00.000Z"));
+    const db = new BotCreationD1();
+    db.meeting.start_time = "2026-05-18T15:00:00.000Z";
+    db.settings = {
+      ...defaultSettings,
+      attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] }))
+        .mockResolvedValueOnce(Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "joining" }, { status: 201 }))
+    );
+
+    await handleCreateBotQueueMessage(env({}, db), "mtg_1", { force: true });
+
+    expect(db.auditLogs.some((log) => log.eventType === "bot.created")).toBe(true);
+  });
+
+  it("queues due meetings from the scheduled worker scan", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T14:55:00.000Z"));
+    const db = new BotCreationD1();
+    db.settings = {
+      ...defaultSettings,
+      attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+    };
+    db.dueMeetings = [{ id: "mtg_due" }, { id: "mtg_started" }];
+    const queueSend = vi.fn(async () => undefined);
+
+    const queued = await queueDueBotCreations(env({ INVITE_QUEUE: { send: queueSend } }, db));
+
+    expect(queued).toBe(2);
+    expect(queueSend).toHaveBeenNthCalledWith(1, { type: "create_bot", meetingId: "mtg_due" });
+    expect(queueSend).toHaveBeenNthCalledWith(2, { type: "create_bot", meetingId: "mtg_started" });
+  });
+
+  it("does not create a duplicate Attendee bot when a meeting already has one", async () => {
+    const db = new BotCreationD1();
+    db.meeting = { ...db.meeting, attendee_bot_id: "bot_existing" };
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await createMeetingBot(env({}, db), "mtg_1");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(db.claims).toBe(0);
+  });
+
+  it("does not create a duplicate Attendee bot for repeated queue deliveries", async () => {
+    const db = new BotCreationD1();
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] }))
+      .mockResolvedValueOnce(Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "joining" }, { status: 201 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await createMeetingBot(env({}, db), "mtg_1");
+    await createMeetingBot(env({}, db), "mtg_1");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(db.claims).toBe(2);
   });
 });

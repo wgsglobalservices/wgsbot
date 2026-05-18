@@ -1,19 +1,20 @@
 import { ATTENDEE_WEBHOOK_TRIGGERS, AttendeeClient, AttendeeClientError, type AttendeeBot } from "@minutesbot/attendee-client";
-import { createAuditLog, getMeeting, getSettings, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
-import { AppError, attendeeWebhookUrl, minutesBefore, recordingR2Key, resolveAttendeeBaseUrl } from "@minutesbot/shared";
+import { claimMeetingBotCreation, createAuditLog, getMeeting, getSettings, listMeetingsDueForBotCreation, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
+import { AppError, attendeeWebhookUrl, minutesAfter, minutesBefore, recordingR2Key, resolveAttendeeBaseUrl, shouldCreateBotNow } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
-const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
+const MAX_QUEUE_DELAY_SECONDS = 24 * 60 * 60;
 
-export async function handleCreateBotQueueMessage(env: WorkflowEnv, meetingId: string): Promise<void> {
+export async function handleCreateBotQueueMessage(env: WorkflowEnv, meetingId: string, options: { force?: boolean } = {}): Promise<void> {
   const meeting = await getMeeting(env.DB, meetingId);
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
   if (meeting.status === "CANCELLED") return;
+  if (meeting.attendee_bot_id) return;
 
   const settings = await getSettings(env.DB);
-  const wakeAt = minutesBefore(meeting.start_time ?? new Date().toISOString(), settings.attendee.createBotMinutesBeforeStart);
-  const delaySeconds = secondsUntil(wakeAt);
-  if (delaySeconds > 0) {
+  if (!options.force && !shouldCreateBotNow(meeting.start_time, settings.attendee.createBotMinutesBeforeStart)) {
+    const wakeAt = minutesBefore(meeting.start_time ?? new Date().toISOString(), settings.attendee.createBotMinutesBeforeStart);
+    const delaySeconds = secondsUntil(wakeAt);
     await env.INVITE_QUEUE.send({ type: "create_bot", meetingId }, { delaySeconds: Math.min(delaySeconds, MAX_QUEUE_DELAY_SECONDS) });
     await updateMeetingStatus(env.DB, meetingId, "WAITING_TO_CREATE_BOT");
     return;
@@ -26,9 +27,10 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
   const meeting = await getMeeting(env.DB, meetingId);
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
   if (meeting.status === "CANCELLED") return;
+  if (meeting.attendee_bot_id) return;
+  if (!(await claimMeetingBotCreation(env.DB, meetingId))) return;
 
   const settings = await getSettings(env.DB);
-  await updateMeetingStatus(env.DB, meetingId, "BOT_CREATE_QUEUED");
   await createAuditLog(env.DB, { eventType: "bot.create_queued", resourceType: "meeting", resourceId: meetingId });
 
   let bot: AttendeeBot;
@@ -77,6 +79,16 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
     status: "BOT_CREATED"
   });
   await createAuditLog(env.DB, { eventType: "bot.created", resourceType: "meeting", resourceId: meetingId, metadata: { botId: bot.id, state: bot.state } });
+}
+
+export async function queueDueBotCreations(env: WorkflowEnv, now: Date = new Date()): Promise<number> {
+  const settings = await getSettings(env.DB);
+  const cutoffIso = minutesAfter(now.toISOString(), settings.attendee.createBotMinutesBeforeStart);
+  const meetings = await listMeetingsDueForBotCreation(env.DB, cutoffIso);
+  for (const meeting of meetings) {
+    await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
+  }
+  return meetings.length;
 }
 
 function botJoinChatMessage(botName: string): string {

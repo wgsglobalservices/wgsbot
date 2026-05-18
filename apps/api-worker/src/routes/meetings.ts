@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents, updateMeetingStatus } from "@minutesbot/db";
+import { createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents } from "@minutesbot/db";
 import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
 import { AppError } from "@minutesbot/shared";
 import type { Env } from "../env";
@@ -36,8 +36,7 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
   })
   .post("/:id/retry-bot", async (c) => {
     const id = c.req.param("id");
-    await updateMeetingStatus(c.env.DB, id, "BOT_CREATE_QUEUED");
-    await c.env.INVITE_QUEUE.send({ type: "create_bot", meetingId: id });
+    await c.env.INVITE_QUEUE.send({ type: "create_bot", meetingId: id, force: true });
     return c.json({ ok: true });
   })
   .post("/:id/retry-summary", async (c) => {

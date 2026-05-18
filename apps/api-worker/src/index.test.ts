@@ -239,6 +239,25 @@ describe("api worker", () => {
     expect(send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1" });
   });
 
+  it("queues manual bot retries with a force flag", async () => {
+    const send = vi.fn(async () => undefined);
+    const response = await app.request(
+      "/api/meetings/mtg_1/retry-bot",
+      { method: "POST", headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: new FakeD1() as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledWith({ type: "create_bot", meetingId: "mtg_1", force: true });
+  });
+
   it("deletes a meeting from history and removes active artifact objects", async () => {
     const db = new DeleteMeetingD1();
     const deleteObject = vi.fn(async () => undefined);

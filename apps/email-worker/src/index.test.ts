@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "@minutesbot/shared";
 import { handleInvite } from "./index";
 
@@ -6,6 +6,7 @@ class FakeD1 {
   meetings: unknown[][] = [];
   attendees: unknown[][] = [];
   auditEvents: unknown[][] = [];
+  statusUpdates: Array<{ status: string; latestError: string | null; meetingId: string }> = [];
   settingValue: string | null;
 
   constructor(settingValue: string | null = null) {
@@ -30,6 +31,9 @@ class FakeD1 {
         if (sql.includes("INSERT OR REPLACE INTO meetings")) db.meetings.push(this.values);
         if (sql.includes("INSERT INTO attendees")) db.attendees.push(this.values);
         if (sql.includes("INSERT INTO audit_logs")) db.auditEvents.push(this.values);
+        if (sql.startsWith("UPDATE meetings SET status")) {
+          db.statusUpdates.push({ status: this.values[0] as string, latestError: this.values[1] as string | null, meetingId: this.values[3] as string });
+        }
         return { success: true };
       },
       async all() {
@@ -40,6 +44,10 @@ class FakeD1 {
 }
 
 describe("email worker invite handling", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("accepts non-calendar test emails without an SMTP rejection", async () => {
     const setReject = vi.fn();
     const queueInvite = vi.fn(async () => undefined);
@@ -91,6 +99,48 @@ https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?context=%7b%7d
     expect(db.meetings[0][3]).toBe("p.gustafson@wgs.bot");
     expect(db.attendees[0][2]).toBe("p.gustafson@wgs.bot");
     expect(db.attendees[0][6]).toBe(1);
+  });
+
+  it("marks future meetings as waiting for the configured early-join time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T14:30:00.000Z"));
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1(
+      JSON.stringify({
+        ...defaultSettings,
+        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+      })
+    );
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-future-waiting
+SUMMARY:Future Test
+DTSTART:20260518T150000Z
+DTEND:20260518T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).not.toHaveBeenCalled();
+    expect(db.statusUpdates.at(-1)).toMatchObject({ status: "WAITING_TO_CREATE_BOT" });
   });
 
   it("rejects wrong recorder recipient", async () => {

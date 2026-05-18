@@ -22,6 +22,7 @@ describe("MeetingTable", () => {
     );
 
     expect(html).toContain('class="clickableRow"');
+    expect(html).toContain('class="meetingTable"');
     expect(html).toContain('role="link"');
     expect(html).toContain('href="#/meeting/mtg_1"');
     expect(html).toContain("Delete");

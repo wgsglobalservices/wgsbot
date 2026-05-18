@@ -17,7 +17,7 @@ export function MeetingTable({
   };
 
   return (
-    <table>
+    <table className="meetingTable">
       <thead>
         <tr>
           <th>Date</th>

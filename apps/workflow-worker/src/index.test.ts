@@ -4,8 +4,12 @@ const queueConsumers = vi.hoisted(() => ({
   cleanupOldArtifacts: vi.fn(),
   handleQueueBatch: vi.fn()
 }));
+const botCreation = vi.hoisted(() => ({
+  queueDueBotCreations: vi.fn()
+}));
 
 vi.mock("./queueConsumers", () => queueConsumers);
+vi.mock("./botCreation", () => botCreation);
 
 describe("workflow worker queue entrypoint", () => {
   it("awaits queue processing before returning", async () => {
@@ -20,5 +24,28 @@ describe("workflow worker queue entrypoint", () => {
     await worker.queue({ messages: [] } as unknown as MessageBatch<unknown>, {} as never);
 
     expect(completed).toBe(true);
+  });
+
+  it("runs bot scheduling on the every-minute cron", async () => {
+    const worker = (await import("./index")).default;
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise);
+    botCreation.queueDueBotCreations.mockResolvedValueOnce(1);
+
+    await worker.scheduled({ cron: "* * * * *" } as ScheduledEvent, {} as never, { waitUntil } as unknown as ExecutionContext);
+    await waitUntil.mock.calls[0][0];
+
+    expect(botCreation.queueDueBotCreations).toHaveBeenCalledOnce();
+    expect(queueConsumers.cleanupOldArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("keeps retention cleanup on its daily cron", async () => {
+    const worker = (await import("./index")).default;
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise);
+    queueConsumers.cleanupOldArtifacts.mockResolvedValueOnce(undefined);
+
+    await worker.scheduled({ cron: "17 3 * * *" } as ScheduledEvent, {} as never, { waitUntil } as unknown as ExecutionContext);
+    await waitUntil.mock.calls[0][0];
+
+    expect(queueConsumers.cleanupOldArtifacts).toHaveBeenCalledOnce();
   });
 });

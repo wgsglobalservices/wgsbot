@@ -24,7 +24,7 @@ export function Meetings() {
     }
   };
   return (
-    <div className="page">
+    <div className="page meetingsPage">
       <header><h1>Meetings</h1><p>All meeting records created from Teams calendar invites and forwarded Teams links.</p></header>
       {error && <p className="errorText">{error}</p>}
       <MeetingTable meetings={meetings} deletingMeetingId={deletingMeetingId} onDelete={deleteMeeting} />
