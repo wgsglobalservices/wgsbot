@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 type WranglerConfig = {
+  vars?: Record<string, string>;
   queues?: {
     producers?: Array<{ binding?: string; queue?: string }>;
     consumers?: Array<{ queue?: string; max_batch_size?: number; max_batch_timeout?: number }>;
@@ -58,5 +59,14 @@ describe("root wrangler config", () => {
 
     expect(config.durable_objects).toBeUndefined();
     expect(config.containers).toBeUndefined();
+  });
+
+  it("keeps the connected production admin UI on the explicit admin-token fallback", () => {
+    const config = readRootWranglerConfig();
+
+    expect(config.vars?.ENVIRONMENT).toBe("production");
+    expect(config.vars?.ALLOW_ADMIN_TOKEN_AUTH).toBe("true");
+    expect(config.vars?.CLOUDFLARE_ACCESS_AUD).toBeUndefined();
+    expect(config.vars?.CLOUDFLARE_ACCESS_JWKS_URL).toBeUndefined();
   });
 });

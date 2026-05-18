@@ -4,7 +4,7 @@ minutesbot uses layered protection on Cloudflare:
 
 1. Cloudflare Access can protect the Worker route before traffic reaches the app.
 2. The Worker validates Cloudflare Access JWTs when Access vars are configured.
-3. A self-hosted admin token remains as the fallback for deployments without Cloudflare Access.
+3. A self-hosted admin token remains as the explicit fallback for deployments where Cloudflare Access is enforced in front of the Worker.
 4. WAF rules block unwanted traffic before it reaches the Worker.
 
 ## Admin Token Setup
@@ -26,7 +26,7 @@ Meeting bot webhooks are still protected by the managed internal bot token gener
 
 ## Cloudflare Access JWT Validation
 
-The Worker can validate the `Cf-Access-Jwt-Assertion` header when deployment-specific Access JWT vars are configured. The checked-in production config does not set those vars because Access is handled outside the Worker by default.
+The Worker can validate the `Cf-Access-Jwt-Assertion` header when deployment-specific Access JWT vars are configured. The checked-in connected-build production config does not set those vars because Access is handled outside the Worker by default; it sets `ALLOW_ADMIN_TOKEN_AUTH=true` so protected API routes continue to require the admin token instead of returning `CLOUDFLARE_ACCESS_REQUIRED`.
 
 ## Cloudflare Access and WAF
 
