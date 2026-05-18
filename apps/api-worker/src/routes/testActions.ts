@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { createAuditLog, updateSummaryStatus, upsertArtifact, upsertMeeting } from "@minutesbot/db";
 import { AttendeeClient, AttendeeClientError } from "@minutesbot/attendee-client";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
@@ -8,6 +9,8 @@ import { createOpenAiCompatibleProvider } from "@minutesbot/summary-engine";
 import { attendeeWebhookUrl, defaultSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
+import { generateAndStoreSummary, maxTranscriptTextBytes } from "../../../workflow-worker/src/summaryWorkflow";
+import { sendMeetingSummaryEmail } from "../../../workflow-worker/src/summaryEmailDelivery";
 
 const sampleInvite = `From: Alice <alice@wgs.bot>
 To: notetaker@wgs.bot
@@ -28,6 +31,15 @@ END:VCALENDAR`;
 
 const sendTestSummaryEmailSchema = z.object({
   to: z.string().trim().email().transform((value) => value.toLowerCase())
+});
+
+const uploadedTranscriptRecapSchema = z.object({
+  recipient: z.string().trim().email().transform((value) => value.toLowerCase()),
+  subject: z.string().trim().min(1),
+  meetingStartTime: z.string().trim().refine((value) => Number.isFinite(Date.parse(value))),
+  organizerEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
+  organizerName: z.string().trim().optional(),
+  transcriptText: z.string()
 });
 
 export const testActionsRoute = new Hono<{ Bindings: Env }>()
@@ -169,6 +181,77 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
     } catch (error) {
       return c.json({ ok: false, message: error instanceof Error ? error.message : "Sample recap email failed to send" }, 502);
     }
+  })
+  .post("/test-uploaded-transcript-recap", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = uploadedTranscriptRecapSchema.safeParse(body);
+    if (!parsed.success) {
+      const recipientIssue = parsed.error.issues.some((issue) => issue.path[0] === "recipient");
+      return c.json({ ok: false, message: recipientIssue ? "Enter a valid recipient email address" : "Enter valid recap test details" }, 400);
+    }
+    const transcriptText = parsed.data.transcriptText.trim();
+    if (!transcriptText) return c.json({ ok: false, message: "Upload or paste a transcript to test recap generation" }, 400);
+    if (new TextEncoder().encode(transcriptText).byteLength > maxTranscriptTextBytes) {
+      return c.json({ ok: false, message: "Transcript is too large to summarize automatically" }, 413);
+    }
+    if (!c.env.AI_API_KEY) return c.json({ ok: false, message: "AI_API_KEY secret is not configured" }, 400);
+
+    const meeting = await upsertMeeting(c.env.DB, {
+      calendar_uid: `test-recap-upload:${crypto.randomUUID()}`,
+      subject: parsed.data.subject,
+      organizer_email: parsed.data.organizerEmail,
+      organizer_name: parsed.data.organizerName || null,
+      teams_join_url: null,
+      start_time: new Date(parsed.data.meetingStartTime).toISOString(),
+      end_time: null,
+      status: "TRANSCRIPT_AVAILABLE",
+      transcript_status: "complete",
+      summary_status: "queued"
+    });
+    const transcriptKey = `transcripts/${meeting.id}/transcript.txt`;
+    const transcriptJsonKey = `transcripts/${meeting.id}/transcript.json`;
+    const transcriptJson = JSON.stringify({ source: "admin-upload", text: transcriptText });
+    await c.env.ARTIFACTS.put(transcriptKey, transcriptText, { httpMetadata: { contentType: "text/plain; charset=UTF-8" } });
+    await c.env.ARTIFACTS.put(transcriptJsonKey, transcriptJson, { httpMetadata: { contentType: "application/json" } });
+    await upsertArtifact(c.env.DB, {
+      meeting_id: meeting.id,
+      type: "transcript_text",
+      r2_key: transcriptKey,
+      content_type: "text/plain",
+      size_bytes: new TextEncoder().encode(transcriptText).byteLength,
+      deleted_at: null
+    });
+    await upsertArtifact(c.env.DB, {
+      meeting_id: meeting.id,
+      type: "transcript_json",
+      r2_key: transcriptJsonKey,
+      content_type: "application/json",
+      size_bytes: new TextEncoder().encode(transcriptJson).byteLength,
+      deleted_at: null
+    });
+    await createAuditLog(c.env.DB, { eventType: "transcript.fetched", resourceType: "meeting", resourceId: meeting.id, metadata: { source: "admin-upload" } });
+
+    const generated = await generateAndStoreSummary(c.env, meeting.id);
+    const result = await sendMeetingSummaryEmail(c.env, {
+      meeting: generated.meeting,
+      settings: generated.settings,
+      summary: generated.summary,
+      recipientEmail: parsed.data.recipient,
+      excludedRecipients: []
+    });
+    if (result.status === "failed") {
+      return c.json({ ok: false, message: result.failureReason ?? "Uploaded transcript recap email failed to send", meetingId: meeting.id }, 502);
+    }
+    await updateSummaryStatus(c.env.DB, meeting.id, "sent", "SUMMARY_SENT");
+    await createAuditLog(c.env.DB, { eventType: "email.sent", resourceType: "meeting", resourceId: meeting.id, metadata: { recipient: parsed.data.recipient, type: "summary_test" } });
+    return c.json({
+      ok: true,
+      message: "Uploaded transcript recap generated and sent",
+      meetingId: meeting.id,
+      recipient: parsed.data.recipient,
+      status: result.status,
+      providerMessageId: result.providerMessageId
+    });
   })
   .post("/verify-webhook-signature-sample", async (c) =>
     c.json({ ok: true, message: "Use ATTENDEE_WEBHOOK_SECRET and X-Webhook-Signature against /api/webhooks/attendee for live verification" })

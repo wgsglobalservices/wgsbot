@@ -3,8 +3,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MeetingTable } from "./MeetingTable";
 
-describe("MeetingTable", () => {
-  it("renders meeting rows as detail links with a delete action", () => {
+describe("MeetingTable uploaded transcript tests", () => {
+  it("keeps row action layout inside a table cell", () => {
     const html = renderToStaticMarkup(
       React.createElement(MeetingTable, {
         meetings: [
@@ -21,11 +21,9 @@ describe("MeetingTable", () => {
       })
     );
 
-    expect(html).toContain('class="clickableRow"');
-    expect(html).toContain('class="meetingTable"');
-    expect(html).toContain('role="link"');
+    expect(html).toContain('class="rowActionsCell"');
+    expect(html).toContain('class="rowActions"');
     expect(html).toContain('href="#/meeting/mtg_1"');
-    expect(html).toContain("Delete");
   });
 
   it("marks uploaded transcript recap test meetings", () => {

@@ -1,6 +1,6 @@
 import { defaultSettings, verifyTranscriptDownloadToken } from "@minutesbot/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { generateAndSendSummary } from "./summaryWorkflow";
+import { generateAndSendSummary, generateAndStoreSummary } from "./summaryWorkflow";
 import { summarizeTranscript } from "@minutesbot/summary-engine";
 
 vi.mock("@minutesbot/summary-engine", () => ({
@@ -128,6 +128,41 @@ describe("summary workflow", () => {
       "mtg_1"
     );
 
+    expect(send).not.toHaveBeenCalled();
+    expect(db.emailDeliveries).toEqual([]);
+    expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready"]);
+  });
+
+  it("can generate and store a recap without applying automatic recipient delivery", async () => {
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true }
+    });
+    const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
+
+    const result = await generateAndStoreSummary(
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {
+          get: vi.fn(async () => ({ text: async () => "Alex: hello" })),
+          put: vi.fn(async () => undefined)
+        } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        AI_API_KEY: "test-ai-key",
+        SESSION_SECRET: "session-secret",
+        TRANSCRIPT_LINK_SECRET: "transcript-secret",
+        SEND_EMAIL: { send }
+      },
+      "mtg_1"
+    );
+
+    expect(result.meeting).toMatchObject({ id: "mtg_1", subject: "Project Sync" });
+    expect(result.summary).toMatchObject({ summary: ["Summary ready."] });
+    expect(result.excludedRecipients).toEqual([]);
     expect(send).not.toHaveBeenCalled();
     expect(db.emailDeliveries).toEqual([]);
     expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready"]);

@@ -4,6 +4,7 @@ import { RecipientEligibilityTable } from "../components/RecipientEligibilityTab
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { formatDate } from "../lib/dates";
+import { isUploadedTranscriptTestMeeting } from "../lib/testMeetings";
 
 export function MeetingDetail({ id }: { id: string }) {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
@@ -19,7 +20,10 @@ export function MeetingDetail({ id }: { id: string }) {
     <div className="page">
       <header>
         <h1>{String(meeting.subject ?? "Meeting")}</h1>
-        <p>{formatDate(String(meeting.start_time ?? ""))} · <StatusBadge value={String(meeting.status ?? "")} /></p>
+        <p>
+          {formatDate(String(meeting.start_time ?? ""))} · <StatusBadge value={String(meeting.status ?? "")} />
+          {isUploadedTranscriptTestMeeting(meeting) ? <span className="badge neutral inlineBadge">Uploaded transcript test</span> : null}
+        </p>
       </header>
       <section>
         <h2>Controls</h2>

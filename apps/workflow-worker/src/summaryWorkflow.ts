@@ -1,14 +1,24 @@
 import { createAuditLog, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, listTranscriptSegments, updateSummaryStatus } from "@minutesbot/db";
+import type { AttendeeRow, MeetingRow } from "@minutesbot/db";
 import { buildSummaryRecipients } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
-import { AppError } from "@minutesbot/shared";
+import { AppError, type AppSettings } from "@minutesbot/shared";
+import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 import { sendMeetingSummaryEmail } from "./summaryEmailDelivery";
 
 type Params = { meetingId: string };
-const maxTranscriptTextBytes = 1_000_000;
+export const maxTranscriptTextBytes = 1_000_000;
+
+export type StoredSummaryResult = {
+  meeting: MeetingRow;
+  settings: AppSettings;
+  summary: SummaryEmailSummary;
+  attendees: AttendeeRow[];
+  excludedRecipients: string[];
+};
 
 export class SummaryWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
@@ -21,6 +31,46 @@ export async function generateAndSendSummary(
   meetingId: string,
   runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T> = (_name, callback) => callback()
 ): Promise<void> {
+  const generated = await generateAndStoreSummary(env, meetingId, runStep);
+  const { attendees, meeting, settings, summary } = generated;
+  const eligibleInvitees = attendees.filter((attendee) => attendee.summary_eligible);
+  const ineligibleInviteeEmails = attendees.filter((attendee) => !attendee.summary_eligible).map((attendee) => attendee.email);
+  const filtered = buildSummaryRecipients({
+    organizer: meeting.organizer_email ? { email: meeting.organizer_email, name: meeting.organizer_name ?? undefined } : null,
+    attendees: eligibleInvitees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
+    primaryDomain: settings.primaryDomain,
+    allowedDomains: settings.allowedDomains,
+    allowSubdomains: settings.policy.allowSubdomains
+  });
+  if (filtered.included.length === 0) {
+    await updateSummaryStatus(env.DB, meetingId, "failed", "FAILED");
+    await createAuditLog(env.DB, { eventType: "summary.failed", resourceType: "meeting", resourceId: meetingId, metadata: { reason: "no eligible recipients" } });
+    return;
+  }
+  const excludedRecipients = Array.from(new Set([...filtered.excluded.map((recipient) => recipient.email), ...ineligibleInviteeEmails]));
+  if (!settings.email.sendMeetingRecapsAutomatically) {
+    return;
+  }
+
+  let sentCount = 0;
+  for (const recipient of filtered.included) {
+    const result = await sendMeetingSummaryEmail(env, { meeting, settings, summary, recipientEmail: recipient.email, excludedRecipients });
+    if (result.status === "sent") sentCount += 1;
+  }
+  if (sentCount === 0) {
+    await updateSummaryStatus(env.DB, meetingId, "failed", "FAILED");
+    await createAuditLog(env.DB, { eventType: "summary.failed", resourceType: "meeting", resourceId: meetingId, metadata: { reason: "email delivery failed" } });
+    return;
+  }
+  await updateSummaryStatus(env.DB, meetingId, "sent", "SUMMARY_SENT");
+  await createAuditLog(env.DB, { eventType: "summary.sent", resourceType: "meeting", resourceId: meetingId, metadata: { recipients: sentCount } });
+}
+
+export async function generateAndStoreSummary(
+  env: WorkflowEnv,
+  meetingId: string,
+  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T> = (_name, callback) => callback()
+): Promise<StoredSummaryResult> {
   const meeting = await getMeeting(env.DB, meetingId);
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
   const settings = await getSettings(env.DB);
@@ -74,38 +124,7 @@ export async function generateAndSendSummary(
   await createSummary(env.DB, { meeting_id: meetingId, r2_key: summaryKey, summary_json: JSON.stringify(summary), model: settings.ai.model });
   await updateSummaryStatus(env.DB, meetingId, "ready", "SUMMARY_READY");
   await createAuditLog(env.DB, { eventType: "summary.generated", resourceType: "meeting", resourceId: meetingId });
-
-  const eligibleInvitees = attendees.filter((attendee) => attendee.summary_eligible);
-  const ineligibleInviteeEmails = attendees.filter((attendee) => !attendee.summary_eligible).map((attendee) => attendee.email);
-  const filtered = buildSummaryRecipients({
-    organizer: meeting.organizer_email ? { email: meeting.organizer_email, name: meeting.organizer_name ?? undefined } : null,
-    attendees: eligibleInvitees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
-    primaryDomain: settings.primaryDomain,
-    allowedDomains: settings.allowedDomains,
-    allowSubdomains: settings.policy.allowSubdomains
-  });
-  if (filtered.included.length === 0) {
-    await updateSummaryStatus(env.DB, meetingId, "failed", "FAILED");
-    await createAuditLog(env.DB, { eventType: "summary.failed", resourceType: "meeting", resourceId: meetingId, metadata: { reason: "no eligible recipients" } });
-    return;
-  }
-  const excludedRecipients = Array.from(new Set([...filtered.excluded.map((recipient) => recipient.email), ...ineligibleInviteeEmails]));
-  if (!settings.email.sendMeetingRecapsAutomatically) {
-    return;
-  }
-
-  let sentCount = 0;
-  for (const recipient of filtered.included) {
-    const result = await sendMeetingSummaryEmail(env, { meeting, settings, summary, recipientEmail: recipient.email, excludedRecipients });
-    if (result.status === "sent") sentCount += 1;
-  }
-  if (sentCount === 0) {
-    await updateSummaryStatus(env.DB, meetingId, "failed", "FAILED");
-    await createAuditLog(env.DB, { eventType: "summary.failed", resourceType: "meeting", resourceId: meetingId, metadata: { reason: "email delivery failed" } });
-    return;
-  }
-  await updateSummaryStatus(env.DB, meetingId, "sent", "SUMMARY_SENT");
-  await createAuditLog(env.DB, { eventType: "summary.sent", resourceType: "meeting", resourceId: meetingId, metadata: { recipients: sentCount } });
+  return { meeting, settings, summary, attendees, excludedRecipients: [] };
 }
 
 function calculateMeetingDurationMinutes(start?: string, end?: string): number | undefined {
