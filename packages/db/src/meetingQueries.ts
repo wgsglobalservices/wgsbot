@@ -72,6 +72,16 @@ export async function getMeeting(db: D1Database, id: string): Promise<MeetingRow
   return db.prepare("SELECT * FROM meetings WHERE id = ?").bind(id).first<MeetingRow>();
 }
 
+export async function deleteMeetingRecord(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM attendees WHERE meeting_id = ?").bind(id).run();
+  await db.prepare("DELETE FROM transcript_segments WHERE meeting_id = ?").bind(id).run();
+  await db.prepare("DELETE FROM attendee_webhook_events WHERE meeting_id = ?").bind(id).run();
+  await db.prepare("DELETE FROM summaries WHERE meeting_id = ?").bind(id).run();
+  await db.prepare("DELETE FROM email_deliveries WHERE meeting_id = ?").bind(id).run();
+  await db.prepare("DELETE FROM artifacts WHERE meeting_id = ?").bind(id).run();
+  await db.prepare("DELETE FROM meetings WHERE id = ?").bind(id).run();
+}
+
 export async function findMeetingByBot(db: D1Database, botId: string): Promise<MeetingRow | null> {
   return db.prepare("SELECT * FROM meetings WHERE attendee_bot_id = ?").bind(botId).first<MeetingRow>();
 }

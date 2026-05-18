@@ -1002,6 +1002,45 @@ th, td {
 th { background: #182235; color: #cbd5e1; font-weight: 650; }
 tr:hover td { background: rgba(45, 212, 191, .04); }
 
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:focus-visible td {
+  background: rgba(45, 212, 191, .08);
+  outline: 2px solid #93c5fd;
+  outline-offset: -2px;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.linkButton {
+  border: 0;
+  background: transparent;
+  color: #e2e8f0;
+  padding: 0;
+  border-radius: 0;
+  text-decoration: underline;
+}
+
+.linkButton:hover:not(:disabled) {
+  background: transparent;
+  color: #f8fafc;
+}
+
+.linkButton.dangerAction {
+  color: #fca5a5;
+}
+
+.linkButton.dangerAction:hover:not(:disabled) {
+  color: #fecaca;
+}
+
 .timeCell {
   min-width: 210px;
   white-space: nowrap;

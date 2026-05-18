@@ -104,6 +104,50 @@ class ManualSummaryD1 {
   }
 }
 
+class DeleteMeetingD1 {
+  runSql: string[] = [];
+
+  prepare(sql: string) {
+    const db = this;
+    return {
+      values: [] as unknown[],
+      bind(...values: unknown[]) {
+        this.values = values;
+        return this;
+      },
+      async first<T>() {
+        if (sql.includes("FROM meetings WHERE id")) {
+          return {
+            id: "mtg_1",
+            subject: "Project Sync",
+            organizer_email: "owner@wgs.bot",
+            start_time: "2026-05-04T15:00:00.000Z",
+            status: "SUMMARY_SENT",
+            created_at: "2026-05-04T15:00:00.000Z",
+            updated_at: "2026-05-04T15:05:00.000Z"
+          } as T;
+        }
+        return null;
+      },
+      async all<T>() {
+        if (sql.includes("FROM artifacts")) {
+          return {
+            results: [
+              { id: "art_1", meeting_id: "mtg_1", type: "transcript_text", r2_key: "transcripts/mtg_1/transcript.txt", created_at: "2026-05-04T15:05:00.000Z", deleted_at: null },
+              { id: "art_2", meeting_id: "mtg_1", type: "summary_json", r2_key: "summaries/mtg_1/summary.json", created_at: "2026-05-04T15:06:00.000Z", deleted_at: "2026-05-04T15:07:00.000Z" }
+            ]
+          } as T;
+        }
+        return { results: [] } as T;
+      },
+      async run() {
+        db.runSql.push(sql);
+        return { success: true };
+      }
+    };
+  }
+}
+
 describe("api worker", () => {
   it("returns health", async () => {
     const response = await app.request("/api/health");
@@ -193,6 +237,29 @@ describe("api worker", () => {
 
     expect(response.status).toBe(200);
     expect(send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1" });
+  });
+
+  it("deletes a meeting from history and removes active artifact objects", async () => {
+    const db = new DeleteMeetingD1();
+    const deleteObject = vi.fn(async () => undefined);
+    const response = await app.request(
+      "/api/meetings/mtg_1",
+      { method: "DELETE", headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: { delete: deleteObject } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, deleted: true, artifactsDeleted: 1 });
+    expect(deleteObject).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt");
+    expect(db.runSql).toContain("DELETE FROM meetings WHERE id = ?");
+    expect(db.runSql).toContain("INSERT INTO audit_logs (id, actor_email, event_type, resource_type, resource_id, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
   });
 
   it("sends an existing meeting recap to one selected meeting email", async () => {

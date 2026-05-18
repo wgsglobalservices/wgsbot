@@ -1,4 +1,4 @@
-import { createArtifact, listArtifacts, markArtifactDeleted } from "@minutesbot/db";
+import { createArtifact, deleteMeetingRecord, listArtifacts, markArtifactDeleted } from "@minutesbot/db";
 import { createAuditLog } from "./auditService";
 import type { Env } from "../env";
 
@@ -24,4 +24,21 @@ export async function deleteMeetingArtifacts(env: Env, meetingId: string): Promi
     deleted += 1;
   }
   return deleted;
+}
+
+export async function deleteMeetingHistory(env: Env, meetingId: string): Promise<{ artifactsDeleted: number }> {
+  const artifacts = await listArtifacts(env.DB, meetingId);
+  let artifactsDeleted = 0;
+  for (const artifact of artifacts.filter((item) => !item.deleted_at)) {
+    await env.ARTIFACTS.delete(artifact.r2_key);
+    artifactsDeleted += 1;
+  }
+  await deleteMeetingRecord(env.DB, meetingId);
+  await createAuditLog(env.DB, {
+    eventType: "meeting.deleted",
+    resourceType: "meeting",
+    resourceId: meetingId,
+    metadata: { artifactsDeleted }
+  });
+  return { artifactsDeleted };
 }
