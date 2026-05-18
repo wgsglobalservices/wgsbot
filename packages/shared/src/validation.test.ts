@@ -65,6 +65,15 @@ describe("settings validation", () => {
     expect(parseSettings(defaultSettings).email.testRecipient).toBe("it@wgsglobalservices.com");
   });
 
+  it("defaults meeting recap delivery to manual testing mode", () => {
+    const legacySettings = JSON.parse(JSON.stringify(defaultSettings)) as typeof defaultSettings;
+    delete (legacySettings.email as Partial<typeof defaultSettings.email>).sendMeetingRecapsAutomatically;
+
+    expect(defaultSettings.email.sendMeetingRecapsAutomatically).toBe(false);
+    expect(parseSettings(legacySettings).email.sendMeetingRecapsAutomatically).toBe(false);
+    expect(parseSettings({ ...defaultSettings, email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true } }).email.sendMeetingRecapsAutomatically).toBe(true);
+  });
+
   it("keeps bot image storage metadata without storing image bytes in settings", () => {
     const settings = parseSettings({
       ...defaultSettings,

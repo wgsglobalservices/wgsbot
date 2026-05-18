@@ -124,7 +124,8 @@ export const appSettingsSchema = z.object({
   email: z.object({
     provider: z.enum(["cloudflare-email-service", "smtp", "mock"]),
     senderEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
-    testRecipient: z.string().trim().email().optional().or(z.literal(""))
+    testRecipient: z.string().trim().email().optional().or(z.literal("")),
+    sendMeetingRecapsAutomatically: z.boolean().optional().default(false)
   }),
   policy: z.object({
     sendToAllowedDomainsOnly: z.literal(true),
@@ -199,7 +200,8 @@ export const defaultSettings: AppSettings = {
   email: {
     provider: "mock",
     senderEmail: "notetaker@wgs.bot",
-    testRecipient: defaultSampleRecapRecipient
+    testRecipient: defaultSampleRecapRecipient,
+    sendMeetingRecapsAutomatically: false
   },
   policy: {
     sendToAllowedDomainsOnly: true,
@@ -243,7 +245,8 @@ export function parseSettings(input: unknown): AppSettings {
     email: {
       ...parsed.email,
       senderEmail: parsed.email.senderEmail.toLowerCase(),
-      testRecipient: parsed.email.testRecipient ? parsed.email.testRecipient.toLowerCase() : undefined
+      testRecipient: parsed.email.testRecipient ? parsed.email.testRecipient.toLowerCase() : undefined,
+      sendMeetingRecapsAutomatically: parsed.email.sendMeetingRecapsAutomatically
     },
     recap: normalizeRecapSettings(parsed.recap)
   };

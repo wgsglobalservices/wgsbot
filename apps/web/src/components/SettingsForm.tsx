@@ -91,6 +91,12 @@ export function SettingsForm({
           <SelectField label="Provider" value={value.email.provider} options={["mock", "cloudflare-email-service", "smtp"]} width="medium" onChange={(v) => update("email.provider", v)} />
           <TextField label="Sender email" value={value.email.senderEmail} width="medium" onChange={(v) => update("email.senderEmail", v)} />
         </div>
+        <ToggleRow
+          checked={value.email.sendMeetingRecapsAutomatically}
+          description="Send recap emails automatically when a meeting summary is ready."
+          label="Automatic recap delivery"
+          onChange={(v) => update("email.sendMeetingRecapsAutomatically", v)}
+        />
         <div className="inlineActions">
           <TestActionButton path="/api/admin/test-email" label="Test outbound email" variant="secondary" />
           <SendSampleRecapEmail initialRecipient={resolveSampleRecapRecipient(value.email.testRecipient)} />

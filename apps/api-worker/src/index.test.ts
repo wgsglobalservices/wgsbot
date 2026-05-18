@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as entrypoint from "./index";
 import { app } from "./index";
 import type { Env } from "./env";
-import { createTranscriptDownloadToken } from "@minutesbot/shared";
+import { createTranscriptDownloadToken, defaultSettings } from "@minutesbot/shared";
 
 class FakeD1 {
   prepare() {
@@ -18,6 +18,87 @@ class FakeD1 {
       },
       async all() {
         return { results: [] };
+      }
+    };
+  }
+}
+
+class ManualSummaryD1 {
+  emailDeliveries: unknown[][] = [];
+
+  prepare(sql: string) {
+    const db = this;
+    return {
+      values: [] as unknown[],
+      bind(...values: unknown[]) {
+        this.values = values;
+        return this;
+      },
+      async first<T>() {
+        if (sql.includes("FROM meetings")) {
+          return {
+            id: "mtg_1",
+            subject: "Project Sync",
+            organizer_email: "owner@wgs.bot",
+            organizer_name: "Owner",
+            start_time: "2026-05-04T15:00:00.000Z"
+          } as T;
+        }
+        if (sql.includes("FROM summaries")) {
+          return {
+            id: "sum_1",
+            meeting_id: "mtg_1",
+            summary_json: JSON.stringify({
+              meetingType: "general",
+              recapDepth: "standard",
+              meetingNotes: [
+                {
+                  heading: "Project Updates",
+                  overview: "The project recap is ready.",
+                  items: [{ title: "Status", detail: "Alex reviewed the launch path." }]
+                }
+              ],
+              followUpTasks: [],
+              summary: [],
+              decisions: [],
+              actionItems: [],
+              openQuestions: [],
+              risks: [],
+              followUps: []
+            }),
+            model: "gpt-4.1-mini",
+            created_at: "2026-05-04T15:05:00.000Z"
+          } as T;
+        }
+        if (sql.includes("FROM settings")) {
+          return {
+            key: "app",
+            value: JSON.stringify({
+              ...defaultSettings,
+              email: {
+                ...defaultSettings.email,
+                provider: "cloudflare-email-service"
+              }
+            }),
+            updated_at: "2026-05-04T00:00:00.000Z"
+          } as T;
+        }
+        return null;
+      },
+      async all<T>() {
+        if (sql.includes("FROM attendees")) {
+          return {
+            results: [
+              { email: "alex@wgs.bot", name: "Alex", summary_eligible: 1 },
+              { email: "vendor@example.net", name: "Vendor", summary_eligible: 0 }
+            ]
+          } as T;
+        }
+        return { results: [] } as T;
+      },
+      async run() {
+        if (sql.includes("INSERT INTO email_deliveries")) db.emailDeliveries.push(this.values);
+        return { success: true };
       }
     };
   }
@@ -112,6 +193,83 @@ describe("api worker", () => {
 
     expect(response.status).toBe(200);
     expect(send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1" });
+  });
+
+  it("sends an existing meeting recap to one selected meeting email", async () => {
+    const db = new ManualSummaryD1();
+    const send = vi.fn(async () => ({ id: "manual-message-1" }));
+    const response = await app.request(
+      "/api/meetings/mtg_1/send-summary-email",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer test-secret", "content-type": "application/json" },
+        body: JSON.stringify({ to: "Alex@WGS.Bot" })
+      },
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SEND_EMAIL: { send },
+        APP_BASE_URL: "https://minutesbot.example.com",
+        API_BASE_URL: "https://minutesbot.example.com",
+        ATTENDEE_API_BASE_URL: "https://attendee.example.com",
+        DEFAULT_RECORDER_EMAIL: "notetaker@example.com",
+        DEFAULT_SENDER_EMAIL: "notetaker@example.com",
+        ENVIRONMENT: "test",
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      message: "Meeting recap email sent",
+      recipient: "alex@wgs.bot",
+      status: "sent",
+      providerMessageId: "manual-message-1"
+    });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      from: "WGS Notetaker <notetaker@wgs.bot>",
+      to: "alex@wgs.bot",
+      subject: "Meeting recap: Project Sync"
+    }));
+    expect(db.emailDeliveries.map((values) => values[2])).toEqual(["alex@wgs.bot"]);
+  });
+
+  it("rejects manual recap sends to addresses that are not on the meeting", async () => {
+    const response = await app.request(
+      "/api/meetings/mtg_1/send-summary-email",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer test-secret", "content-type": "application/json" },
+        body: JSON.stringify({ to: "outside@example.com" })
+      },
+      {
+        DB: new ManualSummaryD1() as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SEND_EMAIL: { send: vi.fn() },
+        APP_BASE_URL: "https://minutesbot.example.com",
+        API_BASE_URL: "https://minutesbot.example.com",
+        ATTENDEE_API_BASE_URL: "https://attendee.example.com",
+        DEFAULT_RECORDER_EMAIL: "notetaker@example.com",
+        DEFAULT_SENDER_EMAIL: "notetaker@example.com",
+        ENVIRONMENT: "test",
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "RECIPIENT_NOT_ON_MEETING",
+        message: "Choose the organizer or an attendee on this meeting."
+      }
+    });
   });
 
   it("downloads raw transcript text with a valid signed token", async () => {

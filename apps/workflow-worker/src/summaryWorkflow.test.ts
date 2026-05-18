@@ -27,6 +27,7 @@ vi.mock("@minutesbot/summary-engine", () => ({
 
 class FakeD1 {
   emailDeliveries: unknown[][] = [];
+  summaryStatuses: unknown[][] = [];
 
   constructor(private readonly settings = defaultSettings) {}
 
@@ -91,6 +92,7 @@ class FakeD1 {
       },
       async run() {
         if (sql.includes("INSERT INTO email_deliveries")) db.emailDeliveries.push(this.values);
+        if (sql.includes("UPDATE meetings SET summary_status")) db.summaryStatuses.push(this.values);
         return { success: true };
       }
     };
@@ -102,8 +104,40 @@ describe("summary workflow", () => {
     vi.clearAllMocks();
   });
 
-  it("sends recaps to organizer and allowed-domain attendees and records deliveries", async () => {
+  it("keeps generated recaps ready without emailing meeting attendees by default", async () => {
     const db = new FakeD1();
+    const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
+
+    await generateAndSendSummary(
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {
+          get: vi.fn(async () => ({ text: async () => "Alex: hello" })),
+          put: vi.fn(async () => undefined)
+        } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        AI_API_KEY: "test-ai-key",
+        SESSION_SECRET: "session-secret",
+        TRANSCRIPT_LINK_SECRET: "transcript-secret",
+        SEND_EMAIL: { send }
+      },
+      "mtg_1"
+    );
+
+    expect(send).not.toHaveBeenCalled();
+    expect(db.emailDeliveries).toEqual([]);
+    expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready"]);
+  });
+
+  it("sends recaps to organizer and allowed-domain attendees and records deliveries when automatic delivery is enabled", async () => {
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true }
+    });
     const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
 
     await generateAndSendSummary(
@@ -139,6 +173,7 @@ describe("summary workflow", () => {
   it("uses the configured transcript link expiration when signing recap downloads", async () => {
     const db = new FakeD1({
       ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true },
       recap: {
         ...defaultSettings.recap,
         transcriptDownloadExpirationHours: 6
@@ -177,7 +212,10 @@ describe("summary workflow", () => {
   });
 
   it("passes recap classification defaults into summary generation", async () => {
-    const db = new FakeD1();
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true }
+    });
 
     await generateAndSendSummary(
       {
@@ -212,7 +250,10 @@ describe("summary workflow", () => {
   });
 
   it("does not mint transcript links from the admin session secret", async () => {
-    const db = new FakeD1();
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true }
+    });
     const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
 
     await generateAndSendSummary(

@@ -14,6 +14,7 @@ export function MeetingDetail({ id }: { id: string }) {
   }, [id]);
   if (!data) return <p>{message || "Loading meeting..."}</p>;
   const meeting = data.meeting as Record<string, unknown>;
+  const attendees = (data.attendees as Array<Record<string, unknown>>) ?? [];
   return (
     <div className="page">
       <header>
@@ -29,6 +30,7 @@ export function MeetingDetail({ id }: { id: string }) {
           <Action label="Delete artifacts" run={() => apiDelete(`/api/meetings/${id}/artifacts`)} done={load} />
           <Action label="Delete Attendee data" run={() => apiPost(`/api/meetings/${id}/delete-attendee-data`)} done={load} />
         </div>
+        <ManualSummaryEmailAction meetingId={id} organizerEmail={String(meeting.organizer_email ?? "")} attendees={attendees} done={load} />
         {message && <p>{message}</p>}
       </section>
       <section>
@@ -41,7 +43,7 @@ export function MeetingDetail({ id }: { id: string }) {
         </div>
       </section>
       <RecipientEligibilityTable
-        attendees={(data.attendees as Array<Record<string, unknown>>) ?? []}
+        attendees={attendees}
         emailDeliveries={(data.emailDeliveries as Array<Record<string, unknown>>) ?? []}
       />
       <AttendeeStatePanel meeting={meeting} />
@@ -66,6 +68,67 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function Action({ label, run, done }: { label: string; run: () => Promise<unknown>; done: () => void }) {
   return <button onClick={async () => { await run(); done(); }}>{label}</button>;
+}
+
+function ManualSummaryEmailAction({
+  attendees,
+  done,
+  meetingId,
+  organizerEmail
+}: {
+  attendees: Array<Record<string, unknown>>;
+  done: () => void;
+  meetingId: string;
+  organizerEmail: string;
+}) {
+  const recipientOptions = meetingRecapRecipientOptions(organizerEmail, attendees);
+  const [recipient, setRecipient] = useState(recipientOptions[0] ?? "");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+
+  useEffect(() => {
+    setRecipient((current) => current || recipientOptions[0] || "");
+  }, [recipientOptions.join("|")]);
+
+  return (
+    <div className="manualSummarySendAction">
+      <label>
+        <span>Recap recipient</span>
+        <input type="email" list="meeting-recap-recipients" value={recipient} onChange={(event) => setRecipient(event.target.value)} />
+      </label>
+      <datalist id="meeting-recap-recipients">
+        {recipientOptions.map((email) => <option key={email} value={email} />)}
+      </datalist>
+      <button
+        className="secondaryButton"
+        type="button"
+        disabled={busy || !recipient}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const response = await apiPost<unknown>(`/api/meetings/${meetingId}/send-summary-email`, { to: recipient });
+            setResult(JSON.stringify(response, null, 2));
+            done();
+          } catch (error) {
+            setResult(error instanceof Error ? error.message : "Failed");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Sending..." : "Send recap email"}
+      </button>
+      {result && <pre>{result}</pre>}
+    </div>
+  );
+}
+
+export function meetingRecapRecipientOptions(organizerEmail: string, attendees: Array<Record<string, unknown>>): string[] {
+  return uniqueEmails([organizerEmail, ...attendees.map((attendee) => String(attendee.email ?? ""))]);
+}
+
+function uniqueEmails(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean)));
 }
 
 type DisplaySummary = {

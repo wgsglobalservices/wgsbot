@@ -1,9 +1,17 @@
 import { Hono } from "hono";
-import { getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents, updateMeetingStatus } from "@minutesbot/db";
+import { z } from "zod";
+import { createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents, updateMeetingStatus } from "@minutesbot/db";
+import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
 import { AppError } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { deleteMeetingArtifacts } from "../services/artifactService";
 import { eligibleRecipientCount } from "../services/meetingService";
+import { readSettings } from "../services/settingsService";
+import { sendMeetingSummaryEmail } from "../../../workflow-worker/src/summaryEmailDelivery";
+
+const sendSummaryEmailSchema = z.object({
+  to: z.string().trim().email().transform((value) => value.toLowerCase())
+});
 
 export const meetingsRoute = new Hono<{ Bindings: Env }>()
   .get("/", async (c) => {
@@ -36,6 +44,45 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
     await c.env.SUMMARY_QUEUE.send({ type: "summarize", meetingId: c.req.param("id") });
     return c.json({ ok: true });
   })
+  .post("/:id/send-summary-email", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = sendSummaryEmailSchema.safeParse(body);
+    if (!parsed.success) throw new AppError("INVALID_RECIPIENT", "Enter a valid recipient email address", 400);
+
+    const id = c.req.param("id");
+    const meeting = await getMeeting(c.env.DB, id);
+    if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
+    const attendees = await listMeetingAttendees(c.env.DB, id);
+    const allowedRecipients = new Set([
+      ...(meeting.organizer_email ? [meeting.organizer_email] : []),
+      ...attendees.map((attendee) => attendee.email)
+    ].map((email) => email.trim().toLowerCase()));
+    if (!allowedRecipients.has(parsed.data.to)) {
+      throw new AppError("RECIPIENT_NOT_ON_MEETING", "Choose the organizer or an attendee on this meeting.", 400);
+    }
+
+    const summaryRow = await getLatestSummary(c.env.DB, id);
+    if (!summaryRow) throw new AppError("SUMMARY_MISSING", "Generate a recap before sending email.", 400);
+    const settings = await readSettings(c.env);
+    const result = await sendMeetingSummaryEmail(c.env, {
+      meeting,
+      settings,
+      summary: parseSavedSummary(summaryRow.summary_json),
+      recipientEmail: parsed.data.to,
+      excludedRecipients: attendees.filter((attendee) => !attendee.summary_eligible).map((attendee) => attendee.email)
+    });
+    if (result.status === "failed") {
+      throw new AppError("EMAIL_SEND_FAILED", result.failureReason ?? "Meeting recap email failed to send", 502);
+    }
+    await createAuditLog(c.env.DB, { eventType: "email.sent", resourceType: "meeting", resourceId: id, metadata: { recipient: parsed.data.to, type: "summary" } });
+    return c.json({
+      ok: true,
+      message: "Meeting recap email sent",
+      recipient: parsed.data.to,
+      status: result.status,
+      providerMessageId: result.providerMessageId
+    });
+  })
   .post("/:id/fetch-transcript", async (c) => {
     await c.env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: c.req.param("id") });
     return c.json({ ok: true });
@@ -45,3 +92,13 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
     return c.json({ ok: true });
   })
   .delete("/:id/artifacts", async (c) => c.json({ ok: true, deleted: await deleteMeetingArtifacts(c.env, c.req.param("id")) }));
+
+function parseSavedSummary(summaryJson: string): SummaryEmailSummary {
+  try {
+    const parsed = JSON.parse(summaryJson);
+    if (parsed && typeof parsed === "object") return parsed as SummaryEmailSummary;
+  } catch {
+    // Fall through to the typed application error below.
+  }
+  throw new AppError("INVALID_SUMMARY", "The saved recap cannot be rendered for email.", 500);
+}

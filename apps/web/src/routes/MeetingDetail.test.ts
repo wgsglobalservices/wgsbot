@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSummaryForDisplay, summarizeArtifacts } from "./MeetingDetail";
+import { meetingRecapRecipientOptions, normalizeSummaryForDisplay, summarizeArtifacts } from "./MeetingDetail";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRecapEmailDeliveryStatus, RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
@@ -92,6 +92,18 @@ describe("recipient recap delivery status", () => {
 
     expect(html).toContain("Recap email");
     expect(html).toContain("Sent");
+  });
+});
+
+describe("manual meeting recap recipients", () => {
+  it("builds a deduped organizer and attendee email list for manual sends", () => {
+    expect(
+      meetingRecapRecipientOptions("Owner@WGS.Bot", [
+        { email: "alex@wgs.bot" },
+        { email: "owner@wgs.bot" },
+        { email: "" }
+      ])
+    ).toEqual(["owner@wgs.bot", "alex@wgs.bot"]);
   });
 });
 

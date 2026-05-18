@@ -1,12 +1,11 @@
-import { createAuditLog, createEmailDelivery, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, listTranscriptSegments, updateSummaryStatus } from "@minutesbot/db";
-import { renderSummaryEmail } from "@minutesbot/email-renderer";
+import { createAuditLog, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, listTranscriptSegments, updateSummaryStatus } from "@minutesbot/db";
 import { buildSummaryRecipients } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
-import { AppError, createTranscriptDownloadToken } from "@minutesbot/shared";
-import { createEmailProvider, formatEmailAddress } from "@minutesbot/email-sender";
+import { AppError } from "@minutesbot/shared";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
+import { sendMeetingSummaryEmail } from "./summaryEmailDelivery";
 
 type Params = { meetingId: string };
 const maxTranscriptTextBytes = 1_000_000;
@@ -90,45 +89,15 @@ export async function generateAndSendSummary(
     await createAuditLog(env.DB, { eventType: "summary.failed", resourceType: "meeting", resourceId: meetingId, metadata: { reason: "no eligible recipients" } });
     return;
   }
-  const email = renderSummaryEmail({
-    subject: meeting.subject ?? "Untitled meeting",
-    date: meeting.start_time ?? undefined,
-    summary,
-    transcriptDownloadUrl: await buildTranscriptDownloadUrl(env, meetingId, settings.recap.transcriptDownloadExpirationHours),
-    transcriptDownloadExpirationHours: settings.recap.transcriptDownloadExpirationHours,
-    excludedRecipients: Array.from(new Set([...filtered.excluded.map((recipient) => recipient.email), ...ineligibleInviteeEmails])),
-    recap: {
-      subjectPrefix: settings.recap.subjectPrefix,
-      introText: settings.recap.introText,
-      sections: settings.recap.sections
-    }
-  });
-  const sender = createEmailProvider({ provider: settings.email.provider, sendEmailBinding: env.SEND_EMAIL });
+  const excludedRecipients = Array.from(new Set([...filtered.excluded.map((recipient) => recipient.email), ...ineligibleInviteeEmails]));
+  if (!settings.email.sendMeetingRecapsAutomatically) {
+    return;
+  }
+
   let sentCount = 0;
   for (const recipient of filtered.included) {
-    try {
-      const result = await sender.send({ from: formatEmailAddress("WGS Notetaker", settings.email.senderEmail), to: recipient.email, ...email });
-      if (result.status === "sent") sentCount += 1;
-      await createEmailDelivery(env.DB, {
-        meeting_id: meetingId,
-        recipient_email: recipient.email,
-        type: "summary",
-        status: result.status,
-        provider_message_id: result.providerMessageId ?? null,
-        failure_reason: result.failureReason ?? null,
-        sent_at: result.status === "sent" ? new Date().toISOString() : null
-      });
-    } catch (error) {
-      await createEmailDelivery(env.DB, {
-        meeting_id: meetingId,
-        recipient_email: recipient.email,
-        type: "summary",
-        status: "failed",
-        provider_message_id: null,
-        failure_reason: error instanceof Error ? error.message : "Email send failed",
-        sent_at: null
-      });
-    }
+    const result = await sendMeetingSummaryEmail(env, { meeting, settings, summary, recipientEmail: recipient.email, excludedRecipients });
+    if (result.status === "sent") sentCount += 1;
   }
   if (sentCount === 0) {
     await updateSummaryStatus(env.DB, meetingId, "failed", "FAILED");
@@ -161,12 +130,4 @@ function calculateTranscriptMetrics(transcriptText: string, segments: Array<Reco
   const first = Math.min(...timedSegments.map((segment) => segment.timestampMs));
   const last = Math.max(...timedSegments.map((segment) => segment.timestampMs + segment.durationMs));
   return { wordCount, speakerTurnCount, transcriptDurationMinutes: Math.round(((last - first) / 60_000) * 10) / 10 };
-}
-
-async function buildTranscriptDownloadUrl(env: WorkflowEnv, meetingId: string, expirationHours: number): Promise<string | undefined> {
-  if (!env.TRANSCRIPT_LINK_SECRET || !env.API_BASE_URL) return undefined;
-  const cappedExpirationHours = Math.min(Math.max(expirationHours, 1), 24);
-  const expiresAt = Date.now() + cappedExpirationHours * 60 * 60 * 1000;
-  const token = await createTranscriptDownloadToken({ meetingId, artifactType: "transcript_text", expiresAt }, env.TRANSCRIPT_LINK_SECRET);
-  return `${env.API_BASE_URL.replace(/\/+$/, "")}/api/artifacts/${encodeURIComponent(meetingId)}/transcript.txt?token=${encodeURIComponent(token)}`;
 }
