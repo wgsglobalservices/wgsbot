@@ -308,14 +308,18 @@ describe("summary engine", () => {
     });
 
     expect(prompt).toContain("WGS / MinutesBot meeting recap");
-    expect(prompt).toContain("Executive Summary");
-    expect(prompt).toContain("Key Wins and Opportunity Movement");
-    expect(prompt).toContain("Sales Pipeline and Prospecting Updates");
-    expect(prompt).toContain("Quotes, Pricing, and Commercial Updates");
-    expect(prompt).toContain("Staffing and Operational Updates");
-    expect(prompt).toContain("CRM, Reporting, and Data Cleanup");
-    expect(prompt).toContain("Risks and Blockers");
-    expect(prompt).toContain("Open Questions");
+    expect(prompt).toContain("Clean up unclear speaker labels such as \"Conference Room Computer\"");
+    expect(prompt).toContain("1. Weekly Summary");
+    expect(prompt).toContain("2. Key Wins and Progress");
+    expect(prompt).toContain("3. Sales Pipeline and Customer Follow-Up");
+    expect(prompt).toContain("4. Staffing and Operations");
+    expect(prompt).toContain("5. Revenue, Forecast, and Reporting");
+    expect(prompt).toContain("6. CRM and Tracking");
+    expect(prompt).toContain("7. Pricing and Contract Discussion");
+    expect(prompt).toContain("8. Decisions Made");
+    expect(prompt).toContain("9. Action Items");
+    expect(prompt).toContain("10. Risks and Blockers");
+    expect(prompt).toContain("11. Open Questions");
   });
 
   it("builds brief prompts without the full topic-heavy template", () => {

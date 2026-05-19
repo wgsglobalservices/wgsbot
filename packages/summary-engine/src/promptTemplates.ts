@@ -49,11 +49,12 @@ function buildBaseInstructions(customPrompt?: string): string {
     "Avoid verbatim quotes unless the exact wording is critical.",
     "Use plain business language suitable for an email recap.",
     "For recapDepth brief, generate a concise recap for a very short meeting. Do not create a full topic-grouped recap. Do not infer a large agenda from minimal content. Include only what was actually captured. Clearly state when no substantive content, decisions, or follow-up tasks were captured. Keep the recap short. Do not pad short meetings.",
-    "For recapDepth standard, generate the full WGS / MinutesBot meeting recap with an Executive Summary, grouped topic sections, Decisions, Follow-up tasks, Risks and Blockers, and Open Questions.",
-    "For standard recaps, write meetingNotes as grouped topical notes. The first meetingNotes heading should be Executive Summary: when the transcript supports enough content. Each later heading should represent a major area of the meeting. Under each heading, create specific titled items with paragraph details.",
+    "For recapDepth standard, generate the full WGS / MinutesBot meeting recap using the section order from the resolved meeting type template.",
+    "For standard recaps, write meetingNotes as grouped topical notes. Each meetingNotes heading should match a supported template section. Under each heading, create specific titled items with paragraph details.",
     "For standard recaps, each meetingNotes heading should end with a colon. Each subtopic title should be concise and each detail should be a complete paragraph, usually 1 to 2 sentences.",
     "For standard recaps, include 2 to 7 subtopic items under each major heading when the transcript supports them. Include speaker names, plant names, customer names, programs, systems, locations, deadlines, and metrics when stated.",
-    "If the transcript refers to \"Conference Room Computer\" or another unclear speaker label, keep that label only when no better speaker is available.",
+    "Clean up unclear speaker labels such as \"Conference Room Computer\". Attribute to a named speaker only when the transcript supports it; otherwise write without that speaker label.",
+    "If a one-word weekly focus is stated, include it in the summary and preserve the exact word.",
     "Use this style as formatting guidance only:",
     "Meeting notes:",
     "Hearing Conservation Program Updates:",
@@ -70,7 +71,7 @@ function buildBaseInstructions(customPrompt?: string): string {
     "followUpTasks must mirror the Teams format. Each follow-up task must include title, description, owners, and dueDate. Use owners [\"Unassigned\"] and dueDate \"TBD\" when not specified.",
     "Do not create a follow-up task unless the transcript supports it.",
     "Populate actionItems with one action item for each followUpTasks item when appropriate. Use owner as comma-separated owners or \"Unassigned\", task as the same core task as followUpTasks.description, and dueDate as the same dueDate.",
-    "Populate summary with 4 to 8 concise Executive Summary bullets for compatibility. Capture meeting focus, key progress, major risks, revenue or operating impact, and any stated one-word focus.",
+    "Populate summary with 4 to 8 concise Weekly Summary bullets for compatibility. Capture meeting focus, key themes, progress, major risks, revenue or operating impact, and any stated one-word weekly focus.",
     "Capture action items related to safety follow-up, quality issue closure, delivery or customer response, cost reduction, sales or customer follow-up, quote or pricing work, plant operational improvements, open issues, and data or reporting needed before the next meeting.",
     "Do not convert general discussion into action items unless an action was clearly assigned or strongly implied.",
     "Only include confirmed decisions, agreements, approvals, rejected options, committed plans, or direction changes. Do not treat discussion as a decision unless there was clear agreement.",
@@ -102,7 +103,7 @@ function buildRecapDepthInstructions(recapDepth: NonNullable<SummaryInput["recap
   }
   return [
     "recapDepth is standard.",
-    "Generate the full Microsoft Teams-style meeting recap with grouped Meeting notes and Follow-up tasks.",
+    "Generate the full WGS / MinutesBot meeting recap with grouped Meeting notes and Follow-up tasks.",
     buildMeetingTypeSummaryInstructions(meetingType)
   ].join("\n");
 }
@@ -122,15 +123,19 @@ export function buildMeetingTypeSummaryInstructions(meetingType: MeetingRecapTyp
     ],
     weekly_sales: [
       "For weekly_sales, prefer meetingNotes headings like these when supported by the transcript:",
-      "Executive Summary",
-      "Key Wins and Opportunity Movement",
-      "Sales Pipeline and Prospecting Updates",
-      "Quotes, Pricing, and Commercial Updates",
-      "Staffing and Operational Updates",
-      "CRM, Reporting, and Data Cleanup",
-      "Decisions",
-      "Risks and Blockers",
-      "Open Questions"
+      "1. Weekly Summary",
+      "2. Key Wins and Progress",
+      "3. Sales Pipeline and Customer Follow-Up",
+      "4. Staffing and Operations",
+      "5. Revenue, Forecast, and Reporting",
+      "6. CRM and Tracking",
+      "7. Pricing and Contract Discussion",
+      "8. Decisions Made",
+      "9. Action Items",
+      "10. Risks and Blockers",
+      "11. Open Questions",
+      "For weekly_sales, include Meeting, Date, Weekly focus, and a note about cleaned speaker labels when that context is available.",
+      "For weekly_sales, use Action Items for concrete follow-up work with owner and due timing. Keep followUpTasks and actionItems aligned with that section."
     ],
     plant_meeting: [
       "For plant_meeting, prefer meetingNotes headings like these when supported by the transcript:",

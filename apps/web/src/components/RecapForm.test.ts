@@ -37,8 +37,8 @@ describe("recap form helpers", () => {
       "Individual Plant Meeting",
       "General"
     ]);
-    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("Key Wins and Opportunity Movement");
-    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("CRM, Reporting, and Data Cleanup");
+    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("1. Weekly Summary");
+    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("6. CRM and Tracking");
     expect(getPromptPreview("auto", defaultSettings.recap.prompt)).toContain("classifier");
   });
 
@@ -68,7 +68,7 @@ describe("recap form helpers", () => {
 
   it("returns teams-style preview headings for each template", () => {
     expect(getTemplatePreview("weekly_spqrc").meetingNoteHeadings).toContain("Safety, People, Quality, Delivery, and Cost Updates");
-    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("Quotes, Pricing, and Commercial Updates");
+    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("7. Pricing and Contract Discussion");
     expect(getTemplatePreview("plant_meeting").meetingNoteHeadings).toContain("Production, Schedule, and Customer Updates");
     expect(getTemplatePreview("general").meetingNoteHeadings).toContain("Risks and Blockers");
   });
