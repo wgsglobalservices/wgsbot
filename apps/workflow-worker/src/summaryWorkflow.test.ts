@@ -1,6 +1,6 @@
 import { defaultSettings, verifyTranscriptDownloadToken } from "@minutesbot/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { generateAndSendSummary, generateAndStoreSummary } from "./summaryWorkflow";
+import { generateAndSendSingleRecipientSummary, generateAndSendSummary, generateAndStoreSummary } from "./summaryWorkflow";
 import { summarizeTranscript } from "@minutesbot/summary-engine";
 
 vi.mock("@minutesbot/summary-engine", () => ({
@@ -203,6 +203,42 @@ describe("summary workflow", () => {
       text: expect.stringContaining("/api/artifacts/mtg_1/transcript.txt?token="),
       html: expect.stringContaining("Download Transcript")
     });
+  });
+
+  it("sends an uploaded transcript test recap only to the requested recipient", async () => {
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: false }
+    });
+    const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
+
+    const result = await generateAndSendSingleRecipientSummary(
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {
+          get: vi.fn(async () => ({ text: async () => "Alex: hello" })),
+          put: vi.fn(async () => undefined)
+        } as unknown as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+        AI_API_KEY: "test-ai-key",
+        TRANSCRIPT_LINK_SECRET: "transcript-secret",
+        SEND_EMAIL: { send }
+      },
+      {
+        meetingId: "mtg_1",
+        recipientEmail: "reviewer@example.com",
+        auditEmailType: "summary_test"
+      }
+    );
+
+    expect(result).toMatchObject({ status: "sent", providerMessageId: "msg-reviewer@example.com" });
+    expect(send.mock.calls.map(([message]) => (message as { to: string }).to)).toEqual(["reviewer@example.com"]);
+    expect(db.emailDeliveries.map((values) => values[2])).toEqual(["reviewer@example.com"]);
+    expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready", "sent"]);
   });
 
   it("uses the configured transcript link expiration when signing recap downloads", async () => {

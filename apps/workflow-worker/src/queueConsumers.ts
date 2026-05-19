@@ -2,15 +2,22 @@ import { createAuditLog, getMeeting, getSettings } from "@minutesbot/db";
 import { daysAgoIso } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 import { deleteAttendeeData, fetchAndStoreTranscript } from "./transcriptWorkflow";
-import { generateAndSendSummary } from "./summaryWorkflow";
+import { generateAndSendSingleRecipientSummary, generateAndSendSummary } from "./summaryWorkflow";
 import { handleCreateBotQueueMessage } from "./botCreation";
 
 export async function handleQueueBatch(batch: MessageBatch<unknown>, env: WorkflowEnv): Promise<void> {
   for (const message of batch.messages) {
-    const body = message.body as { type?: string; meetingId?: string; botId?: string; attempt?: number; force?: boolean };
+    const body = message.body as { type?: string; meetingId?: string; botId?: string; attempt?: number; force?: boolean; recipientEmail?: string };
     if (body.type === "create_bot" && body.meetingId) await handleCreateBotQueueMessage(env, body.meetingId, { force: body.force });
     if (body.type === "fetch_transcript" && body.meetingId) await fetchAndStoreTranscript(env, body.meetingId, body.botId, undefined, { attempt: body.attempt });
     if (body.type === "summarize" && body.meetingId) await generateAndSendSummary(env, body.meetingId);
+    if (body.type === "send_uploaded_transcript_recap" && body.meetingId && body.recipientEmail) {
+      await generateAndSendSingleRecipientSummary(env, {
+        meetingId: body.meetingId,
+        recipientEmail: body.recipientEmail,
+        auditEmailType: "summary_test"
+      });
+    }
     if (body.type === "delete_attendee_data" && body.meetingId) await handleDeleteAttendeeData(env, body.meetingId);
     message.ack();
   }

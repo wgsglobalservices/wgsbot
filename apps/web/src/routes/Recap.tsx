@@ -3,7 +3,7 @@ import { defaultSampleRecapRecipient, type AppSettings } from "@minutesbot/share
 import { RecapForm } from "../components/RecapForm";
 import { ApiError, apiPost, getSettings, saveSettings } from "../lib/api";
 
-type UploadedTranscriptRecapFormState = {
+export type UploadedTranscriptRecapFormState = {
   recipient: string;
   subject: string;
   meetingStartTime: string;
@@ -11,6 +11,13 @@ type UploadedTranscriptRecapFormState = {
   organizerName: string;
   transcriptText: string;
 };
+
+type UploadedTranscriptRecapDraftStorage = {
+  getItem?: (key: string) => string | null;
+  setItem?: (key: string, value: string) => void;
+};
+
+const uploadedTranscriptRecapDraftStorageKey = "minutesbot:uploaded-transcript-recap-test";
 
 type RecapProps = {
   initialSettings?: AppSettings;
@@ -113,18 +120,76 @@ function defaultMeetingStartTime(): string {
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function UploadedTranscriptRecapTest({ initialRecipient }: { initialRecipient: string }) {
-  const [form, setForm] = useState<UploadedTranscriptRecapFormState>({
+export function loadUploadedTranscriptRecapDraft(
+  initialRecipient: string,
+  getDefaultMeetingStartTime: () => string = defaultMeetingStartTime,
+  storage: UploadedTranscriptRecapDraftStorage | null = browserDraftStorage()
+): UploadedTranscriptRecapFormState {
+  const defaults = defaultUploadedTranscriptRecapDraft(initialRecipient, getDefaultMeetingStartTime);
+  if (!storage?.getItem) return defaults;
+  try {
+    const saved = storage.getItem(uploadedTranscriptRecapDraftStorageKey);
+    if (!saved) return defaults;
+    const parsed = JSON.parse(saved) as Partial<Record<keyof UploadedTranscriptRecapFormState, unknown>>;
+    if (!parsed || typeof parsed !== "object") return defaults;
+    return {
+      recipient: stringOrDefault(parsed.recipient, defaults.recipient),
+      subject: stringOrDefault(parsed.subject, defaults.subject),
+      meetingStartTime: stringOrDefault(parsed.meetingStartTime, defaults.meetingStartTime),
+      organizerEmail: stringOrDefault(parsed.organizerEmail, defaults.organizerEmail),
+      organizerName: stringOrDefault(parsed.organizerName, defaults.organizerName),
+      transcriptText: stringOrDefault(parsed.transcriptText, defaults.transcriptText)
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+export function saveUploadedTranscriptRecapDraft(
+  draft: UploadedTranscriptRecapFormState,
+  storage: UploadedTranscriptRecapDraftStorage | null = browserDraftStorage()
+): void {
+  if (!storage?.setItem) return;
+  try {
+    storage.setItem(uploadedTranscriptRecapDraftStorageKey, JSON.stringify(draft));
+  } catch {
+    // Local draft persistence is best-effort only; the send action must still work.
+  }
+}
+
+function defaultUploadedTranscriptRecapDraft(initialRecipient: string, getDefaultMeetingStartTime: () => string): UploadedTranscriptRecapFormState {
+  return {
     recipient: initialRecipient,
     subject: "",
-    meetingStartTime: defaultMeetingStartTime(),
+    meetingStartTime: getDefaultMeetingStartTime(),
     organizerEmail: "",
     organizerName: "",
     transcriptText: ""
-  });
+  };
+}
+
+function stringOrDefault(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function browserDraftStorage(): UploadedTranscriptRecapDraftStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function UploadedTranscriptRecapTest({ initialRecipient }: { initialRecipient: string }) {
+  const [form, setForm] = useState<UploadedTranscriptRecapFormState>(() => loadUploadedTranscriptRecapDraft(initialRecipient));
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   const [meetingId, setMeetingId] = useState("");
+
+  useEffect(() => {
+    saveUploadedTranscriptRecapDraft(form);
+  }, [form]);
 
   const update = <K extends keyof UploadedTranscriptRecapFormState>(key: K, value: UploadedTranscriptRecapFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));

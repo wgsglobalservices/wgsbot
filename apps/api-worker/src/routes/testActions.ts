@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { createAuditLog, updateSummaryStatus, upsertArtifact, upsertMeeting } from "@minutesbot/db";
+import { createAuditLog, upsertArtifact, upsertMeeting } from "@minutesbot/db";
 import { AttendeeClient, AttendeeClientError } from "@minutesbot/attendee-client";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
@@ -9,8 +9,7 @@ import { createOpenAiCompatibleProvider } from "@minutesbot/summary-engine";
 import { attendeeWebhookUrl, defaultSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
-import { generateAndStoreSummary, maxTranscriptTextBytes } from "../../../workflow-worker/src/summaryWorkflow";
-import { sendMeetingSummaryEmail } from "../../../workflow-worker/src/summaryEmailDelivery";
+import { maxTranscriptTextBytes } from "../../../workflow-worker/src/summaryWorkflow";
 
 const sampleInvite = `From: Alice <alice@wgs.bot>
 To: notetaker@wgs.bot
@@ -231,26 +230,29 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
     });
     await createAuditLog(c.env.DB, { eventType: "transcript.fetched", resourceType: "meeting", resourceId: meeting.id, metadata: { source: "admin-upload" } });
 
-    const generated = await generateAndStoreSummary(c.env, meeting.id);
-    const result = await sendMeetingSummaryEmail(c.env, {
-      meeting: generated.meeting,
-      settings: generated.settings,
-      summary: generated.summary,
-      recipientEmail: parsed.data.recipient,
-      excludedRecipients: []
-    });
-    if (result.status === "failed") {
-      return c.json({ ok: false, message: result.failureReason ?? "Uploaded transcript recap email failed to send", meetingId: meeting.id }, 502);
+    try {
+      await c.env.SUMMARY_QUEUE.send({
+        type: "send_uploaded_transcript_recap",
+        meetingId: meeting.id,
+        recipientEmail: parsed.data.recipient
+      });
+    } catch (error) {
+      return c.json(
+        {
+          ok: false,
+          message: "Could not queue uploaded transcript recap email",
+          detail: error instanceof Error ? error.message : "Queue send failed",
+          meetingId: meeting.id
+        },
+        502
+      );
     }
-    await updateSummaryStatus(c.env.DB, meeting.id, "sent", "SUMMARY_SENT");
-    await createAuditLog(c.env.DB, { eventType: "email.sent", resourceType: "meeting", resourceId: meeting.id, metadata: { recipient: parsed.data.recipient, type: "summary_test" } });
     return c.json({
       ok: true,
-      message: "Uploaded transcript recap generated and sent",
+      message: "Uploaded transcript recap queued",
       meetingId: meeting.id,
       recipient: parsed.data.recipient,
-      status: result.status,
-      providerMessageId: result.providerMessageId
+      status: "queued"
     });
   })
   .post("/verify-webhook-signature-sample", async (c) =>

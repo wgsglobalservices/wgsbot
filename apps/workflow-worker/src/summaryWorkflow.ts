@@ -4,6 +4,7 @@ import { buildSummaryRecipients } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
 import { AppError, type AppSettings } from "@minutesbot/shared";
 import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
+import type { EmailSendResult } from "@minutesbot/email-sender";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
@@ -64,6 +65,34 @@ export async function generateAndSendSummary(
   }
   await updateSummaryStatus(env.DB, meetingId, "sent", "SUMMARY_SENT");
   await createAuditLog(env.DB, { eventType: "summary.sent", resourceType: "meeting", resourceId: meetingId, metadata: { recipients: sentCount } });
+}
+
+export async function generateAndSendSingleRecipientSummary(
+  env: WorkflowEnv,
+  input: {
+    meetingId: string;
+    recipientEmail: string;
+    auditEmailType?: string;
+  }
+): Promise<EmailSendResult> {
+  const generated = await generateAndStoreSummary(env, input.meetingId);
+  const result = await sendMeetingSummaryEmail(env, {
+    meeting: generated.meeting,
+    settings: generated.settings,
+    summary: generated.summary,
+    recipientEmail: input.recipientEmail,
+    excludedRecipients: []
+  });
+  if (result.status === "failed") return result;
+
+  await updateSummaryStatus(env.DB, input.meetingId, "sent", "SUMMARY_SENT");
+  await createAuditLog(env.DB, {
+    eventType: "email.sent",
+    resourceType: "meeting",
+    resourceId: input.meetingId,
+    metadata: { recipient: input.recipientEmail, type: input.auditEmailType ?? "summary" }
+  });
+  return result;
 }
 
 export async function generateAndStoreSummary(

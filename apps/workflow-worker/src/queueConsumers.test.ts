@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "@minutesbot/shared";
 import { cleanupOldArtifacts, handleQueueBatch } from "./queueConsumers";
 
+const summaryWorkflowMocks = vi.hoisted(() => ({
+  generateAndSendSummary: vi.fn(async () => undefined),
+  generateAndSendSingleRecipientSummary: vi.fn(async () => ({ status: "sent" }))
+}));
+
+vi.mock("./summaryWorkflow", () => summaryWorkflowMocks);
+
 class FakeD1 {
   prepares: string[] = [];
   prepare(sql: string) {
@@ -42,6 +49,39 @@ describe("retention cleanup", () => {
 });
 
 describe("queue consumers", () => {
+  it("routes uploaded transcript recap test messages to the single-recipient sender before acknowledging", async () => {
+    summaryWorkflowMocks.generateAndSendSingleRecipientSummary.mockClear();
+    const ack = vi.fn();
+    const env = {
+      DB: {} as D1Database,
+      ARTIFACTS: {} as R2Bucket,
+      INVITE_QUEUE: { send: vi.fn() },
+      SUMMARY_QUEUE: { send: vi.fn() },
+      EMAIL_QUEUE: { send: vi.fn() },
+      ATTENDEE_API_BASE_URL: "https://app.attendee.dev",
+      API_BASE_URL: "https://api.company.com"
+    };
+
+    await handleQueueBatch(
+      {
+        messages: [
+          {
+            body: { type: "send_uploaded_transcript_recap", meetingId: "mtg_1", recipientEmail: "reviewer@example.com" },
+            ack
+          }
+        ]
+      } as unknown as MessageBatch<unknown>,
+      env
+    );
+
+    expect(summaryWorkflowMocks.generateAndSendSingleRecipientSummary).toHaveBeenCalledWith(env, {
+      meetingId: "mtg_1",
+      recipientEmail: "reviewer@example.com",
+      auditEmailType: "summary_test"
+    });
+    expect(ack).toHaveBeenCalledOnce();
+  });
+
   it("handles explicit Attendee data deletion messages before acknowledging", async () => {
     const ack = vi.fn();
     const deleteCalls: string[] = [];

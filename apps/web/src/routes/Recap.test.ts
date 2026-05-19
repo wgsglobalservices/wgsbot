@@ -7,10 +7,55 @@ import {
   Recap,
   buildUploadedTranscriptRecapPayload,
   fileToTranscriptText,
+  loadUploadedTranscriptRecapDraft,
+  saveUploadedTranscriptRecapDraft,
   toApiMeetingStartTime
 } from "./Recap";
 
 describe("uploaded transcript recap test helpers", () => {
+  it("saves and reloads the uploaded transcript recap draft", () => {
+    const storage = new Map<string, string>();
+    const draft = {
+      recipient: "Reviewer@Example.COM",
+      subject: "Weekly Sales",
+      meetingStartTime: "2026-05-19T01:02",
+      organizerEmail: "Owner@WGS.Bot",
+      organizerName: "Owner",
+      transcriptText: "WEBVTT\n\nAlex: pipeline update"
+    };
+
+    saveUploadedTranscriptRecapDraft(draft, {
+      setItem(key, value) {
+        storage.set(key, value);
+      }
+    });
+
+    expect(
+      loadUploadedTranscriptRecapDraft("fallback@example.com", () => "2026-05-19T02:00", {
+        getItem(key) {
+          return storage.get(key) ?? null;
+        }
+      })
+    ).toEqual(draft);
+  });
+
+  it("falls back to defaults when the uploaded transcript recap draft is invalid", () => {
+    expect(
+      loadUploadedTranscriptRecapDraft("fallback@example.com", () => "2026-05-19T02:00", {
+        getItem() {
+          return "{";
+        }
+      })
+    ).toEqual({
+      recipient: "fallback@example.com",
+      subject: "",
+      meetingStartTime: "2026-05-19T02:00",
+      organizerEmail: "",
+      organizerName: "",
+      transcriptText: ""
+    });
+  });
+
   it("builds the uploaded transcript recap payload with normalized recipient and organizer email", () => {
     expect(
       buildUploadedTranscriptRecapPayload({

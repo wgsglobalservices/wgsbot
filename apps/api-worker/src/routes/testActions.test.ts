@@ -332,42 +332,17 @@ describe("admin test actions", () => {
     expect((testEnv.DB as unknown as MemoryD1).meetings).toEqual([]);
   });
 
-  it("creates a synthetic meeting, summarizes the uploaded transcript, and emails only the override recipient", async () => {
+  it("creates a synthetic meeting and queues the uploaded transcript recap email", async () => {
     const sent: unknown[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  meetingType: "general",
-                  recapDepth: "standard",
-                  summary: ["The uploaded transcript was summarized."],
-                  decisions: [],
-                  actionItems: [],
-                  openQuestions: [],
-                  risks: [],
-                  followUps: [],
-                  meetingNotes: [
-                    {
-                      heading: "Uploaded Transcript Review",
-                      overview: "The team reviewed the launch plan.",
-                      items: [{ title: "Launch plan", detail: "Alex confirmed the launch checklist is ready." }]
-                    }
-                  ],
-                  followUpTasks: []
-                })
-              }
-            }
-          ]
-        })
-      )
-    );
+    const queued: unknown[] = [];
     const artifacts = new Map<string, string>();
     const testEnv = env({
       AI_API_KEY: "test-ai-key",
+      SUMMARY_QUEUE: {
+        send: vi.fn(async (message: unknown) => {
+          queued.push(message);
+        })
+      },
       SEND_EMAIL: {
         send: vi.fn(async (message: unknown) => {
           sent.push(message);
@@ -410,10 +385,9 @@ describe("admin test actions", () => {
     const body = (await response.json()) as { meetingId?: string };
     expect(body).toMatchObject({
       ok: true,
-      message: "Uploaded transcript recap generated and sent",
+      message: "Uploaded transcript recap queued",
       recipient: "reviewer@example.com",
-      status: "sent",
-      providerMessageId: "provider-message-1"
+      status: "queued"
     });
     expect(body.meetingId).toMatch(/^mtg_/);
     const db = testEnv.DB as unknown as MemoryD1;
@@ -421,50 +395,31 @@ describe("admin test actions", () => {
       calendar_uid: expect.stringMatching(/^test-recap-upload:/),
       subject: "Old Launch Meeting",
       organizer_email: "owner@wgs.bot",
-      status: "SUMMARY_SENT",
+      status: "TRANSCRIPT_AVAILABLE",
       transcript_status: "complete",
-      summary_status: "sent"
+      summary_status: "queued"
     });
     expect(db.artifacts.map((artifact) => artifact.type)).toEqual(["transcript_text", "transcript_json"]);
-    expect(db.summaries).toHaveLength(1);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      to: "reviewer@example.com",
-      subject: "Meeting recap: Old Launch Meeting"
-    });
-    expect(JSON.stringify(sent[0])).not.toContain("owner@wgs.bot");
+    expect(db.summaries).toHaveLength(0);
+    expect(sent).toHaveLength(0);
+    expect(queued).toEqual([
+      {
+        type: "send_uploaded_transcript_recap",
+        meetingId: body.meetingId,
+        recipientEmail: "reviewer@example.com"
+      }
+    ]);
   });
 
-  it("keeps the generated uploaded transcript recap when override email delivery fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  meetingType: "general",
-                  recapDepth: "standard",
-                  summary: ["Summary ready."],
-                  decisions: [],
-                  actionItems: [],
-                  openQuestions: [],
-                  risks: [],
-                  followUps: [],
-                  meetingNotes: [],
-                  followUpTasks: []
-                })
-              }
-            }
-          ]
-        })
-      )
-    );
+  it("reports a queue failure without losing the uploaded transcript test meeting", async () => {
     const artifacts = new Map<string, string>();
     const testEnv = env({
       AI_API_KEY: "test-ai-key",
-      SEND_EMAIL: { send: vi.fn(async () => { throw new Error("provider unavailable"); }) },
+      SUMMARY_QUEUE: {
+        send: vi.fn(async () => {
+          throw new Error("queue unavailable");
+        })
+      },
       ARTIFACTS: {
         put: vi.fn(async (key: string, value: string) => {
           artifacts.set(key, value);
@@ -475,6 +430,7 @@ describe("admin test actions", () => {
         })
       } as unknown as R2Bucket
     });
+
     await testEnv.DB.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)").bind(
       "app",
       JSON.stringify({ ...defaultSettings, email: { ...defaultSettings.email, provider: "cloudflare-email-service" } }),
@@ -490,10 +446,15 @@ describe("admin test actions", () => {
     });
 
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({ ok: false, message: "provider unavailable" });
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      message: "Could not queue uploaded transcript recap email",
+      detail: "queue unavailable",
+      meetingId: expect.stringMatching(/^mtg_/)
+    });
     const db = testEnv.DB as unknown as MemoryD1;
-    expect(db.summaries).toHaveLength(1);
-    expect(db.summaryStatuses.map((values) => values[0])).toContain("ready");
+    expect(db.meetings).toHaveLength(1);
+    expect(db.artifacts.map((artifact) => artifact.type)).toEqual(["transcript_text", "transcript_json"]);
   });
 
   it("calls Attendee when testing Attendee auth without returning the secret", async () => {
