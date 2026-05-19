@@ -37,7 +37,8 @@ describe("recap form helpers", () => {
       "Individual Plant Meeting",
       "General"
     ]);
-    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("Sales Pipeline and Forecast Updates");
+    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("Key Wins and Opportunity Movement");
+    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("CRM, Reporting, and Data Cleanup");
     expect(getPromptPreview("auto", defaultSettings.recap.prompt)).toContain("classifier");
   });
 
@@ -66,10 +67,10 @@ describe("recap form helpers", () => {
   });
 
   it("returns teams-style preview headings for each template", () => {
-    expect(getTemplatePreview("weekly_spqrc").meetingNoteHeadings).toContain("Safety Updates");
-    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("Quotes and Pricing Updates");
-    expect(getTemplatePreview("plant_meeting").meetingNoteHeadings).toContain("Maintenance, Equipment, and Materials");
-    expect(getTemplatePreview("general").meetingNoteHeadings).toContain("Risks and Open Issues");
+    expect(getTemplatePreview("weekly_spqrc").meetingNoteHeadings).toContain("Safety, People, Quality, Delivery, and Cost Updates");
+    expect(getTemplatePreview("weekly_sales").meetingNoteHeadings).toContain("Quotes, Pricing, and Commercial Updates");
+    expect(getTemplatePreview("plant_meeting").meetingNoteHeadings).toContain("Production, Schedule, and Customer Updates");
+    expect(getTemplatePreview("general").meetingNoteHeadings).toContain("Risks and Blockers");
   });
 
   it("copies prompt text when clipboard is available", async () => {

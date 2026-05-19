@@ -137,6 +137,9 @@ describe("settings validation", () => {
     expect(settings.recap.sections.every((section) => section.enabled)).toBe(true);
     expect(settings.recap.prompt).toContain("Return strict JSON only");
     expect(settings.recap.prompt).toContain("automatically classifies meetings");
+    expect(settings.recap.prompt).toContain("WGS / MinutesBot meeting recap");
+    expect(settings.recap.prompt).toContain("Executive Summary");
+    expect(settings.recap.prompt).toContain("Risks and Blockers");
     expect(settings.recap.prompt).toContain("Weekly SPQRC");
     expect(settings.recap.prompt).toContain("Weekly Sales");
     expect(settings.recap.prompt).toContain("Individual Plant Meeting");
