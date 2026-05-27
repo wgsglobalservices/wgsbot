@@ -19,7 +19,7 @@ button, input, select, textarea { font: inherit; }
 
 .shell {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-columns: 128px minmax(0, 1fr);
   width: 100%;
   min-width: 0;
   min-height: 100vh;
@@ -33,27 +33,37 @@ button, input, select, textarea { font: inherit; }
   background: #0c111d;
   color: #f8fafc;
   border-right: 1px solid #1f2937;
-  padding: 24px 12px;
+  padding: 18px 8px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
+  min-width: 0;
+  font-size: 15px;
   font-weight: 700;
   text-decoration: none;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .brandMark {
   display: grid;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 7px;
   overflow: hidden;
   background: #111827;
   box-shadow: 0 0 0 1px rgba(226, 232, 240, .24), 0 12px 28px rgba(0, 0, 0, .28);
+}
+
+.brand > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brandMark img {
@@ -66,8 +76,9 @@ nav { display: grid; gap: 6px; }
 nav a {
   color: #aab6ca;
   text-decoration: none;
-  padding: 10px 12px;
+  padding: 9px 8px;
   border-radius: 8px;
+  white-space: nowrap;
 }
 nav a.active, nav a:hover {
   background: #182235;
@@ -77,7 +88,7 @@ nav a.active, nav a:hover {
 
 .sidebarUserMenu {
   margin-top: auto;
-  padding-top: 24px;
+  padding-top: 18px;
 }
 
 .sidebarUserMenu button {
@@ -86,6 +97,8 @@ nav a.active, nav a:hover {
   background: #0f172a;
   color: #cbd5e1;
   text-align: left;
+  padding: 9px 8px;
+  white-space: nowrap;
 }
 
 .sidebarUserMenu button:hover:not(:disabled) {
@@ -233,6 +246,101 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.logsPage {
+  max-width: none;
+}
+
+.logFilters {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(220px, 320px) auto;
+  align-items: center;
+}
+
+.logFilters input {
+  min-width: 0;
+}
+
+.logDisplayControls {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: end;
+}
+
+.logControlGroup {
+  min-width: 0;
+}
+
+.logColumnOrder {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.logColumnOrderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.logColumnOrderHeader > span,
+.logControlGroup > span {
+  font-weight: 650;
+}
+
+.compactButton {
+  padding: 7px 10px;
+  border-radius: 7px;
+}
+
+.logColumnChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.logColumnChip {
+  display: inline-grid;
+  grid-template-columns: 28px minmax(64px, auto) 28px;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid #253247;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, .74);
+  color: #dbeafe;
+  overflow: hidden;
+}
+
+.logColumnChip span {
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.columnMoveButton {
+  display: grid;
+  width: 28px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: rgba(148, 163, 184, .1);
+  color: #cbd5e1;
+  padding: 0;
+}
+
+.columnMoveButton:hover:not(:disabled) {
+  background: rgba(45, 212, 191, .18);
+  color: #f8fafc;
 }
 
 .manualSummarySendAction {
@@ -1035,6 +1143,44 @@ tr:hover td { background: rgba(45, 212, 191, .04); }
   border-radius: 0;
 }
 
+.auditLogTableWrap {
+  overflow-x: auto;
+}
+
+.auditLogTable {
+  table-layout: fixed;
+  min-width: 920px;
+}
+
+.auditLogTable th,
+.auditLogTable td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.auditLogTable th {
+  white-space: nowrap;
+}
+
+.auditLogTable .timeCell {
+  min-width: 0;
+  white-space: normal;
+}
+
+.auditLogTable code {
+  display: block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.auditLogCol-time { width: 15%; }
+.auditLogCol-event { width: 14%; }
+.auditLogCol-actor { width: 20%; }
+.auditLogCol-resource { width: 25%; }
+.auditLogCol-metadata { width: 26%; }
+
 .meetingTable {
   table-layout: fixed;
   min-width: 1320px;
@@ -1330,6 +1476,13 @@ pre {
   }
   .timeZoneControl { grid-template-columns: 1fr; }
   .currentTime { white-space: normal; }
+  .logFilters,
+  .logDisplayControls {
+    grid-template-columns: 1fr;
+  }
+  .logFilters button {
+    width: 100%;
+  }
   .recapSettingsStrip,
   .recapTemplateGrid,
   .classificationGrid {
