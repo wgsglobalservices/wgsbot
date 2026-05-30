@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Meeting Action Fixture</title>
+    <script type="module">
+      import React from "/node_modules/.vite/deps/react.js";
+      import { createRoot } from "/node_modules/.vite/deps/react-dom_client.js";
+      import "/src/styles.css";
+      import { MeetingDetail } from "/src/routes/MeetingDetail.tsx";
+
+      const meetingPayload = {
+        meeting: {
+          id: "test22",
+          subject: "Test22",
+          status: "failed",
+          start_time: "2026-05-30T18:07:00.000Z",
+          end_time: "2026-05-30T19:07:00.000Z",
+          organizer_email: "p.gustafson@wgsglobalservices.com",
+          calendar_uid: "teams-link-478e674c",
+          teams_join_url: "https://teams.microsoft.com/l/meetup-join/mock",
+          summary_status: "failed"
+        },
+        attendees: [{ email: "p.gustafson@wgsglobalservices.com", summary_eligible: 1 }],
+        emailDeliveries: [],
+        transcriptSegments: [],
+        artifacts: [],
+        webhookEvents: [],
+        summary: null
+      };
+
+      let fetchTranscriptCalls = 0;
+      window.fetch = async (input, init = {}) => {
+        const url = String(input);
+        const method = init.method || "GET";
+        if (url.endsWith("/api/meetings/test22/fetch-transcript") && method === "POST") {
+          fetchTranscriptCalls += 1;
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          return new Response(JSON.stringify({ ok: true, calls: fetchTranscriptCalls }), {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          });
+        }
+        if (url.endsWith("/api/meetings/test22")) {
+          return new Response(JSON.stringify(meetingPayload), {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      };
+
+      createRoot(document.getElementById("root")).render(React.createElement(MeetingDetail, { id: "test22" }));
+    </script>
+  </head>
+  <body><div id="root"></div></body>
+</html>

@@ -108,8 +108,48 @@ function formatDuration(start: Date, end: Date): string {
   return parts.join(" ");
 }
 
+type MeetingActionStatus = {
+  status: "idle" | "running" | "success" | "error";
+  message: string;
+};
+
+const idleMeetingActionStatus: MeetingActionStatus = { status: "idle", message: "" };
+
+export async function runMeetingActionWithFeedback(
+  action: { run: () => Promise<unknown>; done: () => void },
+  setStatus: (state: MeetingActionStatus) => void,
+  label = "Action"
+): Promise<void> {
+  setStatus({ status: "running", message: `${label} is working...` });
+  try {
+    await action.run();
+    setStatus({ status: "success", message: `${label} request sent.` });
+    action.done();
+  } catch (error) {
+    setStatus({ status: "error", message: error instanceof Error ? error.message : `${label} failed.` });
+  }
+}
+
 function Action({ label, run, done }: { label: string; run: () => Promise<unknown>; done: () => void }) {
-  return <button onClick={async () => { await run(); done(); }}>{label}</button>;
+  const [actionStatus, setActionStatus] = useState<MeetingActionStatus>(idleMeetingActionStatus);
+  const running = actionStatus.status === "running";
+  return (
+    <div className="meetingAction">
+      <button
+        className={`meetingActionButton ${running ? "isWorking" : ""}`}
+        type="button"
+        disabled={running}
+        aria-busy={running}
+        onClick={() => void runMeetingActionWithFeedback({ run, done }, setActionStatus, label)}
+      >
+        {running ? <span className="buttonSpinner" aria-hidden="true" /> : null}
+        <span>{running ? `${label}...` : label}</span>
+      </button>
+      <span className={`meetingActionStatus ${actionStatus.status}`} role="status" aria-live="polite">
+        {actionStatus.message}
+      </span>
+    </div>
+  );
 }
 
 function ManualSummaryEmailAction({
@@ -127,6 +167,7 @@ function ManualSummaryEmailAction({
   const [recipient, setRecipient] = useState(recipientOptions[0] ?? "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
+  const [sendStatus, setSendStatus] = useState("");
 
   useEffect(() => {
     setRecipient((current) => current || recipientOptions[0] || "");
@@ -145,21 +186,28 @@ function ManualSummaryEmailAction({
         className="secondaryButton"
         type="button"
         disabled={busy || !recipient}
+        aria-busy={busy}
         onClick={async () => {
           setBusy(true);
+          setSendStatus("Sending recap email...");
           try {
             const response = await apiPost<unknown>(`/api/meetings/${meetingId}/send-summary-email`, { to: recipient });
+            setSendStatus("Recap email request sent.");
             setResult(JSON.stringify(response, null, 2));
             done();
           } catch (error) {
-            setResult(error instanceof Error ? error.message : "Failed");
+            const message = error instanceof Error ? error.message : "Failed";
+            setSendStatus(message);
+            setResult(message);
           } finally {
             setBusy(false);
           }
         }}
       >
+        {busy ? <span className="buttonSpinner" aria-hidden="true" /> : null}
         {busy ? "Sending..." : "Send recap email"}
       </button>
+      {sendStatus && <span className="meetingActionStatus" role="status" aria-live="polite">{sendStatus}</span>}
       {result && <pre>{result}</pre>}
     </div>
   );

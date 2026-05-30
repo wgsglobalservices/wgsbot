@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMeetingSchedule, meetingRecapRecipientOptions, normalizeSummaryForDisplay, summarizeArtifacts } from "./MeetingDetail";
+import { formatMeetingSchedule, meetingRecapRecipientOptions, normalizeSummaryForDisplay, runMeetingActionWithFeedback, summarizeArtifacts } from "./MeetingDetail";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRecapEmailDeliveryStatus, RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
@@ -104,6 +104,31 @@ describe("manual meeting recap recipients", () => {
         { email: "" }
       ])
     ).toEqual(["owner@wgs.bot", "alex@wgs.bot"]);
+  });
+});
+
+describe("meeting detail action feedback", () => {
+  it("marks an action as running immediately and then confirms completion", async () => {
+    let finishAction!: () => void;
+    const states: string[] = [];
+    const run = new Promise<void>((resolve) => {
+      finishAction = resolve;
+    });
+
+    const task = runMeetingActionWithFeedback(
+      {
+        run: () => run,
+        done: () => states.push("reloaded")
+      },
+      (state) => states.push(state.status)
+    );
+
+    expect(states).toEqual(["running"]);
+
+    finishAction();
+    await task;
+
+    expect(states).toEqual(["running", "success", "reloaded"]);
   });
 });
 

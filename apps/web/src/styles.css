@@ -241,6 +241,59 @@ button:hover:not(:disabled) {
 }
 button:disabled { opacity: .55; cursor: not-allowed; }
 
+.meetingAction {
+  display: grid;
+  gap: 6px;
+  align-items: start;
+}
+
+.meetingActionButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.meetingActionButton.isWorking {
+  background: #facc15;
+  color: #1f1700;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, .22);
+}
+
+.buttonSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: buttonSpinnerTurn .7s linear infinite;
+  flex: 0 0 auto;
+}
+
+.meetingActionStatus {
+  min-height: 18px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.meetingActionStatus.running {
+  color: #fde68a;
+}
+
+.meetingActionStatus.success {
+  color: #86efac;
+}
+
+.meetingActionStatus.error {
+  color: #fca5a5;
+}
+
+@keyframes buttonSpinnerTurn {
+  to { transform: rotate(360deg); }
+}
+
 .actions, .filters {
   display: flex;
   flex-wrap: wrap;
@@ -1522,6 +1575,9 @@ pre {
 }
 
 @media (min-width: 821px) and (max-width: 1180px) {
+  .setupFieldGrid.aiProviderGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .recapSettingsStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
