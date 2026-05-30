@@ -106,6 +106,26 @@ export async function listMeetingsDueForBotCreation(db: D1Database, cutoffIso: s
   return result.results ?? [];
 }
 
+export async function markStaleRecurringOccurrencesCancelled(
+  db: D1Database,
+  input: { seriesUid: string; keepCalendarUids: string[]; nowIso: string }
+): Promise<void> {
+  if (input.keepCalendarUids.length === 0) return;
+  const placeholders = input.keepCalendarUids.map(() => "?").join(", ");
+  await db
+    .prepare(
+      `UPDATE meetings
+       SET status = ?, latest_error = ?, updated_at = ?
+       WHERE calendar_uid LIKE ?
+         AND calendar_uid NOT IN (${placeholders})
+         AND attendee_bot_id IS NULL
+         AND start_time > ?
+         AND status IN ('SCHEDULED', 'WAITING_TO_CREATE_BOT')`
+    )
+    .bind("CANCELLED", null, input.nowIso, `${input.seriesUid}:%`, ...input.keepCalendarUids, input.nowIso)
+    .run();
+}
+
 export async function claimMeetingBotCreation(db: D1Database, id: string): Promise<boolean> {
   const result = await db
     .prepare(

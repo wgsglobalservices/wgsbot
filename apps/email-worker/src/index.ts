@@ -1,4 +1,4 @@
-import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, updateMeetingStatus, upsertMeeting } from "@minutesbot/db";
+import { createArtifact, createAuditLog, getSettings, markStaleRecurringOccurrencesCancelled, replaceMeetingAttendees, updateMeetingStatus, upsertMeeting } from "@minutesbot/db";
 import { expandInviteOccurrences, parseIncomingInvite } from "@minutesbot/invite-parser";
 import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
 import { createId, shouldCreateBotNow, type MeetingStatus } from "@minutesbot/shared";
@@ -82,6 +82,14 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     ? occurrences
     : [{ calendarUid: parsed.calendarUid, startTime: parsed.startTime, endTime: parsed.endTime }];
   const rawSizeBytes = new TextEncoder().encode(rawEmail).byteLength;
+
+  if (parsed.kind !== "cancel" && parsed.recurrence && occurrences.length > 0) {
+    await markStaleRecurringOccurrencesCancelled(env.DB, {
+      seriesUid: parsed.calendarUid,
+      keepCalendarUids: occurrences.map((occurrence) => occurrence.calendarUid),
+      nowIso: new Date().toISOString()
+    });
+  }
 
   for (const occurrence of visibleOccurrences) {
     const meeting = await upsertMeeting(env.DB, {

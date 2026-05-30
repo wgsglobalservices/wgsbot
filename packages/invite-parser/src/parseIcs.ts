@@ -11,6 +11,7 @@ export function parseIcsCalendar(icsText: string): ParsedCalendar {
   const summary = readProp(unfolded, "SUMMARY");
   const dtStart = readProp(unfolded, "DTSTART");
   const dtEnd = readProp(unfolded, "DTEND");
+  const recurrenceId = readProp(unfolded, "RECURRENCE-ID");
   const recurrenceRule = readProp(unfolded, "RRULE");
   const organizerLine = findPropLine(unfolded, "ORGANIZER");
   const attendees = findPropLines(unfolded, "ATTENDEE").map(parseAttendeeLine);
@@ -20,9 +21,11 @@ export function parseIcsCalendar(icsText: string): ParsedCalendar {
   }
 
   const organizer = parseOrganizerLine(organizerLine);
+  const decodedUid = decodeIcsText(uid);
+  const calendarUid = recurrenceId ? `${decodedUid}:${compactIso(parseIcsDate(recurrenceId))}` : decodedUid;
   return {
     kind,
-    calendarUid: decodeIcsText(uid),
+    calendarUid,
     subject: decodeIcsText(summary),
     organizer,
     attendees: normalizeAttendees(attendees),
@@ -87,4 +90,8 @@ function parseIcsDate(value: string): string {
   if (!match) throw new AppError("INVITE_PARSE_ERROR", `Unsupported calendar date: ${value}`, 400);
   const [, year, month, day, hour, minute, second] = match;
   return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))).toISOString();
+}
+
+function compactIso(iso: string): string {
+  return iso.replace(/[-:]/g, "").replace(".000Z", "Z");
 }

@@ -10,8 +10,8 @@ export function minutesAfter(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60_000).toISOString();
 }
 
-export function botJoinTime(startTimeIso: string, minutesBeforeStart: number): string {
-  return minutesBefore(startTimeIso, minutesBeforeStart);
+export function botJoinTime(startTimeIso: string, _minutesBeforeStart: number): string {
+  return startTimeIso;
 }
 
 export function shouldCreateBotNow(startTimeIso: string | null | undefined, minutesBeforeStart: number, now: Date = new Date()): boolean {

@@ -57,6 +57,29 @@ END:VCALENDAR`);
     expect(invite.subject).toBe("Project sync updated");
   });
 
+  it("maps recurring occurrence updates to the original occurrence calendar UID", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: Recurring project sync moved
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:abc-recurring
+RECURRENCE-ID:20260608T150000Z
+SUMMARY:Recurring project sync moved
+DTSTART:20260608T160000Z
+DTEND:20260608T163000Z
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    expect(invite.calendarUid).toBe("abc-recurring:20260608T150000Z");
+    expect(invite.startTime).toBe("2026-06-08T16:00:00.000Z");
+  });
+
   it("parses cancellations", () => {
     const invite = parseIncomingInvite(readFixture("teams-invite-cancel.eml"));
     expect(invite.kind).toBe("cancel");

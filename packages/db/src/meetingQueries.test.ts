@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteMeetingRecord, listMeetings } from "./meetingQueries";
+import { deleteMeetingRecord, listMeetings, markStaleRecurringOccurrencesCancelled } from "./meetingQueries";
 
 class QueryD1 {
   sql = "";
@@ -57,5 +57,27 @@ describe("meeting queries", () => {
       "DELETE FROM meetings WHERE id = ?"
     ]);
     expect(db.calls.every((call) => call.values[0] === "mtg_1")).toBe(true);
+  });
+
+  it("marks stale future generated recurrence rows cancelled when a series changes", async () => {
+    const db = new DeleteQueryD1();
+
+    await markStaleRecurringOccurrencesCancelled(db as unknown as D1Database, {
+      seriesUid: "series-1",
+      keepCalendarUids: ["series-1:20260601T160000Z", "series-1:20260608T160000Z"],
+      nowIso: "2026-05-30T12:00:00.000Z"
+    });
+
+    expect(db.calls[0].sql).toContain("calendar_uid LIKE ?");
+    expect(db.calls[0].sql).toContain("calendar_uid NOT IN (?, ?)");
+    expect(db.calls[0].values).toEqual([
+      "CANCELLED",
+      null,
+      "2026-05-30T12:00:00.000Z",
+      "series-1:%",
+      "series-1:20260601T160000Z",
+      "series-1:20260608T160000Z",
+      "2026-05-30T12:00:00.000Z"
+    ]);
   });
 });

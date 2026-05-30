@@ -189,7 +189,7 @@ export const defaultSettings: AppSettings = {
     apiKeyConfigured: false,
     webhookSecretConfigured: false,
     botName: "minutesbot",
-    createBotMinutesBeforeStart: 5,
+    createBotMinutesBeforeStart: 0,
     maxWaitingRoomMinutes: 15,
     deleteAttendeeDataAfterTranscriptFetch: false
   },

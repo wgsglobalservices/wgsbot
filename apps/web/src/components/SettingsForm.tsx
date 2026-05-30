@@ -45,7 +45,6 @@ export function SettingsForm({
         </div>
         <EmailAliasesField value={recorderAliasEmailsText} emails={value.recorderAliasEmails} onChange={(v) => update("recorderAliasEmails", parseEmailList(v))} />
         <div className="compactSettingRows">
-          <NumberWithUnit label="Join meeting early" unit="minutes" value={value.attendee.createBotMinutesBeforeStart} onChange={(v) => update("attendee.createBotMinutesBeforeStart", v)} />
           <NumberWithUnit label="Waiting room timeout" unit="minutes" value={value.attendee.maxWaitingRoomMinutes} onChange={(v) => update("attendee.maxWaitingRoomMinutes", v)} />
         </div>
       </SettingsSection>

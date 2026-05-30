@@ -16,6 +16,7 @@ class BotCreationD1 {
   statusUpdates: Array<{ status: string; latestError: string | null }> = [];
   auditLogs: Array<{ eventType: string; metadata: unknown }> = [];
   dueMeetings: Array<{ id: string }> = [];
+  dueCutoffIso: string | null = null;
   claims = 0;
 
   prepare(sql: string) {
@@ -34,7 +35,10 @@ class BotCreationD1 {
         return null;
       },
       async all<T>() {
-        if (sql.includes("FROM meetings")) return { results: db.dueMeetings as T[] };
+        if (sql.includes("FROM meetings")) {
+          db.dueCutoffIso = this.values[0] as string;
+          return { results: db.dueMeetings as T[] };
+        }
         return { results: [] as T[] };
       },
       async run() {
@@ -256,7 +260,7 @@ describe("bot creation scheduling", () => {
     vi.unstubAllGlobals();
   });
 
-  it("waits until the configured early-join time for future meetings", async () => {
+  it("waits until the actual start time for future meetings", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T14:30:00.000Z"));
     const db = new BotCreationD1();
@@ -269,13 +273,33 @@ describe("bot creation scheduling", () => {
 
     await handleCreateBotQueueMessage(env({ INVITE_QUEUE: { send: queueSend } }, db), "mtg_1");
 
-    expect(queueSend).toHaveBeenCalledWith({ type: "create_bot", meetingId: "mtg_1" }, { delaySeconds: 1500 });
+    expect(queueSend).toHaveBeenCalledWith({ type: "create_bot", meetingId: "mtg_1" }, { delaySeconds: 1800 });
     expect(db.statusUpdates.at(-1)).toEqual({ status: "WAITING_TO_CREATE_BOT", latestError: null });
   });
 
-  it("creates the bot immediately when the invite arrives after the configured early-join time", async () => {
+  it("does not create the bot before the actual start time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T14:56:00.000Z"));
+    const db = new BotCreationD1();
+    db.meeting.start_time = "2026-05-18T15:00:00.000Z";
+    db.settings = {
+      ...defaultSettings,
+      attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+    };
+    const queueSend = vi.fn(async () => undefined);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await handleCreateBotQueueMessage(env({ INVITE_QUEUE: { send: queueSend } }, db), "mtg_1");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(queueSend).toHaveBeenCalledWith({ type: "create_bot", meetingId: "mtg_1" }, { delaySeconds: 240 });
+    expect(db.statusUpdates.at(-1)).toEqual({ status: "WAITING_TO_CREATE_BOT", latestError: null });
+  });
+
+  it("creates the bot immediately when the invite arrives after the meeting started", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T15:01:00.000Z"));
     const db = new BotCreationD1();
     db.meeting.start_time = "2026-05-18T15:00:00.000Z";
     db.settings = {
@@ -317,7 +341,7 @@ describe("bot creation scheduling", () => {
     expect(db.auditLogs.some((log) => log.eventType === "bot.created")).toBe(true);
   });
 
-  it("queues due meetings from the scheduled worker scan", async () => {
+  it("queues meetings due by actual start time from the scheduled worker scan", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T14:55:00.000Z"));
     const db = new BotCreationD1();
@@ -331,6 +355,7 @@ describe("bot creation scheduling", () => {
     const queued = await queueDueBotCreations(env({ INVITE_QUEUE: { send: queueSend } }, db));
 
     expect(queued).toBe(2);
+    expect(db.dueCutoffIso).toBe("2026-05-18T14:55:00.000Z");
     expect(queueSend).toHaveBeenNthCalledWith(1, { type: "create_bot", meetingId: "mtg_due" });
     expect(queueSend).toHaveBeenNthCalledWith(2, { type: "create_bot", meetingId: "mtg_started" });
   });

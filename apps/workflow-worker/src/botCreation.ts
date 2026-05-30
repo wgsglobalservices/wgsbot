@@ -1,6 +1,6 @@
 import { ATTENDEE_WEBHOOK_TRIGGERS, AttendeeClient, AttendeeClientError, type AttendeeBot } from "@minutesbot/attendee-client";
 import { claimMeetingBotCreation, createAuditLog, getMeeting, getSettings, listMeetingsDueForBotCreation, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
-import { AppError, attendeeWebhookUrl, minutesAfter, minutesBefore, recordingR2Key, resolveAttendeeBaseUrl, shouldCreateBotNow } from "@minutesbot/shared";
+import { AppError, attendeeWebhookUrl, recordingR2Key, resolveAttendeeBaseUrl, shouldCreateBotNow } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
 const MAX_QUEUE_DELAY_SECONDS = 24 * 60 * 60;
@@ -13,7 +13,7 @@ export async function handleCreateBotQueueMessage(env: WorkflowEnv, meetingId: s
 
   const settings = await getSettings(env.DB);
   if (!options.force && !shouldCreateBotNow(meeting.start_time, settings.attendee.createBotMinutesBeforeStart)) {
-    const wakeAt = minutesBefore(meeting.start_time ?? new Date().toISOString(), settings.attendee.createBotMinutesBeforeStart);
+    const wakeAt = meeting.start_time ?? new Date().toISOString();
     const delaySeconds = secondsUntil(wakeAt);
     await env.INVITE_QUEUE.send({ type: "create_bot", meetingId }, { delaySeconds: Math.min(delaySeconds, MAX_QUEUE_DELAY_SECONDS) });
     await updateMeetingStatus(env.DB, meetingId, "WAITING_TO_CREATE_BOT");
@@ -82,8 +82,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
 }
 
 export async function queueDueBotCreations(env: WorkflowEnv, now: Date = new Date()): Promise<number> {
-  const settings = await getSettings(env.DB);
-  const cutoffIso = minutesAfter(now.toISOString(), settings.attendee.createBotMinutesBeforeStart);
+  const cutoffIso = now.toISOString();
   const meetings = await listMeetingsDueForBotCreation(env.DB, cutoffIso);
   for (const meeting of meetings) {
     await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
