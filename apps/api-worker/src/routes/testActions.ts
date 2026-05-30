@@ -107,6 +107,43 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
       }
     });
   })
+  .post("/test-openrouter", async (c) => {
+    const settings = await readSettings(c.env);
+    if (!c.env.AI_API_KEY) return c.json({ ok: false, message: "AI_API_KEY secret is not configured" }, 400);
+
+    const baseUrl = openRouterBaseUrl(settings.ai.baseUrl);
+    const headers = { authorization: `Bearer ${c.env.AI_API_KEY}` };
+    try {
+      const keyResponse = await fetch(`${baseUrl}/key`, { headers });
+      if (!keyResponse.ok) {
+        return c.json({ ok: false, message: await providerFailureMessage("OpenRouter key check", keyResponse, c.env.AI_API_KEY) }, 502);
+      }
+      const keyPayload = (await keyResponse.json()) as { data?: { label?: unknown; limit_remaining?: unknown } };
+
+      const modelsResponse = await fetch(`${baseUrl}/models?output_modalities=transcription`, { headers });
+      if (!modelsResponse.ok) {
+        return c.json({ ok: false, message: await providerFailureMessage("OpenRouter model check", modelsResponse, c.env.AI_API_KEY) }, 502);
+      }
+      const modelsPayload = (await modelsResponse.json()) as { data?: Array<{ id?: unknown }> };
+      const modelIds = new Set((modelsPayload.data ?? []).map((model) => model.id).filter((id): id is string => typeof id === "string"));
+      if (!modelIds.has(settings.recap.transcriptionModel)) {
+        return c.json({ ok: false, message: `OpenRouter transcription model is unavailable: ${settings.recap.transcriptionModel}` }, 502);
+      }
+
+      return c.json({
+        ok: true,
+        message: "OpenRouter connection succeeded",
+        provider: {
+          baseUrl,
+          transcriptionModel: settings.recap.transcriptionModel,
+          keyLabel: typeof keyPayload.data?.label === "string" ? keyPayload.data.label : undefined,
+          limitRemaining: typeof keyPayload.data?.limit_remaining === "number" ? keyPayload.data.limit_remaining : undefined
+        }
+      });
+    } catch (error) {
+      return c.json({ ok: false, message: error instanceof Error ? error.message : "OpenRouter connection failed" }, 502);
+    }
+  })
   .post("/test-email", async (c) => c.json({ ok: true, message: "Outbound email provider is configured as mock unless a binding/provider is supplied" }))
   .post("/parse-sample-invite", async (c) => c.json({ ok: true, invite: parseIncomingInvite(sampleInvite) }))
   .post("/send-test-summary-email", async (c) => {
@@ -262,4 +299,37 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
 function attendeeTestErrorMessage(error: unknown): string {
   if (error instanceof AttendeeClientError) return `${error.code}: ${error.message}`;
   return `ATTENDEE_REQUEST_FAILED: ${error instanceof Error ? error.message : String(error)}`;
+}
+
+function openRouterBaseUrl(configuredBaseUrl?: string): string {
+  try {
+    const configured = configuredBaseUrl ? new URL(configuredBaseUrl) : null;
+    return configured?.hostname === "openrouter.ai" ? configured.toString().replace(/\/+$/, "") : "https://openrouter.ai/api/v1";
+  } catch {
+    return "https://openrouter.ai/api/v1";
+  }
+}
+
+async function providerFailureMessage(label: string, response: Response, secret: string): Promise<string> {
+  const detail = await response
+    .clone()
+    .json()
+    .then((payload) => providerPayloadMessage(payload))
+    .catch(async () => providerPayloadMessage(await response.text().catch(() => "")));
+  const suffix = detail ? `: ${redactSecret(detail, secret)}` : "";
+  return `${label} failed with ${response.status}${suffix}`;
+}
+
+function providerPayloadMessage(payload: unknown): string {
+  if (typeof payload === "string") return payload.trim().slice(0, 300);
+  if (payload && typeof payload === "object") {
+    const record = payload as { error?: { message?: unknown }; message?: unknown };
+    if (typeof record.error?.message === "string") return record.error.message.slice(0, 300);
+    if (typeof record.message === "string") return record.message.slice(0, 300);
+  }
+  return "";
+}
+
+function redactSecret(value: string, secret: string): string {
+  return secret ? value.split(secret).join("[redacted]") : value;
 }

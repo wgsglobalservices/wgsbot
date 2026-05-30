@@ -40,6 +40,7 @@ export function MeetingDetail({ id }: { id: string }) {
       <section>
         <h2>Meeting metadata</h2>
         <div className="metricGrid">
+          <Metric label="Schedule" value={formatMeetingSchedule(meeting)} />
           <Metric label="Organizer" value={String(meeting.organizer_email ?? "")} />
           <Metric label="Calendar UID" value={String(meeting.calendar_uid ?? "")} />
           <Metric label="Teams join URL" value={String(meeting.teams_join_url ?? "")} />
@@ -68,6 +69,43 @@ export function MeetingDetail({ id }: { id: string }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+export function formatMeetingSchedule(meeting: { start_time?: unknown; end_time?: unknown }): string {
+  const start = dateFromValue(meeting.start_time);
+  if (!start) return "Not set";
+
+  const end = dateFromValue(meeting.end_time);
+  if (!end) return formatDate(start.toISOString());
+
+  const endText = formatDateOnly(start) === formatDateOnly(end) ? formatTime(end) : formatDate(end.toISOString());
+  const duration = formatDuration(start, end);
+  return `${formatDate(start.toISOString())} - ${endText}${duration ? ` (${duration})` : ""}`;
+}
+
+function dateFromValue(value: unknown): Date | null {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function formatDateOnly(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
+function formatTime(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(date);
+}
+
+function formatDuration(start: Date, end: Date): string {
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  if (minutes <= 0) return "";
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+  if (remainingMinutes > 0) parts.push(`${remainingMinutes} ${remainingMinutes === 1 ? "minute" : "minutes"}`);
+  return parts.join(" ");
 }
 
 function Action({ label, run, done }: { label: string; run: () => Promise<unknown>; done: () => void }) {

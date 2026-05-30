@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { meetingRecapRecipientOptions, normalizeSummaryForDisplay, summarizeArtifacts } from "./MeetingDetail";
+import { formatMeetingSchedule, meetingRecapRecipientOptions, normalizeSummaryForDisplay, summarizeArtifacts } from "./MeetingDetail";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRecapEmailDeliveryStatus, RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
@@ -104,6 +104,20 @@ describe("manual meeting recap recipients", () => {
         { email: "" }
       ])
     ).toEqual(["owner@wgs.bot", "alex@wgs.bot"]);
+  });
+});
+
+describe("meeting detail schedule display", () => {
+  it("formats the meeting schedule with start time, end time, and duration", () => {
+    const schedule = formatMeetingSchedule({
+      start_time: "2026-05-04T15:00:00.000Z",
+      end_time: "2026-05-04T15:30:00.000Z"
+    });
+
+    expect(schedule).toContain("May 4, 2026");
+    expect(schedule).toContain("30 minutes");
+    expect(schedule).toMatch(/\d{1,2}:00\s?(AM|PM)/i);
+    expect(schedule).toMatch(/\d{1,2}:30\s?(AM|PM)/i);
   });
 });
 

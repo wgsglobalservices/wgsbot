@@ -166,6 +166,67 @@ describe("admin test actions", () => {
     });
   });
 
+  it("reports when the OpenRouter API key secret is not configured", async () => {
+    const response = await post("/api/admin/test-openrouter", env());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      message: "AI_API_KEY secret is not configured"
+    });
+  });
+
+  it("tests the OpenRouter key and transcription model without returning the secret", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(url), init });
+        if (String(url).endsWith("/key")) {
+          return Response.json({ data: { label: "sk-or-v1-test...abcd", limit_remaining: 12.5 } });
+        }
+        return Response.json({ data: [{ id: defaultSettings.recap.transcriptionModel }] });
+      })
+    );
+
+    const response = await post("/api/admin/test-openrouter", env({ AI_API_KEY: "sk-secret" }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      message: "OpenRouter connection succeeded",
+      provider: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        transcriptionModel: defaultSettings.recap.transcriptionModel,
+        keyLabel: "sk-or-v1-test...abcd",
+        limitRemaining: 12.5
+      }
+    });
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/key",
+      "https://openrouter.ai/api/v1/models?output_modalities=transcription"
+    ]);
+    expect(requests[0].init?.headers).toMatchObject({ authorization: "Bearer sk-secret" });
+  });
+
+  it("reports when the configured OpenRouter transcription model is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        if (String(url).endsWith("/key")) return Response.json({ data: { label: "sk-or-v1-test...abcd" } });
+        return Response.json({ data: [{ id: "openai/whisper-1" }] });
+      })
+    );
+
+    const response = await post("/api/admin/test-openrouter", env({ AI_API_KEY: "sk-secret" }));
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      message: `OpenRouter transcription model is unavailable: ${defaultSettings.recap.transcriptionModel}`
+    });
+  });
+
   it("tests the OpenAI-compatible AI provider without returning the secret", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(

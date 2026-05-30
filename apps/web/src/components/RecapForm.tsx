@@ -200,8 +200,6 @@ export function RecapForm({
   return (
     <form className="recapTemplatePage">
       <section className="recapSettingsStrip" aria-label="Recap settings">
-        <Field label="Whisper model" value={value.transcriptionModel} onChange={(next) => update("transcriptionModel", next)} />
-        <Field label="Language" value={value.language ?? ""} placeholder="Auto-detect" onChange={(next) => update("language", next)} />
         <Field label="Subject prefix" value={value.subjectPrefix} onChange={(next) => update("subjectPrefix", next)} />
         <TextAreaField label="Intro text" value={value.introText ?? ""} rows={2} onChange={(next) => update("introText", next)} />
       </section>

@@ -77,11 +77,14 @@ export function SettingsForm({
       >
         <div className="setupFieldGrid aiProviderGrid">
           <SelectField label="Provider" value={value.ai.provider} options={["openai-compatible", "workers-ai"]} width="medium" onChange={(v) => update("ai.provider", v)} />
-          <TextField label="Model" value={value.ai.model} width="medium" onChange={(v) => update("ai.model", v)} />
+          <TextField label="Recap model" value={value.ai.model} width="medium" onChange={(v) => update("ai.model", v)} />
           <TextField label="Base URL" value={value.ai.baseUrl ?? ""} width="url" onChange={(v) => update("ai.baseUrl", v)} />
+          <TextField label="Transcription model" value={value.recap.transcriptionModel} width="medium" onChange={(v) => update("recap.transcriptionModel", v)} />
+          <TextField label="Transcription language" value={value.recap.language ?? ""} width="medium" placeholder="Auto-detect" onChange={(v) => update("recap.language", v)} />
         </div>
         <div className="inlineActions">
           <TestActionButton path="/api/admin/test-ai" label="Test AI connection" variant="secondary" />
+          <TestActionButton path="/api/admin/test-openrouter" label="Test OpenRouter connection" variant="secondary" />
         </div>
       </SettingsSection>
 
@@ -211,11 +214,13 @@ function SettingsSection({
 
 function TextField({
   label,
+  placeholder,
   value,
   width = "medium",
   onChange
 }: {
   label: string;
+  placeholder?: string;
   value: string;
   width?: "medium" | "wide" | "url";
   onChange: (value: string) => void;
@@ -223,7 +228,7 @@ function TextField({
   return (
     <label className={`setupField fieldWidth-${width}`}>
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      <input placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

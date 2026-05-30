@@ -68,6 +68,16 @@ describe("settings form", () => {
     expect(html).toContain("hours");
     expect(html).toContain('value="24"');
   });
+
+  it("renders transcription model settings and a dedicated OpenRouter connection test action under AI setup", () => {
+    const html = renderToStaticMarkup(React.createElement(SettingsForm, { value: defaultSettings, onChange: () => undefined }));
+
+    expect(html).toContain("Transcription model");
+    expect(html).toContain(defaultSettings.recap.transcriptionModel);
+    expect(html).toContain("Transcription language");
+    expect(html).toContain("Auto-detect");
+    expect(html).toContain("Test OpenRouter connection");
+  });
 });
 
 describe("sample recap recipient", () => {

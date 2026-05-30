@@ -64,6 +64,8 @@ describe("recap form helpers", () => {
     expect(html).toContain("Prompt preview");
     expect(html).toContain("Copy prompt");
     expect(html).toContain("Save recap");
+    expect(html).not.toContain("Whisper model");
+    expect(html).not.toContain("Transcription model");
   });
 
   it("returns teams-style preview headings for each template", () => {

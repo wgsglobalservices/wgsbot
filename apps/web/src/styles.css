@@ -769,7 +769,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 
 .recapSettingsStrip {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(120px, .55fr) minmax(160px, .8fr) minmax(240px, 1.3fr);
+  grid-template-columns: minmax(180px, 320px) minmax(240px, 520px);
   gap: 12px;
   align-items: start;
   padding: 14px;
