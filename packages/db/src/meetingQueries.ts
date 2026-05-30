@@ -1,6 +1,8 @@
 import { createId, nowIso, type MeetingStatus, type SummaryStatus, type TranscriptStatus } from "@minutesbot/shared";
 import type { AttendeeRow, MeetingRow, TranscriptSegmentRow, WebhookEventRow } from "./schema";
 
+export type MeetingListRow = MeetingRow & { eligible_recipient_count: number };
+
 export async function upsertMeeting(
   db: D1Database,
   input: Partial<MeetingRow> & Pick<MeetingRow, "calendar_uid" | "subject" | "organizer_email" | "teams_join_url" | "start_time" | "end_time" | "status">
@@ -65,6 +67,23 @@ export async function upsertMeeting(
 
 export async function listMeetings(db: D1Database): Promise<MeetingRow[]> {
   const result = await db.prepare("SELECT * FROM meetings ORDER BY start_time DESC, created_at DESC").all<MeetingRow>();
+  return result.results ?? [];
+}
+
+export async function listMeetingsWithEligibleRecipientCounts(db: D1Database): Promise<MeetingListRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT meetings.*, COALESCE(eligible_recipients.eligible_recipient_count, 0) AS eligible_recipient_count
+       FROM meetings
+       LEFT JOIN (
+         SELECT meeting_id, COUNT(*) AS eligible_recipient_count
+         FROM attendees
+         WHERE summary_eligible = 1
+         GROUP BY meeting_id
+       ) eligible_recipients ON eligible_recipients.meeting_id = meetings.id
+       ORDER BY meetings.start_time DESC, meetings.created_at DESC`
+    )
+    .all<MeetingListRow>();
   return result.results ?? [];
 }
 

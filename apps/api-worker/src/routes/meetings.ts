@@ -1,11 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents } from "@minutesbot/db";
+import { createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetingsWithEligibleRecipientCounts, listTranscriptSegments, listWebhookEvents } from "@minutesbot/db";
 import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
 import { AppError } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { deleteMeetingArtifacts, deleteMeetingHistory } from "../services/artifactService";
-import { eligibleRecipientCount } from "../services/meetingService";
 import { readSettings } from "../services/settingsService";
 import { sendMeetingSummaryEmail } from "../../../workflow-worker/src/summaryEmailDelivery";
 
@@ -15,10 +14,7 @@ const sendSummaryEmailSchema = z.object({
 
 export const meetingsRoute = new Hono<{ Bindings: Env }>()
   .get("/", async (c) => {
-    const meetings = await listMeetings(c.env.DB);
-    const enriched = [];
-    for (const meeting of meetings) enriched.push({ ...meeting, eligible_recipient_count: await eligibleRecipientCount(c.env, meeting.id) });
-    return c.json({ meetings: enriched });
+    return c.json({ meetings: await listMeetingsWithEligibleRecipientCounts(c.env.DB) });
   })
   .get("/:id", async (c) => {
     const id = c.req.param("id");

@@ -23,6 +23,54 @@ class FakeD1 {
   }
 }
 
+class MeetingsListD1 {
+  attendeeListQueries = 0;
+
+  prepare(sql: string) {
+    const db = this;
+    return {
+      bind() {
+        return this;
+      },
+      async first() {
+        return null;
+      },
+      async run() {
+        return { success: true };
+      },
+      async all<T>() {
+        if (/FROM attendees WHERE meeting_id = \?/i.test(sql)) {
+          db.attendeeListQueries += 1;
+          return { results: [] } as T;
+        }
+        if (sql.includes("FROM meetings")) {
+          return {
+            results: [
+              {
+                id: "mtg_1",
+                subject: "Project Sync",
+                organizer_email: "owner@wgs.bot",
+                start_time: "2026-05-04T15:00:00.000Z",
+                status: "SUMMARY_SENT",
+                eligible_recipient_count: 2
+              },
+              {
+                id: "mtg_2",
+                subject: "Sales Review",
+                organizer_email: "sales@wgs.bot",
+                start_time: "2026-05-05T15:00:00.000Z",
+                status: "WAITING_TO_CREATE_BOT",
+                eligible_recipient_count: 1
+              }
+            ]
+          } as T;
+        }
+        return { results: [] } as T;
+      }
+    };
+  }
+}
+
 class ManualSummaryD1 {
   emailDeliveries: unknown[][] = [];
 
@@ -256,6 +304,31 @@ describe("api worker", () => {
 
     expect(response.status).toBe(200);
     expect(send).toHaveBeenCalledWith({ type: "create_bot", meetingId: "mtg_1", force: true });
+  });
+
+  it("lists meetings with eligible recipient counts without per-meeting attendee queries", async () => {
+    const db = new MeetingsListD1();
+    const response = await app.request(
+      "/api/meetings",
+      { headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: db as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send: vi.fn() },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      meetings: [
+        { id: "mtg_1", eligible_recipient_count: 2 },
+        { id: "mtg_2", eligible_recipient_count: 1 }
+      ]
+    });
+    expect(db.attendeeListQueries).toBe(0);
   });
 
   it("deletes a meeting from history and removes active artifact objects", async () => {
