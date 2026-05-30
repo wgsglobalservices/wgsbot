@@ -45,6 +45,26 @@ describe("MeetingTable uploaded transcript tests", () => {
     expect(html).toContain("Uploaded transcript test");
   });
 
+  it("does not render latest error details in the table", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MeetingTable, {
+        meetings: [
+          {
+            id: "mtg_error",
+            subject: "Failure review",
+            organizer_email: "owner@wgs.bot",
+            start_time: "2026-05-04T15:00:00.000Z",
+            status: "BOT_FATAL_ERROR",
+            latest_error: "Attendee request failed"
+          }
+        ]
+      })
+    );
+
+    expect(html).not.toContain("Latest error");
+    expect(html).not.toContain("Attendee request failed");
+  });
+
   it("separates upcoming meetings from past meetings", () => {
     const html = renderToStaticMarkup(
       React.createElement(MeetingTable, {

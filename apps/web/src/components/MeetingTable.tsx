@@ -34,7 +34,6 @@ export function MeetingTable({
             <th>Transcript</th>
             <th>Summary</th>
             <th>Eligible</th>
-            <th>Latest error</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -43,7 +42,7 @@ export function MeetingTable({
             group.meetings.length > 0 ? (
               <Fragment key={group.key}>
                 <tr className="meetingGroupRow">
-                  <td colSpan={10}>
+                  <td colSpan={9}>
                     <div className="meetingGroupLabel">
                       <span>{group.label}</span>
                       <span>{group.meetings.length}</span>
@@ -78,7 +77,6 @@ export function MeetingTable({
                       <td>{meeting.transcript_status ?? "not_started"}</td>
                       <td>{meeting.summary_status ?? "not_started"}</td>
                       <td>{meeting.eligible_recipient_count ?? 0}</td>
-                      <td>{meeting.latest_error ?? ""}</td>
                       <td className="rowActionsCell" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                         <div className="rowActions">
                           <a href={`#/meeting/${meetingId}`}>Open</a>

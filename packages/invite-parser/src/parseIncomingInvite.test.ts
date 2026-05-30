@@ -92,6 +92,36 @@ END:VCALENDAR`);
     ]);
   });
 
+  it("expands every BYDAY occurrence in recurring Teams invites", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: Recurring standup
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:abc-weekdays
+SUMMARY:Recurring standup
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+RRULE:FREQ=WEEKLY;COUNT=5;INTERVAL=1;BYDAY=MO,WE,FR
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3aweekdays%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-05-30T12:00:00.000Z"), horizonDays: 14 });
+
+    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.endTime])).toEqual([
+      ["abc-weekdays:20260601T150000Z", "2026-06-01T15:00:00.000Z", "2026-06-01T15:30:00.000Z"],
+      ["abc-weekdays:20260603T150000Z", "2026-06-03T15:00:00.000Z", "2026-06-03T15:30:00.000Z"],
+      ["abc-weekdays:20260605T150000Z", "2026-06-05T15:00:00.000Z", "2026-06-05T15:30:00.000Z"],
+      ["abc-weekdays:20260608T150000Z", "2026-06-08T15:00:00.000Z", "2026-06-08T15:30:00.000Z"],
+      ["abc-weekdays:20260610T150000Z", "2026-06-10T15:00:00.000Z", "2026-06-10T15:30:00.000Z"]
+    ]);
+  });
+
   it("rejects non-Teams calendar invites and malformed calendars cleanly", () => {
     expect(() => parseIncomingInvite(readFixture("non-teams-calendar.eml"))).toThrow("Microsoft Teams");
     expect(() => parseIncomingInvite(readFixture("malformed-calendar.eml"))).toThrow("missing required");
