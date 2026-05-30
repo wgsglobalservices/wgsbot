@@ -143,6 +143,55 @@ END:VCALENDAR`
     expect(db.statusUpdates.at(-1)).toMatchObject({ status: "WAITING_TO_CREATE_BOT" });
   });
 
+  it("creates visible future meeting rows for each recurring invite occurrence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1(
+      JSON.stringify({
+        ...defaultSettings,
+        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+      })
+    );
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-recurring
+SUMMARY:Recurring Test
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+RRULE:FREQ=WEEKLY;COUNT=3;INTERVAL=1;BYDAY=MO
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).not.toHaveBeenCalled();
+    expect(db.meetings.map((values) => [values[1], values[6]])).toEqual([
+      ["test-recurring:20260601T150000Z", "2026-06-01T15:00:00.000Z"],
+      ["test-recurring:20260608T150000Z", "2026-06-08T15:00:00.000Z"],
+      ["test-recurring:20260615T150000Z", "2026-06-15T15:00:00.000Z"]
+    ]);
+    expect(db.statusUpdates).toHaveLength(3);
+    expect(db.statusUpdates.every((update) => update.status === "WAITING_TO_CREATE_BOT")).toBe(true);
+  });
+
   it("rejects wrong recorder recipient", async () => {
     const setReject = vi.fn();
     const env = {

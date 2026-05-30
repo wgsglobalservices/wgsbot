@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { extractTeamsJoinUrl, parseIncomingInvite } from "./index";
+import { expandInviteOccurrences, extractTeamsJoinUrl, parseIncomingInvite } from "./index";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const readFixture = (name: string) => readFileSync(join(fixtures, name), "utf8");
@@ -60,6 +60,36 @@ END:VCALENDAR`);
   it("parses cancellations", () => {
     const invite = parseIncomingInvite(readFixture("teams-invite-cancel.eml"));
     expect(invite.kind).toBe("cancel");
+  });
+
+  it("expands recurring Teams invites into upcoming occurrences", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: Recurring project sync
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:abc-recurring
+SUMMARY:Recurring project sync
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+RRULE:FREQ=WEEKLY;COUNT=4;INTERVAL=1;BYDAY=MO
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-05-30T12:00:00.000Z"), horizonDays: 60 });
+
+    expect(invite.recurrence).toEqual({ frequency: "weekly", interval: 1, count: 4, byDay: ["MO"] });
+    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.endTime])).toEqual([
+      ["abc-recurring:20260601T150000Z", "2026-06-01T15:00:00.000Z", "2026-06-01T15:30:00.000Z"],
+      ["abc-recurring:20260608T150000Z", "2026-06-08T15:00:00.000Z", "2026-06-08T15:30:00.000Z"],
+      ["abc-recurring:20260615T150000Z", "2026-06-15T15:00:00.000Z", "2026-06-15T15:30:00.000Z"],
+      ["abc-recurring:20260622T150000Z", "2026-06-22T15:00:00.000Z", "2026-06-22T15:30:00.000Z"]
+    ]);
   });
 
   it("rejects non-Teams calendar invites and malformed calendars cleanly", () => {

@@ -44,4 +44,34 @@ describe("MeetingTable uploaded transcript tests", () => {
 
     expect(html).toContain("Uploaded transcript test");
   });
+
+  it("separates upcoming meetings from past meetings", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MeetingTable, {
+        now: new Date("2026-05-30T12:00:00.000Z"),
+        meetings: [
+          {
+            id: "mtg_past",
+            subject: "Past Sales Meeting",
+            organizer_email: "owner@wgs.bot",
+            start_time: "2026-05-19T15:00:00.000Z",
+            status: "SUMMARY_SENT"
+          },
+          {
+            id: "mtg_future",
+            subject: "Upcoming Sales Meeting",
+            organizer_email: "owner@wgs.bot",
+            start_time: "2026-06-01T15:00:00.000Z",
+            status: "WAITING_TO_CREATE_BOT"
+          }
+        ]
+      })
+    );
+
+    expect(html).toContain("Upcoming meetings");
+    expect(html).toContain("Past meetings");
+    expect(html.indexOf("Upcoming meetings")).toBeLessThan(html.indexOf("Upcoming Sales Meeting"));
+    expect(html.indexOf("Upcoming Sales Meeting")).toBeLessThan(html.indexOf("Past meetings"));
+    expect(html.indexOf("Past meetings")).toBeLessThan(html.indexOf("Past Sales Meeting"));
+  });
 });

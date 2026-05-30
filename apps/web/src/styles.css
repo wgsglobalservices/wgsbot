@@ -1250,6 +1250,30 @@ tr:hover td { background: rgba(45, 212, 191, .04); }
   overflow-wrap: normal;
 }
 
+.meetingGroupRow td {
+  padding: 8px 10px;
+  background: #101827;
+  color: #cbd5e1;
+  border-bottom-color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.meetingGroupLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.meetingGroupLabel span:last-child {
+  color: #94a3b8;
+  font-weight: 650;
+  text-transform: none;
+}
+
 .meetingTable td:nth-child(4),
 .meetingTable td:nth-child(5),
 .meetingTable td:nth-child(6),

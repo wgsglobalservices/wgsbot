@@ -1,5 +1,5 @@
 import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, updateMeetingStatus, upsertMeeting } from "@minutesbot/db";
-import { parseIncomingInvite } from "@minutesbot/invite-parser";
+import { expandInviteOccurrences, parseIncomingInvite } from "@minutesbot/invite-parser";
 import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
 import { createId, shouldCreateBotNow, type MeetingStatus } from "@minutesbot/shared";
 
@@ -77,60 +77,68 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
   await env.ARTIFACTS.put(rawKey, rawEmail, { httpMetadata: { contentType: "message/rfc822" } });
   await createAuditLog(env.DB, { actorEmail: message.from, eventType: "invite.received", resourceType: "raw_invite", resourceId: rawKey });
 
-  const meeting = await upsertMeeting(env.DB, {
-    calendar_uid: parsed.calendarUid,
-    subject: parsed.subject,
-    organizer_email: parsed.organizer.email,
-    organizer_name: parsed.organizer.name,
-    teams_join_url: parsed.teamsJoinUrl,
-    start_time: parsed.startTime,
-    end_time: parsed.endTime,
-    status: parsed.kind === "cancel" ? "CANCELLED" : "SCHEDULED"
-  });
+  const occurrences = expandInviteOccurrences(parsed);
+  const visibleOccurrences = occurrences.length > 0
+    ? occurrences
+    : [{ calendarUid: parsed.calendarUid, startTime: parsed.startTime, endTime: parsed.endTime }];
+  const rawSizeBytes = new TextEncoder().encode(rawEmail).byteLength;
 
-  await createArtifact(env.DB, {
-    meeting_id: meeting.id,
-    type: "raw_invite",
-    r2_key: rawKey,
-    content_type: "message/rfc822",
-    size_bytes: new TextEncoder().encode(rawEmail).byteLength,
-    deleted_at: null
-  });
+  for (const occurrence of visibleOccurrences) {
+    const meeting = await upsertMeeting(env.DB, {
+      calendar_uid: occurrence.calendarUid,
+      subject: parsed.subject,
+      organizer_email: parsed.organizer.email,
+      organizer_name: parsed.organizer.name,
+      teams_join_url: parsed.teamsJoinUrl,
+      start_time: occurrence.startTime,
+      end_time: occurrence.endTime,
+      status: parsed.kind === "cancel" ? "CANCELLED" : "SCHEDULED"
+    });
 
-  await replaceMeetingAttendees(
-    env.DB,
-    meeting.id,
-    [
-      ...filtered.included.map((recipient) => ({
-        email: recipient.email,
-        name: recipient.name ?? null,
-        role: null,
-        domain: recipient.domain ?? null,
-        summary_eligible: 1,
-        exclusion_reason: null
-      })),
-      ...filtered.excluded.map((recipient) => ({
-        email: recipient.email,
-        name: recipient.name ?? null,
-        role: null,
-        domain: recipient.domain ?? null,
-        summary_eligible: 0,
-        exclusion_reason: recipient.reason
-      }))
-    ]
-  );
+    await createArtifact(env.DB, {
+      meeting_id: meeting.id,
+      type: "raw_invite",
+      r2_key: rawKey,
+      content_type: "message/rfc822",
+      size_bytes: rawSizeBytes,
+      deleted_at: null
+    });
 
-  if (parsed.kind === "cancel") {
-    await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.cancelled", resourceType: "meeting", resourceId: meeting.id });
-    return;
+    await replaceMeetingAttendees(
+      env.DB,
+      meeting.id,
+      [
+        ...filtered.included.map((recipient) => ({
+          email: recipient.email,
+          name: recipient.name ?? null,
+          role: null,
+          domain: recipient.domain ?? null,
+          summary_eligible: 1,
+          exclusion_reason: null
+        })),
+        ...filtered.excluded.map((recipient) => ({
+          email: recipient.email,
+          name: recipient.name ?? null,
+          role: null,
+          domain: recipient.domain ?? null,
+          summary_eligible: 0,
+          exclusion_reason: recipient.reason
+        }))
+      ]
+    );
+
+    if (parsed.kind === "cancel") {
+      await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.cancelled", resourceType: "meeting", resourceId: meeting.id });
+      continue;
+    }
+
+    if (shouldCreateBotNow(meeting.start_time, settings.attendee.createBotMinutesBeforeStart)) {
+      await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
+    } else {
+      await updateMeetingStatus(env.DB, meeting.id, "WAITING_TO_CREATE_BOT");
+    }
+    await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.scheduled", resourceType: "meeting", resourceId: meeting.id });
   }
-
-  if (shouldCreateBotNow(meeting.start_time, settings.attendee.createBotMinutesBeforeStart)) {
-    await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
-  } else {
-    await updateMeetingStatus(env.DB, meeting.id, "WAITING_TO_CREATE_BOT");
-  }
-  await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.scheduled", resourceType: "meeting", resourceId: meeting.id });
 }
 
 function isRecorderRecipient(recipient: string, recorderEmail: string, aliases: string[] = []): boolean {

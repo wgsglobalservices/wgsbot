@@ -18,6 +18,7 @@ export type ParsedMeetingInvite = {
   teamsJoinUrl: string;
   rawRecipient: string;
   rawSender: string;
+  recurrence?: ParsedRecurrence;
 };
 
 export type ParsedCalendar = Omit<ParsedMeetingInvite, "rawRecipient" | "rawSender" | "teamsJoinUrl"> & {
@@ -35,4 +36,21 @@ export type NormalizedAttendee = {
   email: string;
   name?: string;
   role?: "required" | "optional" | "resource";
+};
+
+export type ParsedRecurrence = {
+  frequency: "daily" | "weekly" | "monthly" | "yearly";
+  interval: number;
+  count?: number;
+  until?: string;
+  byDay?: string[];
+};
+
+export type MeetingOccurrence = {
+  calendarUid: string;
+  seriesUid: string;
+  startTime: string;
+  endTime: string;
+  occurrenceIndex: number;
+  recurring: boolean;
 };

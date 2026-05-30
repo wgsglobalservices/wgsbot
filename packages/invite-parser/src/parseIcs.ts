@@ -1,5 +1,6 @@
 import { AppError } from "@minutesbot/shared";
 import { normalizeAttendees } from "./normalizeAttendees";
+import { parseRecurrenceRule } from "./recurrence";
 import type { ParsedCalendar, RawIcsAttendee } from "./types";
 
 export function parseIcsCalendar(icsText: string): ParsedCalendar {
@@ -10,6 +11,7 @@ export function parseIcsCalendar(icsText: string): ParsedCalendar {
   const summary = readProp(unfolded, "SUMMARY");
   const dtStart = readProp(unfolded, "DTSTART");
   const dtEnd = readProp(unfolded, "DTEND");
+  const recurrenceRule = readProp(unfolded, "RRULE");
   const organizerLine = findPropLine(unfolded, "ORGANIZER");
   const attendees = findPropLines(unfolded, "ATTENDEE").map(parseAttendeeLine);
 
@@ -26,6 +28,7 @@ export function parseIcsCalendar(icsText: string): ParsedCalendar {
     attendees: normalizeAttendees(attendees),
     startTime: parseIcsDate(dtStart),
     endTime: parseIcsDate(dtEnd),
+    recurrence: recurrenceRule ? parseRecurrenceRule(recurrenceRule) : undefined,
     description: decodeIcsText(readProp(unfolded, "DESCRIPTION") ?? ""),
     location: decodeIcsText(readProp(unfolded, "LOCATION") ?? "")
   };
