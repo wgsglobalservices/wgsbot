@@ -5,16 +5,17 @@ import type { ParsedCalendar, RawIcsAttendee } from "./types";
 
 export function parseIcsCalendar(icsText: string): ParsedCalendar {
   const unfolded = unfoldLines(icsText);
+  const eventLines = findComponentLines(unfolded, "VEVENT");
   const method = readProp(unfolded, "METHOD")?.toUpperCase();
   const kind = method === "CANCEL" ? "cancel" : "request";
-  const uid = readProp(unfolded, "UID");
-  const summary = readProp(unfolded, "SUMMARY");
-  const dtStart = readProp(unfolded, "DTSTART");
-  const dtEnd = readProp(unfolded, "DTEND");
-  const recurrenceId = readProp(unfolded, "RECURRENCE-ID");
-  const recurrenceRule = readProp(unfolded, "RRULE");
-  const organizerLine = findPropLine(unfolded, "ORGANIZER");
-  const attendees = findPropLines(unfolded, "ATTENDEE").map(parseAttendeeLine);
+  const uid = readProp(eventLines, "UID");
+  const summary = readProp(eventLines, "SUMMARY");
+  const dtStart = readProp(eventLines, "DTSTART");
+  const dtEnd = readProp(eventLines, "DTEND");
+  const recurrenceId = readProp(eventLines, "RECURRENCE-ID");
+  const recurrenceRule = readProp(eventLines, "RRULE");
+  const organizerLine = findPropLine(eventLines, "ORGANIZER");
+  const attendees = findPropLines(eventLines, "ATTENDEE").map(parseAttendeeLine);
 
   if (!uid || !summary || !dtStart || !dtEnd || !organizerLine) {
     throw new AppError("INVITE_PARSE_ERROR", "Calendar invite is missing required fields", 400);
@@ -32,8 +33,8 @@ export function parseIcsCalendar(icsText: string): ParsedCalendar {
     startTime: parseIcsDate(dtStart),
     endTime: parseIcsDate(dtEnd),
     recurrence: recurrenceRule ? parseRecurrenceRule(recurrenceRule) : undefined,
-    description: decodeIcsText(readProp(unfolded, "DESCRIPTION") ?? ""),
-    location: decodeIcsText(readProp(unfolded, "LOCATION") ?? "")
+    description: decodeIcsText(readProp(eventLines, "DESCRIPTION") ?? ""),
+    location: decodeIcsText(readProp(eventLines, "LOCATION") ?? "")
   };
 }
 
@@ -47,6 +48,25 @@ function findPropLine(lines: string[], name: string): string | undefined {
 
 function findPropLines(lines: string[], name: string): string[] {
   return lines.filter((line) => line.toUpperCase().startsWith(`${name};`) || line.toUpperCase().startsWith(`${name}:`));
+}
+
+function findComponentLines(lines: string[], name: string): string[] {
+  const begin = `BEGIN:${name.toUpperCase()}`;
+  const end = `END:${name.toUpperCase()}`;
+  const component: string[] = [];
+  let inside = false;
+
+  for (const line of lines) {
+    const upperLine = line.toUpperCase();
+    if (upperLine === begin) {
+      inside = true;
+      continue;
+    }
+    if (upperLine === end && inside) return component;
+    if (inside) component.push(line);
+  }
+
+  return component;
 }
 
 function readProp(lines: string[], name: string): string | undefined {

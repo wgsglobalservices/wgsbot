@@ -70,8 +70,9 @@ export async function listMeetings(db: D1Database): Promise<MeetingRow[]> {
   return result.results ?? [];
 }
 
-export async function listMeetingsWithEligibleRecipientCounts(db: D1Database): Promise<MeetingListRow[]> {
-  const result = await db
+export async function listMeetingsWithEligibleRecipientCounts(db: D1Database, options: { futureHorizonIso?: string } = {}): Promise<MeetingListRow[]> {
+  const whereClause = options.futureHorizonIso ? "WHERE meetings.start_time IS NULL OR meetings.start_time <= ?" : "";
+  const statement = db
     .prepare(
       `SELECT meetings.*, COALESCE(eligible_recipients.eligible_recipient_count, 0) AS eligible_recipient_count
        FROM meetings
@@ -81,9 +82,12 @@ export async function listMeetingsWithEligibleRecipientCounts(db: D1Database): P
          WHERE summary_eligible = 1
          GROUP BY meeting_id
        ) eligible_recipients ON eligible_recipients.meeting_id = meetings.id
+       ${whereClause}
        ORDER BY meetings.start_time DESC, meetings.created_at DESC`
-    )
-    .all<MeetingListRow>();
+    );
+  const result = options.futureHorizonIso
+    ? await statement.bind(options.futureHorizonIso).all<MeetingListRow>()
+    : await statement.all<MeetingListRow>();
   return result.results ?? [];
 }
 

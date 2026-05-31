@@ -12,9 +12,15 @@ const sendSummaryEmailSchema = z.object({
   to: z.string().trim().email().transform((value) => value.toLowerCase())
 });
 
+const meetingsQuerySchema = z.object({
+  futureDays: z.coerce.number().int().min(0).max(365).default(7)
+});
+
 export const meetingsRoute = new Hono<{ Bindings: Env }>()
   .get("/", async (c) => {
-    return c.json({ meetings: await listMeetingsWithEligibleRecipientCounts(c.env.DB) });
+    const query = meetingsQuerySchema.parse(c.req.query());
+    const futureHorizonIso = new Date(Date.now() + query.futureDays * 24 * 60 * 60 * 1000).toISOString();
+    return c.json({ meetings: await listMeetingsWithEligibleRecipientCounts(c.env.DB, { futureHorizonIso }) });
   })
   .get("/:id", async (c) => {
     const id = c.req.param("id");

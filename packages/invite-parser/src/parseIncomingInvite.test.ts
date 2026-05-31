@@ -115,6 +115,43 @@ END:VCALENDAR`);
     ]);
   });
 
+  it("uses the VEVENT recurrence when Outlook timezone components also contain RRULE values", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: Recurring project sync
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:abc-outlook-recurring
+SUMMARY:Recurring project sync
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+RRULE:FREQ=WEEKLY;COUNT=3;INTERVAL=1;BYDAY=MO
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-05-30T12:00:00.000Z"), horizonDays: 14 });
+
+    expect(invite.recurrence).toEqual({ frequency: "weekly", interval: 1, count: 3, byDay: ["MO"] });
+    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime])).toEqual([
+      ["abc-outlook-recurring:20260601T150000Z", "2026-06-01T15:00:00.000Z"],
+      ["abc-outlook-recurring:20260608T150000Z", "2026-06-08T15:00:00.000Z"]
+    ]);
+  });
+
   it("expands every BYDAY occurrence in recurring Teams invites", () => {
     const invite = parseIncomingInvite(`From: Alice <alice@company.com>
 To: notetaker@meet.company.com

@@ -126,6 +126,16 @@ nav a.active, nav a:hover {
 .meetingsPage {
   max-width: none;
 }
+
+.meetingListControls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.meetingFutureWindow {
+  width: min(220px, 100%);
+}
+
 header h1 { margin: 0 0 6px; font-size: 32px; line-height: 1.15; }
 header p { margin: 0; color: #94a3b8; }
 

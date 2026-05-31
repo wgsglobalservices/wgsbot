@@ -71,6 +71,32 @@ class MeetingsListD1 {
   }
 }
 
+class MeetingsWindowD1 {
+  boundValues: unknown[] = [];
+
+  prepare(sql: string) {
+    const db = this;
+    return {
+      values: [] as unknown[],
+      bind(...values: unknown[]) {
+        this.values = values;
+        db.boundValues = values;
+        return this;
+      },
+      async first() {
+        return null;
+      },
+      async run() {
+        return { success: true };
+      },
+      async all<T>() {
+        expect(sql).toContain("meetings.start_time <= ?");
+        return { results: [] } as T;
+      }
+    };
+  }
+}
+
 class ManualSummaryD1 {
   emailDeliveries: unknown[][] = [];
 
@@ -329,6 +355,31 @@ describe("api worker", () => {
       ]
     });
     expect(db.attendeeListQueries).toBe(0);
+  });
+
+  it("limits the meetings list to the requested future window", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
+      const db = new MeetingsWindowD1();
+      const response = await app.request(
+        "/api/meetings?futureDays=14",
+        { headers: { authorization: "Bearer test-secret" } },
+        {
+          DB: db as unknown as D1Database,
+          ARTIFACTS: {} as R2Bucket,
+          INVITE_QUEUE: { send: vi.fn() },
+          SUMMARY_QUEUE: { send: vi.fn() },
+          EMAIL_QUEUE: { send: vi.fn() },
+          SESSION_SECRET: "test-secret"
+        }
+      );
+
+      expect(response.status).toBe(200);
+      expect(db.boundValues).toEqual(["2026-06-13T12:00:00.000Z"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("deletes a meeting from history and removes active artifact objects", async () => {
