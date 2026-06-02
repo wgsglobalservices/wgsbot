@@ -138,9 +138,10 @@ describe("settings validation", () => {
     expect(settings.recap.prompt).toContain("Return strict JSON only");
     expect(settings.recap.prompt).toContain("automatically classifies meetings");
     expect(settings.recap.prompt).toContain("WGS / MinutesBot meeting recap");
-    expect(settings.recap.prompt).toContain("1. Weekly Summary");
-    expect(settings.recap.prompt).toContain("9. Action Items");
-    expect(settings.recap.prompt).toContain("Risks and Blockers");
+    expect(settings.recap.prompt).toContain("# {Meeting Name} — Executive Recap");
+    expect(settings.recap.prompt).toContain("At a Glance");
+    expect(settings.recap.prompt).toContain("Full Action Register");
+    expect(settings.recap.prompt).toContain("risks and blockers from open questions");
     expect(settings.recap.prompt).toContain("Clean up unclear speaker labels");
     expect(settings.recap.prompt).toContain("Weekly SPQRC");
     expect(settings.recap.prompt).toContain("Weekly Sales");

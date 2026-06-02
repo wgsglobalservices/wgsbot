@@ -25,10 +25,119 @@ export type SummaryInput = {
   defaultTemplate?: MeetingRecapType | "auto";
 };
 
+const executiveRecapDefaults = {
+  topPriorities: [],
+  immediateActions: [],
+  keyDecisions: [],
+  majorRisks: [],
+  detailedRecap: [],
+  winsAndProgress: [],
+  fullActionRegister: [],
+  openQuestions: [],
+  referenceNotes: []
+};
+
+const executiveRecapSchema = z
+  .object({
+    topPriorities: z.array(
+      z
+        .object({
+          title: z.string(),
+          summary: z.string(),
+          whyItMatters: z.string(),
+          owner: z.string(),
+          nextStep: z.string(),
+          dueDate: z.string()
+        })
+        .strict()
+    ),
+    immediateActions: z.array(
+      z
+        .object({
+          priority: z.string(),
+          action: z.string(),
+          owner: z.string(),
+          due: z.string(),
+          relatedCustomerOrArea: z.string(),
+          status: z.string()
+        })
+        .strict()
+    ),
+    keyDecisions: z.array(
+      z
+        .object({
+          decision: z.string(),
+          impact: z.string(),
+          ownerOrFollowUp: z.string()
+        })
+        .strict()
+    ),
+    majorRisks: z.array(
+      z
+        .object({
+          title: z.string(),
+          explanation: z.string(),
+          impact: z.string(),
+          mitigationOrNextStep: z.string()
+        })
+        .strict()
+    ),
+    detailedRecap: z.array(
+      z
+        .object({
+          heading: z.string(),
+          summary: z.string()
+        })
+        .strict()
+    ),
+    winsAndProgress: z.array(
+      z
+        .object({
+          title: z.string(),
+          detail: z.string(),
+          impact: z.string()
+        })
+        .strict()
+    ),
+    fullActionRegister: z.array(
+      z
+        .object({
+          action: z.string(),
+          owner: z.string(),
+          due: z.string(),
+          priority: z.enum(["High", "Medium", "Low"]),
+          relatedArea: z.string(),
+          notes: z.string()
+        })
+        .strict()
+    ),
+    openQuestions: z.array(
+      z
+        .object({
+          question: z.string(),
+          whyItMatters: z.string(),
+          ownerOrBestNextStep: z.string()
+        })
+        .strict()
+    ),
+    referenceNotes: z.array(
+      z
+        .object({
+          topic: z.string(),
+          notes: z.array(z.string())
+        })
+        .strict()
+    )
+  })
+  .strict()
+  .optional()
+  .default(executiveRecapDefaults);
+
 export const meetingSummarySchema = z
   .object({
     meetingType: meetingRecapTypeSchema,
     recapDepth: recapDepthSchema,
+    executiveRecap: executiveRecapSchema,
     meetingNotes: z.array(
       z
         .object({

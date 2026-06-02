@@ -125,6 +125,116 @@ describe("email renderer", () => {
     expect(rendered.html).toContain("Here is the meeting recap.");
   });
 
+  it("renders executive recap sections before legacy meeting notes", () => {
+    const rendered = renderSummaryEmail({
+      subject: "Weekly Sales",
+      date: "2026-06-01T13:00:00.000Z",
+      summary: {
+        meetingType: "weekly_sales",
+        recapDepth: "standard",
+        executiveRecap: {
+          topPriorities: [
+            {
+              title: "Customer blocker",
+              summary: "Customer A needs an urgent answer before work can continue.",
+              whyItMatters: "Customer impact and delivery risk.",
+              owner: "Alex",
+              nextStep: "Confirm the answer with Customer A.",
+              dueDate: "2026-06-02"
+            }
+          ],
+          immediateActions: [
+            {
+              priority: "High",
+              action: "Confirm customer answer",
+              owner: "Alex",
+              due: "2026-06-02",
+              relatedCustomerOrArea: "Customer A",
+              status: "Open"
+            }
+          ],
+          keyDecisions: [
+            {
+              decision: "Escalate Customer A today.",
+              impact: "Protects delivery timing.",
+              ownerOrFollowUp: "Alex to call Customer A."
+            }
+          ],
+          majorRisks: [
+            {
+              title: "Delivery risk",
+              explanation: "Customer approval is still pending.",
+              impact: "Shipment may slip.",
+              mitigationOrNextStep: "Escalate today."
+            }
+          ],
+          detailedRecap: [
+            {
+              heading: "Customer Work & Sales Pipeline",
+              summary: "Customer A approval and pipeline impact were reviewed."
+            }
+          ],
+          winsAndProgress: [
+            {
+              title: "Quote sent",
+              detail: "A quote was sent to Customer A.",
+              impact: "Supports pipeline movement."
+            }
+          ],
+          fullActionRegister: [
+            {
+              action: "Confirm customer answer",
+              owner: "Alex",
+              due: "2026-06-02",
+              priority: "High",
+              relatedArea: "Customer A",
+              notes: "Needed before delivery can continue."
+            }
+          ],
+          openQuestions: [
+            {
+              question: "Can Customer A approve the change today?",
+              whyItMatters: "Approval unblocks delivery.",
+              ownerOrBestNextStep: "Alex to confirm."
+            }
+          ],
+          referenceNotes: [
+            {
+              topic: "Customer A",
+              notes: ["Approval remained open at the end of the meeting."]
+            }
+          ]
+        },
+        meetingNotes: [
+          {
+            heading: "1. At a Glance:",
+            overview: "Customer A is the top issue.",
+            items: [{ title: "Top Priorities:", detail: "Customer A needs an urgent answer." }]
+          }
+        ],
+        followUpTasks: [],
+        summary: [],
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        risks: [],
+        followUps: []
+      }
+    });
+
+    expect(rendered.text).toContain("Weekly Sales — Executive Recap");
+    expect(rendered.text).toContain("1. At a Glance");
+    expect(rendered.text).toContain("Top Priorities");
+    expect(rendered.text).toContain("Immediate Actions");
+    expect(rendered.text).toContain("Detailed Recap");
+    expect(rendered.text).toContain("Full Action Register");
+    expect(rendered.text).not.toContain("Meeting notes:");
+    expect(rendered.html).toContain("Weekly Sales — Executive Recap");
+    expect(rendered.html).toContain("At a Glance");
+    expect(rendered.html).toContain("Customer blocker");
+    expect(rendered.html).not.toContain("Meeting notes");
+  });
+
   it("renders meeting type in plain text and html and treats legacy summaries as general", () => {
     const typed = renderSummaryEmail({
       subject: "Weekly Sales",

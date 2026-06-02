@@ -212,6 +212,29 @@ Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?co
     expect(new Date(first.endTime).getTime() - new Date(first.startTime).getTime()).toBe(60 * 60 * 1000);
   });
 
+  it("recovers weekly Outlook forwarded event details from link-only emails", () => {
+    const invite = parseIncomingInvite(`From: Peter <p.gustafson@wgsglobalservices.com>
+To: notetaker@wgs.bot
+Date: Mon, 1 Jun 2026 10:23:24 -0400
+Subject: FW: Weekly Sales Meeting
+
+When: Monday, June 1, 2026 10:30 AM-11:15 AM.
+Where: Microsoft Teams Meeting
+
+https://teams.microsoft.com/l/meetup-join/19%3aweekly%40thread.v2/0?context=%7b%7d`);
+
+    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-06-01T14:23:24.000Z"), horizonDays: 14 });
+
+    expect(invite.subject).toBe("Weekly Sales Meeting");
+    expect(invite.startTime).toBe("2026-06-01T14:30:00.000Z");
+    expect(invite.endTime).toBe("2026-06-01T15:15:00.000Z");
+    expect(invite.recurrence).toEqual({ frequency: "weekly", interval: 1, byDay: ["MO"] });
+    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.endTime])).toEqual([
+      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260601T143000Z$/), "2026-06-01T14:30:00.000Z", "2026-06-01T15:15:00.000Z"],
+      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260608T143000Z$/), "2026-06-08T14:30:00.000Z", "2026-06-08T15:15:00.000Z"]
+    ]);
+  });
+
   it("still rejects plain emails without Teams links", () => {
     expect(() =>
       parseIncomingInvite(`From: Peter <p.gustafson@wgsglobalservices.com>

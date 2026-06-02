@@ -238,6 +238,49 @@ END:VCALENDAR`
     expect(db.statusUpdates.every((update) => update.status === "WAITING_TO_CREATE_BOT")).toBe(true);
   });
 
+  it("creates future rows from weekly Outlook forwarded link-only meeting emails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T14:23:24.000Z"));
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1(
+      JSON.stringify({
+        ...defaultSettings,
+        allowedDomains: ["wgsglobalservices.com"],
+        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+      })
+    );
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "p.gustafson@wgsglobalservices.com", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Peter <p.gustafson@wgsglobalservices.com>
+To: notetaker@wgs.bot
+Date: Mon, 1 Jun 2026 10:23:24 -0400
+Subject: FW: Weekly Sales Meeting
+
+When: Monday, June 1, 2026 10:30 AM-11:15 AM.
+Where: Microsoft Teams Meeting
+
+https://teams.microsoft.com/l/meetup-join/19%3aweekly%40thread.v2/0?context=%7b%7d`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).not.toHaveBeenCalled();
+    const storedMeetings = db.meetings.map((values) => [values[1], values[2], values[6], values[7]]);
+    expect(storedMeetings.slice(0, 3)).toEqual([
+      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260601T143000Z$/), "Weekly Sales Meeting", "2026-06-01T14:30:00.000Z", "2026-06-01T15:15:00.000Z"],
+      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260608T143000Z$/), "Weekly Sales Meeting", "2026-06-08T14:30:00.000Z", "2026-06-08T15:15:00.000Z"],
+      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260615T143000Z$/), "Weekly Sales Meeting", "2026-06-15T14:30:00.000Z", "2026-06-15T15:15:00.000Z"]
+    ]);
+    expect(storedMeetings.length).toBeGreaterThan(3);
+  });
+
   it("cancels stale future occurrence rows when a recurring series time changes", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
