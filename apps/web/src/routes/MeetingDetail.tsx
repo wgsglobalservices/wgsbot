@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AttendeeStatePanel } from "../components/AttendeeStatePanel";
 import { RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
 import { StatusBadge } from "../components/StatusBadge";
-import { apiDelete, apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiGetBlob, apiGetText, apiPost } from "../lib/api";
 import { formatDate } from "../lib/dates";
 import { isUploadedTranscriptTestMeeting } from "../lib/testMeetings";
 
@@ -27,13 +27,7 @@ export function MeetingDetail({ id }: { id: string }) {
       </header>
       <section>
         <h2>Controls</h2>
-        <div className="actions">
-          <Action label="Retry bot" run={() => apiPost(`/api/meetings/${id}/retry-bot`)} done={load} />
-          <Action label="Fetch transcript" run={() => apiPost(`/api/meetings/${id}/fetch-transcript`)} done={load} />
-          <Action label="Retry summary" run={() => apiPost(`/api/meetings/${id}/retry-summary`)} done={load} />
-          <Action label="Delete artifacts" run={() => apiDelete(`/api/meetings/${id}/artifacts`)} done={load} />
-          <Action label="Delete Attendee data" run={() => apiPost(`/api/meetings/${id}/delete-attendee-data`)} done={load} />
-        </div>
+        <MeetingControls meetingId={id} done={load} />
         <ManualSummaryEmailAction meetingId={id} organizerEmail={String(meeting.organizer_email ?? "")} attendees={attendees} done={load} />
         {message && <p>{message}</p>}
       </section>
@@ -58,6 +52,7 @@ export function MeetingDetail({ id }: { id: string }) {
           <div className="errorPanel">{String(meeting.latest_error)}</div>
         </section>
       ) : null}
+      <MeetingArtifactsPanel meetingId={id} rows={(data.artifacts as Array<Record<string, unknown>>) ?? []} />
       <SummarySection summaryRow={data.summary as Record<string, unknown> | null} />
       <TableSection title="Transcript segments" rows={(data.transcriptSegments as Array<Record<string, unknown>>) ?? []} />
       <ArtifactSection rows={(data.artifacts as Array<Record<string, unknown>>) ?? []} />
@@ -150,6 +145,23 @@ function Action({ label, run, done }: { label: string; run: () => Promise<unknow
       </span>
     </div>
   );
+}
+
+export function MeetingControls({ meetingId, done }: { meetingId: string; done: () => void }) {
+  return (
+    <div className="actions">
+      <Action label="Retry bot" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/retry-bot`)} done={done} />
+      <Action label="Fetch transcript" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/fetch-transcript`)} done={done} />
+      <Action label="Retry summary" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/retry-summary`)} done={done} />
+      <Action label="Regenerate recap" run={() => apiPost(meetingRegenerateRecapApiPath(meetingId))} done={done} />
+      <Action label="Delete artifacts" run={() => apiDelete(`/api/meetings/${encodeURIComponent(meetingId)}/artifacts`)} done={done} />
+      <Action label="Delete Attendee data" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/delete-attendee-data`)} done={done} />
+    </div>
+  );
+}
+
+export function meetingRegenerateRecapApiPath(meetingId: string): string {
+  return `/api/meetings/${encodeURIComponent(meetingId)}/regenerate-recap`;
 }
 
 function ManualSummaryEmailAction({
@@ -378,6 +390,112 @@ type ArtifactSummary = {
   count: number;
   deleted: boolean;
 };
+
+export function MeetingArtifactsPanel({ meetingId, rows }: { meetingId: string; rows: Array<Record<string, unknown>> }) {
+  const recording = selectMeetingArtifact(rows, "recording");
+  const transcript = selectMeetingArtifact(rows, "transcript_text");
+  const [audioUrl, setAudioUrl] = useState("");
+  const [audioStatus, setAudioStatus] = useState("");
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [transcriptText, setTranscriptText] = useState("");
+  const [transcriptStatus, setTranscriptStatus] = useState("");
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  async function loadRecording() {
+    if (!recording) return;
+    setAudioLoading(true);
+    setAudioStatus("Loading recording...");
+    try {
+      const blob = await apiGetBlob(meetingArtifactApiPath(meetingId, "recording"));
+      const nextUrl = URL.createObjectURL(blob);
+      setAudioUrl(nextUrl);
+      setAudioStatus("Recording ready.");
+    } catch (error) {
+      setAudioStatus(error instanceof Error ? error.message : "Recording failed to load.");
+    } finally {
+      setAudioLoading(false);
+    }
+  }
+
+  async function loadTranscript() {
+    if (!transcript) return;
+    setTranscriptLoading(true);
+    setTranscriptStatus("Loading transcript...");
+    try {
+      const text = await apiGetText(meetingArtifactApiPath(meetingId, "transcript.txt"));
+      setTranscriptText(text);
+      setTranscriptStatus("Transcript loaded.");
+    } catch (error) {
+      setTranscriptStatus(error instanceof Error ? error.message : "Transcript failed to load.");
+    } finally {
+      setTranscriptLoading(false);
+    }
+  }
+
+  return (
+    <section className="meetingArtifactsPanel">
+      <h2>Meeting media</h2>
+      <div className="artifactMediaGrid">
+        <div className="artifactMediaItem">
+          <div className="artifactMediaHeader">
+            <div>
+              <h3>Meeting recording</h3>
+              {recording ? <p>{recording.contentType} · {formatBytes(recording.sizeBytes)}</p> : null}
+            </div>
+            {recording ? <span className="badge neutral">Available</span> : <span className="badge neutral">Missing</span>}
+          </div>
+          {recording ? (
+            <>
+              <button className="secondaryButton" type="button" disabled={audioLoading} aria-busy={audioLoading} onClick={() => void loadRecording()}>
+                {audioLoading ? <span className="buttonSpinner" aria-hidden="true" /> : null}
+                {audioUrl ? "Reload recording" : "Load recording"}
+              </button>
+              {audioUrl ? <audio className="meetingAudioPlayer" controls src={audioUrl} preload="metadata" /> : null}
+              {audioStatus ? <span className="meetingActionStatus" role="status" aria-live="polite">{audioStatus}</span> : null}
+            </>
+          ) : (
+            <p className="mutedText">No recording artifact has been imported yet.</p>
+          )}
+        </div>
+        <div className="artifactMediaItem">
+          <div className="artifactMediaHeader">
+            <div>
+              <h3>Generated transcript</h3>
+              {transcript ? <p>{formatBytes(transcript.sizeBytes)} · {formatDate(transcript.latestCreatedAt)}</p> : null}
+            </div>
+            {transcript ? <span className="badge neutral">Available</span> : <span className="badge neutral">Missing</span>}
+          </div>
+          {transcript ? (
+            <>
+              <button className="secondaryButton" type="button" disabled={transcriptLoading} aria-busy={transcriptLoading} onClick={() => void loadTranscript()}>
+                {transcriptLoading ? <span className="buttonSpinner" aria-hidden="true" /> : null}
+                {transcriptText ? "Reload transcript" : "Load transcript"}
+              </button>
+              {transcriptStatus ? <span className="meetingActionStatus" role="status" aria-live="polite">{transcriptStatus}</span> : null}
+              {transcriptText ? <pre className="transcriptTextViewer">{transcriptText}</pre> : null}
+            </>
+          ) : (
+            <p className="mutedText">No generated transcript artifact is available yet.</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function selectMeetingArtifact(rows: Array<Record<string, unknown>>, type: string): ArtifactSummary | null {
+  return summarizeArtifacts(rows).find((artifact) => artifact.type === type && !artifact.deleted) ?? null;
+}
+
+export function meetingArtifactApiPath(meetingId: string, artifact: "recording" | "transcript.txt"): string {
+  return `/api/meetings/${encodeURIComponent(meetingId)}/${artifact}`;
+}
 
 function ArtifactSection({ rows }: { rows: Array<Record<string, unknown>> }) {
   const artifacts = summarizeArtifacts(rows);

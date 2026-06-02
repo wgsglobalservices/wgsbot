@@ -23,6 +23,18 @@ export async function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
+export async function apiGetText(path: string): Promise<string> {
+  const response = await fetchApi(path, {}, false);
+  await throwIfApiError(response);
+  return response.text();
+}
+
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const response = await fetchApi(path, {}, false);
+  await throwIfApiError(response);
+  return response.blob();
+}
+
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined });
 }
@@ -48,19 +60,28 @@ export async function uploadBotImage(input: { contentType: string; data: string;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetchApi(path, init, true);
+  await throwIfApiError(response);
+  const data = (await response.json().catch(() => null)) as T;
+  return data;
+}
+
+async function fetchApi(path: string, init: RequestInit = {}, includeJsonContentType: boolean): Promise<Response> {
   const token = authTokenProvider ? await authTokenProvider() : null;
-  const response = await fetch(`${API_BASE}${path}`, {
+  return fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       ...(token ? { authorization: `Bearer ${token}` } : {}),
-      "content-type": "application/json",
+      ...(includeJsonContentType ? { "content-type": "application/json" } : {}),
       ...(init.headers ?? {})
     }
   });
-  const data = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+}
+
+async function throwIfApiError(response: Response): Promise<void> {
   if (!response.ok) {
+    const data = (await response.clone().json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
     const message = data?.error?.message ?? `Request failed with ${response.status}`;
     throw new ApiError(message, response.status, data?.error?.code);
   }
-  return data as T;
 }

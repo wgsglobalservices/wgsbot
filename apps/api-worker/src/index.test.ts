@@ -228,6 +228,7 @@ describe("api worker", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("content-security-policy")).toContain("media-src 'self' blob:");
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
 
@@ -311,6 +312,25 @@ describe("api worker", () => {
 
     expect(response.status).toBe(200);
     expect(send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1" });
+  });
+
+  it("queues forced recap regeneration from the saved transcript", async () => {
+    const send = vi.fn(async () => undefined);
+    const response = await app.request(
+      "/api/meetings/mtg_1/regenerate-recap",
+      { method: "POST", headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: new FakeD1() as unknown as D1Database,
+        ARTIFACTS: {} as R2Bucket,
+        INVITE_QUEUE: { send: vi.fn() },
+        SUMMARY_QUEUE: { send },
+        EMAIL_QUEUE: { send: vi.fn() },
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1", force: true });
   });
 
   it("queues manual bot retries with a force flag", async () => {
@@ -511,6 +531,53 @@ describe("api worker", () => {
     expect(expiredResponse.status).toBe(401);
   });
 
+  it("serves generated transcript text to authenticated admins", async () => {
+    const get = vi.fn(async () => ({ text: async () => "Alex: Pipeline is updated.\nCasey: Quote follow-up is due." }));
+    const response = await app.request(
+      "/api/meetings/mtg_1/transcript.txt",
+      { headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: artifactDb() as unknown as D1Database,
+        ARTIFACTS: { get } as unknown as R2Bucket,
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(response.headers.get("content-disposition")).toContain("inline");
+    expect(get).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt");
+    expect(await response.text()).toContain("Casey: Quote follow-up is due.");
+  });
+
+  it("streams meeting recording audio to authenticated admins", async () => {
+    const audio = new Uint8Array([1, 2, 3, 4]);
+    const get = vi.fn(async () => ({
+      body: new Response(audio).body,
+      size: audio.byteLength,
+      httpMetadata: { contentType: "audio/mpeg" }
+    }));
+    const response = await app.request(
+      "/api/meetings/mtg_1/recording",
+      { headers: { authorization: "Bearer test-secret" } },
+      {
+        DB: artifactDb([
+          { type: "recording", r2_key: "recordings/mtg_1/recording.mp3", content_type: "audio/mpeg", size_bytes: audio.byteLength, created_at: "2026-05-04T15:05:00.000Z", deleted_at: null },
+          { type: "transcript_text", r2_key: "transcripts/mtg_1/transcript.txt", created_at: "2026-05-04T15:06:00.000Z", deleted_at: null }
+        ]) as unknown as D1Database,
+        ARTIFACTS: { get } as unknown as R2Bucket,
+        SESSION_SECRET: "test-secret"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("audio/mpeg");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("content-disposition")).toContain("inline");
+    expect(get).toHaveBeenCalledWith("recordings/mtg_1/recording.mp3");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(audio);
+  });
+
   it("handles inbound email on the deployed worker entrypoint", async () => {
     const raw = `From: Alice <alice@wgs.bot>
 To: Alice <alice@wgs.bot>
@@ -550,7 +617,16 @@ END:VCALENDAR`;
   });
 });
 
-function artifactDb() {
+type ArtifactFixtureRow = {
+  type: string;
+  r2_key: string;
+  content_type?: string;
+  size_bytes?: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+function artifactDb(rows: ArtifactFixtureRow[] = [{ type: "transcript_text", r2_key: "transcripts/mtg_1/transcript.txt", created_at: "2026-05-04T15:05:00.000Z", deleted_at: null }]) {
   return {
     prepare() {
       return {
@@ -558,7 +634,7 @@ function artifactDb() {
           return this;
         },
         async all() {
-          return { results: [{ type: "transcript_text", r2_key: "transcripts/mtg_1/transcript.txt", deleted_at: null }] };
+          return { results: rows };
         }
       };
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMeetingSchedule, meetingRecapRecipientOptions, normalizeSummaryForDisplay, runMeetingActionWithFeedback, summarizeArtifacts } from "./MeetingDetail";
+import { MeetingArtifactsPanel, MeetingControls, formatMeetingSchedule, meetingArtifactApiPath, meetingRecapRecipientOptions, meetingRegenerateRecapApiPath, normalizeSummaryForDisplay, runMeetingActionWithFeedback, selectMeetingArtifact, summarizeArtifacts } from "./MeetingDetail";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRecapEmailDeliveryStatus, RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
@@ -56,6 +56,40 @@ describe("meeting artifact summaries", () => {
       }
     ]);
   });
+
+  it("selects the latest active generated transcript and recording artifacts", () => {
+    const rows = [
+      { type: "recording", r2_key: "recordings/mtg_1/old.mp3", content_type: "audio/mpeg", created_at: "2026-05-06T03:52:30.261Z", deleted_at: null },
+      { type: "recording", r2_key: "recordings/mtg_1/deleted.mp3", content_type: "audio/mpeg", created_at: "2026-05-06T03:54:30.261Z", deleted_at: "2026-05-06T03:55:00.000Z" },
+      { type: "recording", r2_key: "recordings/mtg_1/current.mp3", content_type: "audio/mpeg", created_at: "2026-05-06T03:53:30.261Z", deleted_at: null },
+      { type: "transcript_text", r2_key: "transcripts/mtg_1/transcript.txt", content_type: "text/plain", created_at: "2026-05-06T03:53:00.000Z", deleted_at: null }
+    ];
+
+    expect(selectMeetingArtifact(rows, "recording")?.path).toBe("recordings/mtg_1/current.mp3");
+    expect(selectMeetingArtifact(rows, "transcript_text")?.path).toBe("transcripts/mtg_1/transcript.txt");
+  });
+
+  it("builds encoded meeting artifact API paths", () => {
+    expect(meetingArtifactApiPath("mtg/with space", "recording")).toBe("/api/meetings/mtg%2Fwith%20space/recording");
+    expect(meetingArtifactApiPath("mtg_1", "transcript.txt")).toBe("/api/meetings/mtg_1/transcript.txt");
+  });
+
+  it("renders controls for playable recording audio and generated transcript text", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MeetingArtifactsPanel, {
+        meetingId: "mtg_1",
+        rows: [
+          { type: "recording", r2_key: "recordings/mtg_1/recording.mp3", content_type: "audio/mpeg", size_bytes: 128000, created_at: "2026-05-06T03:52:30.261Z", deleted_at: null },
+          { type: "transcript_text", r2_key: "transcripts/mtg_1/transcript.txt", content_type: "text/plain", size_bytes: 2400, created_at: "2026-05-06T03:53:00.000Z", deleted_at: null }
+        ]
+      })
+    );
+
+    expect(html).toContain("Meeting recording");
+    expect(html).toContain("Load recording");
+    expect(html).toContain("Generated transcript");
+    expect(html).toContain("Load transcript");
+  });
 });
 
 describe("recipient recap delivery status", () => {
@@ -108,6 +142,13 @@ describe("manual meeting recap recipients", () => {
 });
 
 describe("meeting detail action feedback", () => {
+  it("renders a force recap regeneration control", () => {
+    const html = renderToStaticMarkup(React.createElement(MeetingControls, { meetingId: "mtg_1", done: () => undefined }));
+
+    expect(html).toContain("Regenerate recap");
+    expect(meetingRegenerateRecapApiPath("mtg/with space")).toBe("/api/meetings/mtg%2Fwith%20space/regenerate-recap");
+  });
+
   it("marks an action as running immediately and then confirms completion", async () => {
     let finishAction!: () => void;
     const states: string[] = [];
