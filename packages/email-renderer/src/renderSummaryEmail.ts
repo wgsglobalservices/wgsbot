@@ -178,12 +178,7 @@ function renderFollowUpTasksHtml(tasks: ReturnType<typeof normalizeSummary>["fol
 
 function renderExecutiveRecapText(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string): string[] {
   const recap = input.summary.executiveRecap;
-  const displayDate = input.date ? formatMeetingDate(input.date) : "";
   return [
-    `${input.subject} — Executive Recap`,
-    displayDate,
-    "AI-generated recap. Review for accuracy.",
-    "",
     "1. At a Glance",
     "",
     "Top Priorities",
@@ -247,11 +242,7 @@ function renderExecutiveRecapText(input: SummaryEmailInput & { summary: ReturnTy
 
 function renderExecutiveRecapHtml(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string): string {
   const recap = input.summary.executiveRecap;
-  const displayDate = input.date ? formatMeetingDate(input.date) : "";
   return [
-    `<h2 style="margin:22px 0 4px;font-size:22px;line-height:1.25;color:#111827;">${escapeHtml(input.subject)} — Executive Recap</h2>`,
-    displayDate ? paragraph(displayDate, "margin:0 0 8px;font-size:15px;line-height:1.45;color:#374151;") : "",
-    paragraph("AI-generated recap. Review for accuracy.", "margin:0 0 14px;font-size:14px;line-height:1.45;color:#4b5563;"),
     sectionHeading("1. At a Glance"),
     subHeading("Top Priorities"),
     recap.topPriorities.length

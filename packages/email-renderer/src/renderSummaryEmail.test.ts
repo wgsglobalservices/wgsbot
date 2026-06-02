@@ -124,9 +124,9 @@ describe("email renderer", () => {
 
     expect(rendered.subject).toBe("Meeting summary: Weekly Sales Meeting");
     expect(rendered.text).toContain("Subject: Weekly Sales Meeting");
-    expect(rendered.text).toContain("Weekly Sales Meeting — Executive Recap");
     expect(rendered.html).toContain("Weekly Sales Meeting");
-    expect(rendered.html).toContain("Weekly Sales Meeting — Executive Recap");
+    expect(rendered.text).not.toContain("Weekly Sales Meeting — Executive Recap");
+    expect(rendered.html).not.toContain("Weekly Sales Meeting — Executive Recap");
     expect(rendered.subject).not.toContain("FW:");
     expect(rendered.text).not.toContain("FW:");
     expect(rendered.html).not.toContain("FW:");
@@ -172,7 +172,7 @@ describe("email renderer", () => {
     expect(rendered.html).toContain("Here is the meeting recap.");
   });
 
-  it("renders executive recap sections before legacy meeting notes", () => {
+  it("renders executive recap sections without repeating the meeting header", () => {
     const rendered = renderSummaryEmail({
       subject: "Weekly Sales",
       date: "2026-06-01T13:00:00.000Z",
@@ -269,14 +269,18 @@ describe("email renderer", () => {
       }
     });
 
-    expect(rendered.text).toContain("Weekly Sales — Executive Recap");
+    expect(rendered.text).not.toContain("Weekly Sales — Executive Recap");
+    expect(rendered.text).not.toContain("AI-generated recap. Review for accuracy.");
+    expect(rendered.text.match(/June 1, 2026 at 1:00 PM UTC/g)).toHaveLength(1);
     expect(rendered.text).toContain("1. At a Glance");
     expect(rendered.text).toContain("Top Priorities");
     expect(rendered.text).toContain("Immediate Actions");
     expect(rendered.text).toContain("Detailed Recap");
     expect(rendered.text).toContain("Full Action Register");
     expect(rendered.text).not.toContain("Meeting notes:");
-    expect(rendered.html).toContain("Weekly Sales — Executive Recap");
+    expect(rendered.html).not.toContain("Weekly Sales — Executive Recap");
+    expect(rendered.html).not.toContain("AI-generated recap. Review for accuracy.");
+    expect(rendered.html.match(/June 1, 2026 at 1:00 PM UTC/g)).toHaveLength(1);
     expect(rendered.html).toContain("At a Glance");
     expect(rendered.html).toContain("Customer blocker");
     expect(rendered.html).not.toContain("Meeting notes");
