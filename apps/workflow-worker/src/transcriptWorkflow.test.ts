@@ -35,6 +35,7 @@ class FakeD1 {
   auditLogs: unknown[][] = [];
   existingArtifacts = new Map<string, ArtifactRow>();
   meeting = { id: "mtg_1", attendee_bot_id: "bot_1" };
+  transcriptSegments: Array<Record<string, unknown>> = [];
   settings = {
     ...defaultSettings,
     ai: { ...defaultSettings.ai, baseUrl: "https://openrouter.ai/api/v1" }
@@ -59,6 +60,10 @@ class FakeD1 {
         }
         if (sql.includes("FROM artifacts")) return db.existingArtifacts.get(artifactKey(this.values[0], this.values[1], this.values[2])) ?? null;
         return null;
+      },
+      async all<T>() {
+        if (sql.includes("FROM transcript_segments")) return { results: db.transcriptSegments as T[] };
+        return { results: [] as T[] };
       },
       async run() {
         if (sql.includes("INSERT INTO artifacts")) db.artifacts.push(this.values);
@@ -94,6 +99,28 @@ describe("transcript workflow", () => {
     expect(transcribe).toHaveBeenCalledWith(audio, "audio/mpeg");
     expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt", "Alex: hello", expect.any(Object));
     expect(db.artifacts.map((values) => values[2])).toEqual(["recording", "transcript_text", "transcript_json"]);
+    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
+  });
+
+  it("stores transcript artifacts from Attendee webhook segments without transcribing the recording", async () => {
+    const db = new FakeD1();
+    db.transcriptSegments = [
+      { speaker_name: "Casey", timestamp_ms: 2000, duration_ms: 500, text: "Second update." },
+      { speaker_name: "Alex", timestamp_ms: 1000, duration_ms: 500, text: "First update." },
+      { speaker_name: "", timestamp_ms: 3000, duration_ms: 500, text: "  " }
+    ];
+    const artifacts = r2WithRecording(new Uint8Array([1, 2, 3]).buffer);
+    const summaryQueue = { send: vi.fn() };
+
+    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
+
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt", "Alex: First update.\nCasey: Second update.", expect.any(Object));
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("\"source\":\"attendee-webhook\""), expect.any(Object));
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("\"model\":\"attendee-live-transcript\""), expect.any(Object));
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("Alex: First update."), expect.any(Object));
+    expect(db.meetingUpdates.at(-1)?.[0]).toBe("complete");
+    expect(db.meetingUpdates.at(-1)?.[1]).toBe("TRANSCRIPT_AVAILABLE");
     expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
   });
 
