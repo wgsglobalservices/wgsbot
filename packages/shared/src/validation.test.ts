@@ -120,9 +120,9 @@ describe("settings validation", () => {
     expect(settings.recap.transcriptionModel).toBe("openai/whisper-large-v3-turbo");
     expect(settings.recap.language).toBe("");
     expect(settings.recap.subjectPrefix).toBe("Meeting recap");
-    expect(settings.recap.classificationEnabled).toBe(true);
-    expect(settings.recap.defaultTemplate).toBe("auto");
-    expect(settings.recap.enabledTemplates).toEqual(["weekly_spqrc", "weekly_sales", "plant_meeting", "general"]);
+    expect(settings.recap.classificationEnabled).toBe(false);
+    expect(settings.recap.defaultTemplate).toBe("general");
+    expect(settings.recap.enabledTemplates).toEqual(["general"]);
     expect(settings.recap.shortMeetingBriefRecapEnabled).toBe(true);
     expect(settings.recap.shortMeetingDurationThresholdMinutes).toBe(2);
     expect(settings.recap.transcriptDownloadExpirationHours).toBe(24);
@@ -136,23 +136,23 @@ describe("settings validation", () => {
     ]);
     expect(settings.recap.sections.every((section) => section.enabled)).toBe(true);
     expect(settings.recap.prompt).toContain("Return strict JSON only");
-    expect(settings.recap.prompt).toContain("automatically classifies meetings");
+    expect(settings.recap.prompt).toContain("The recap must work for any meeting type");
     expect(settings.recap.prompt).toContain("Primary objective:");
     expect(settings.recap.prompt).toContain("Create a layered executive recap");
     expect(settings.recap.prompt).toContain("At a Glance");
     expect(settings.recap.prompt).toContain("Top Priorities:");
-    expect(settings.recap.prompt).toContain("Priority ranking order:");
+    expect(settings.recap.prompt).toContain("Prioritize items involving:");
     expect(settings.recap.prompt).toContain("Full Action Register");
     expect(settings.recap.prompt).toContain("Use \"Not defined\" when no mitigation was discussed");
     expect(settings.recap.prompt).toContain("Clean up unclear speaker labels");
-    expect(settings.recap.prompt).toContain("Weekly SPQRC");
-    expect(settings.recap.prompt).toContain("Weekly Sales");
-    expect(settings.recap.prompt).toContain("Individual Plant Meeting");
-    expect(settings.recap.prompt).toContain("General");
+    expect(settings.recap.prompt).toContain("Recommended generic detail topics");
+    expect(settings.recap.prompt).toContain("For sales or customer-development meetings");
+    expect(settings.recap.prompt).not.toContain("automatically classifies meetings into Weekly SPQRC");
+    expect(settings.recap.prompt).not.toContain("For Weekly Sales meetings");
   });
 
   it("accepts long built-in WGS recap prompt instructions", () => {
-    const prompt = "Detailed WGS recap instruction. ".repeat(350);
+    const prompt = "Detailed WGS recap instruction. ".repeat(650);
 
     expect(
       parseSettings({
@@ -197,7 +197,7 @@ describe("settings validation", () => {
     ).toThrow();
   });
 
-  it("adds recap template defaults to legacy recap settings", () => {
+  it("adds universal recap defaults to legacy recap settings", () => {
     const settings = parseSettings({
       ...defaultSettings,
       recap: {
@@ -210,9 +210,9 @@ describe("settings validation", () => {
       }
     });
 
-    expect(settings.recap.classificationEnabled).toBe(true);
-    expect(settings.recap.defaultTemplate).toBe("auto");
-    expect(settings.recap.enabledTemplates).toEqual(["weekly_spqrc", "weekly_sales", "plant_meeting", "general"]);
+    expect(settings.recap.classificationEnabled).toBe(false);
+    expect(settings.recap.defaultTemplate).toBe("general");
+    expect(settings.recap.enabledTemplates).toEqual(["general"]);
     expect(settings.recap.shortMeetingBriefRecapEnabled).toBe(true);
     expect(settings.recap.shortMeetingDurationThresholdMinutes).toBe(2);
     expect(settings.recap.transcriptDownloadExpirationHours).toBe(24);

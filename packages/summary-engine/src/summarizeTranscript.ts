@@ -1,6 +1,5 @@
 import { chunkTranscript } from "./chunkTranscript";
 import { classifyRecapDepth } from "./classifyRecapDepth";
-import { classifyMeetingAcrossTranscript } from "./classifyMeeting";
 import { meetingRecapTypeLabels, type MeetingRecapType } from "./meetingTypes";
 import { buildSummaryPrompt } from "./promptTemplates";
 import { meetingSummarySchema, type MeetingSummary, type RecapDepth, type SummaryInput, type SummaryProvider } from "./types";
@@ -14,7 +13,7 @@ export async function summarizeTranscript(input: SummaryInput, provider: Summary
     speakerTurnCount: input.speakerTurnCount ?? depthClassification.speakerTurnCount,
     transcriptDurationMinutes: input.transcriptDurationMinutes ?? depthClassification.transcriptDurationMinutes
   };
-  const meetingType = await resolveSummaryMeetingType(input, provider);
+  const meetingType: MeetingRecapType = "general";
   const chunks = enrichedInput.recapDepth === "brief" ? [input.transcriptText] : chunkTranscript(input.transcriptText);
   const partials: MeetingSummary[] = [];
   for (const chunk of chunks) {
@@ -28,14 +27,6 @@ export async function summarizeTranscript(input: SummaryInput, provider: Summary
     });
   }
   return combineSummaries(partials, meetingType, enrichedInput.recapDepth);
-}
-
-async function resolveSummaryMeetingType(input: SummaryInput, provider: SummaryProvider): Promise<MeetingRecapType> {
-  if (input.classificationEnabled === false) {
-    return input.defaultTemplate && input.defaultTemplate !== "auto" ? input.defaultTemplate : "general";
-  }
-  const classification = await classifyMeetingAcrossTranscript(input, provider);
-  return classification.meetingType;
 }
 
 function combineSummaries(summaries: MeetingSummary[], meetingType: MeetingRecapType, recapDepth: RecapDepth): MeetingSummary {

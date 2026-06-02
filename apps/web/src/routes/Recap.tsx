@@ -69,8 +69,8 @@ export function Recap(props: RecapProps = {}) {
   return (
     <div className="page">
       <header>
-        <h1>Recap templates</h1>
-        <p>Configure transcription, automatic meeting classification, AI recap prompts, and the layout of recap emails sent after meetings.</p>
+        <h1>Recap template</h1>
+        <p>Configure transcription, the universal AI recap prompt, and the layout of recap emails sent after meetings.</p>
       </header>
       <UploadedTranscriptRecapTest initialRecipient={settings.email.testRecipient || defaultSampleRecapRecipient} />
       <RecapForm value={settings.recap} onChange={(recap) => setSettings({ ...settings, recap })} onSave={handleSave} saving={saving} />

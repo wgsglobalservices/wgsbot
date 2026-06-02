@@ -282,7 +282,7 @@ describe("summary workflow", () => {
     expect(payload?.expiresAt).toBeLessThanOrEqual(now + 6 * 60 * 60 * 1000 + 1000);
   });
 
-  it("passes recap classification defaults into summary generation", async () => {
+  it("passes universal recap defaults into summary generation", async () => {
     const db = new FakeD1({
       ...defaultSettings,
       email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true }
@@ -308,8 +308,8 @@ describe("summary workflow", () => {
     );
 
     expect(vi.mocked(summarizeTranscript).mock.calls[0][0]).toMatchObject({
-      classificationEnabled: true,
-      defaultTemplate: "auto",
+      classificationEnabled: false,
+      defaultTemplate: "general",
       shortMeetingBriefRecapEnabled: true,
       shortMeetingDurationThresholdMinutes: 2,
       meetingEndTime: "2026-05-04T15:02:00.000Z",

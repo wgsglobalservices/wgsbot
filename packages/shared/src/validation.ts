@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { universalDefaultRecapPrompt } from "./defaultRecapPrompt";
+
+export const defaultRecapPrompt = universalDefaultRecapPrompt;
 
 const legacySelfHostedAttendeeBaseUrls = new Set(["https://attendee.wgsglobal.app", "https://attendee.wgs.bot"]);
 const defaultTimeZone = "UTC";
@@ -50,9 +53,9 @@ const defaultRecapConfig = {
   language: "",
   subjectPrefix: "Meeting recap",
   introText: "",
-  classificationEnabled: true,
-  defaultTemplate: "auto" as const,
-  enabledTemplates: [...recapTemplateKeys],
+  classificationEnabled: false,
+  defaultTemplate: "general" as const,
+  enabledTemplates: ["general" as const],
   shortMeetingBriefRecapEnabled: true,
   shortMeetingDurationThresholdMinutes: 2,
   transcriptDownloadExpirationHours: 24
@@ -82,7 +85,7 @@ const previousDefaultRecapPrompt = [
   "Capture planned future meetings, customer follow-ups, plant check-ins, internal reviews, reports to prepare, data to validate, and next-week topics."
 ].join("\n");
 
-export const defaultRecapPrompt = [
+const currentDefaultRecapPrompt = [
   "You generate WGS meeting recaps from Microsoft Teams meeting titles and transcripts.",
   "",
   "Return strict JSON only. Match the existing application JSON schema exactly. Do not add commentary, markdown outside JSON, code fences, or explanatory text around the JSON.",
@@ -315,7 +318,8 @@ const legacyDefaultRecapPrompts = new Set([
     "Do not invent facts, owners, due dates, decisions, risks, or follow-ups.",
     "If no decision or action item is present, return an empty array for that field."
   ].join("\n"),
-  previousDefaultRecapPrompt
+  previousDefaultRecapPrompt,
+  currentDefaultRecapPrompt
 ]);
 
 export const defaultRecapSections = recapSectionKeys.map((key) => ({
@@ -375,7 +379,7 @@ export const appSettingsSchema = z.object({
     .object({
       transcriptionModel: z.string().trim().min(1),
       language: z.string().trim().max(12).optional().or(z.literal("")),
-      prompt: z.string().trim().min(20).max(12000),
+      prompt: z.string().trim().min(20).max(24000),
       subjectPrefix: z.string().trim().min(1).max(80),
       introText: z.string().trim().max(1000).optional().or(z.literal("")),
       classificationEnabled: z.boolean().optional().default(defaultRecapConfig.classificationEnabled),
@@ -506,8 +510,8 @@ function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap
     ...recap,
     language: recap.language ?? "",
     introText: recap.introText ?? "",
-    classificationEnabled: recap.classificationEnabled ?? defaultRecapConfig.classificationEnabled,
-    defaultTemplate: recap.defaultTemplate ?? defaultRecapConfig.defaultTemplate,
+    classificationEnabled: false,
+    defaultTemplate: defaultRecapConfig.defaultTemplate,
     enabledTemplates: normalizeEnabledTemplates(recap.enabledTemplates),
     shortMeetingBriefRecapEnabled: recap.shortMeetingBriefRecapEnabled ?? defaultRecapConfig.shortMeetingBriefRecapEnabled,
     shortMeetingDurationThresholdMinutes: recap.shortMeetingDurationThresholdMinutes ?? defaultRecapConfig.shortMeetingDurationThresholdMinutes,
@@ -520,9 +524,8 @@ function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap
   };
 }
 
-function normalizeEnabledTemplates(templates: AppSettings["recap"]["enabledTemplates"] | undefined): AppSettings["recap"]["enabledTemplates"] {
-  const enabled = new Set(templates && templates.length > 0 ? templates : defaultRecapConfig.enabledTemplates);
-  return recapTemplateKeys.filter((key) => enabled.has(key));
+function normalizeEnabledTemplates(_templates: AppSettings["recap"]["enabledTemplates"] | undefined): AppSettings["recap"]["enabledTemplates"] {
+  return defaultRecapConfig.enabledTemplates;
 }
 
 export function resolveAttendeeBaseUrl(settingsBaseUrl: string, envBaseUrl?: string): string {
