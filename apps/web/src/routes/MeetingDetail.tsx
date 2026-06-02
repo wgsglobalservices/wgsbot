@@ -152,7 +152,6 @@ export function MeetingControls({ meetingId, done }: { meetingId: string; done: 
     <div className="actions">
       <Action label="Retry bot" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/retry-bot`)} done={done} />
       <Action label="Fetch transcript" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/fetch-transcript`)} done={done} />
-      <Action label="Retry summary" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/retry-summary`)} done={done} />
       <Action label="Regenerate recap" run={() => apiPost(meetingRegenerateRecapApiPath(meetingId))} done={done} />
       <Action label="Delete artifacts" run={() => apiDelete(`/api/meetings/${encodeURIComponent(meetingId)}/artifacts`)} done={done} />
       <Action label="Delete Attendee data" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/delete-attendee-data`)} done={done} />
