@@ -85,6 +85,53 @@ describe("email renderer", () => {
     expect(renderFailureEmail({ subject: "Project sync" }).subject).toBe("Notes unavailable: Project sync");
   });
 
+  it("strips forwarded and reply prefixes from recap meeting titles", () => {
+    const rendered = renderSummaryEmail({
+      subject: "FW: RE: Weekly Sales Meeting",
+      summary: {
+        meetingType: "weekly_sales",
+        recapDepth: "standard",
+        executiveRecap: {
+          topPriorities: [
+            {
+              title: "Pipeline follow-up",
+              summary: "The sales team reviewed priority follow-ups.",
+              whyItMatters: "Pipeline timing depends on quick customer responses.",
+              owner: "Alex",
+              nextStep: "Confirm customer responses.",
+              dueDate: "2026-06-02"
+            }
+          ],
+          immediateActions: [],
+          keyDecisions: [],
+          majorRisks: [],
+          detailedRecap: [],
+          winsAndProgress: [],
+          fullActionRegister: [],
+          openQuestions: [],
+          referenceNotes: []
+        },
+        meetingNotes: [],
+        followUpTasks: [],
+        summary: [],
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        risks: [],
+        followUps: []
+      }
+    });
+
+    expect(rendered.subject).toBe("Meeting summary: Weekly Sales Meeting");
+    expect(rendered.text).toContain("Subject: Weekly Sales Meeting");
+    expect(rendered.text).toContain("Weekly Sales Meeting — Executive Recap");
+    expect(rendered.html).toContain("Weekly Sales Meeting");
+    expect(rendered.html).toContain("Weekly Sales Meeting — Executive Recap");
+    expect(rendered.subject).not.toContain("FW:");
+    expect(rendered.text).not.toContain("FW:");
+    expect(rendered.html).not.toContain("FW:");
+  });
+
   it("renders recap layout settings in configured order", () => {
     const rendered = renderSummaryEmail({
       subject: "Project sync",

@@ -1,4 +1,4 @@
-import { AppError } from "@minutesbot/shared";
+import { AppError, cleanMeetingSubject } from "@minutesbot/shared";
 import { normalizeAttendees } from "./normalizeAttendees";
 import { parseRecurrenceRule } from "./recurrence";
 import type { ParsedCalendar, RawIcsAttendee } from "./types";
@@ -23,11 +23,12 @@ export function parseIcsCalendar(icsText: string): ParsedCalendar {
 
   const organizer = parseOrganizerLine(organizerLine);
   const decodedUid = decodeIcsText(uid);
+  const decodedSummary = decodeIcsText(summary);
   const calendarUid = recurrenceId ? `${decodedUid}:${compactIso(parseIcsDate(recurrenceId))}` : decodedUid;
   return {
     kind,
     calendarUid,
-    subject: decodeIcsText(summary),
+    subject: cleanMeetingSubject(decodedSummary) || decodedSummary,
     organizer,
     attendees: normalizeAttendees(attendees),
     startTime: parseIcsDate(dtStart),

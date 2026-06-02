@@ -6,5 +6,6 @@ export * from "./json";
 export * from "./logger";
 export * from "./recordings";
 export * from "./status";
+export * from "./subjects";
 export * from "./validation";
 export * from "./webhooks";

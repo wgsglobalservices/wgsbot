@@ -176,13 +176,20 @@ importers:
 
   packages/email-renderer:
     dependencies:
+      '@minutesbot/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@minutesbot/summary-engine':
         specifier: workspace:*
         version: link:../summary-engine
 
   packages/email-sender: {}
 
-  packages/invite-parser: {}
+  packages/invite-parser:
+    dependencies:
+      '@minutesbot/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/recipient-policy: {}
 

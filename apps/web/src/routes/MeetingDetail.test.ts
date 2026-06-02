@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MeetingArtifactsPanel, MeetingControls, formatMeetingSchedule, meetingArtifactApiPath, meetingGenerateTranscriptApiPath, meetingRecapRecipientOptions, meetingRegenerateRecapApiPath, normalizeSummaryForDisplay, runMeetingActionWithFeedback, selectMeetingArtifact, summarizeArtifacts } from "./MeetingDetail";
+import { MeetingArtifactsPanel, MeetingControls, formatMeetingSchedule, formatMeetingSubjectForDisplay, meetingArtifactApiPath, meetingGenerateTranscriptApiPath, meetingRecapRecipientOptions, meetingRegenerateRecapApiPath, normalizeSummaryForDisplay, runMeetingActionWithFeedback, selectMeetingArtifact, summarizeArtifacts } from "./MeetingDetail";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRecapEmailDeliveryStatus, RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
@@ -89,6 +89,13 @@ describe("meeting artifact summaries", () => {
     expect(html).toContain("Load recording");
     expect(html).toContain("Generated transcript");
     expect(html).toContain("Load transcript");
+  });
+});
+
+describe("meeting detail subject display", () => {
+  it("strips forwarded and reply prefixes from meeting titles", () => {
+    expect(formatMeetingSubjectForDisplay("FW: RE: Weekly Sales Meeting")).toBe("Weekly Sales Meeting");
+    expect(formatMeetingSubjectForDisplay("FW:")).toBe("Meeting");
   });
 });
 

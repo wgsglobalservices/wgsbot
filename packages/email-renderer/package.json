@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@minutesbot/shared": "workspace:*",
     "@minutesbot/summary-engine": "workspace:*"
   }
 }

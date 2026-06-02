@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cleanMeetingSubject } from "@minutesbot/shared";
 import { AttendeeStatePanel } from "../components/AttendeeStatePanel";
 import { RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
 import { StatusBadge } from "../components/StatusBadge";
@@ -19,7 +20,7 @@ export function MeetingDetail({ id }: { id: string }) {
   return (
     <div className="page">
       <header>
-        <h1>{String(meeting.subject ?? "Meeting")}</h1>
+        <h1>{formatMeetingSubjectForDisplay(meeting.subject)}</h1>
         <p>
           {formatDate(String(meeting.start_time ?? ""))} · <StatusBadge value={String(meeting.status ?? "")} />
           {isUploadedTranscriptTestMeeting(meeting) ? <span className="badge neutral inlineBadge">Uploaded transcript test</span> : null}
@@ -76,6 +77,10 @@ export function formatMeetingSchedule(meeting: { start_time?: unknown; end_time?
   const endText = formatDateOnly(start) === formatDateOnly(end) ? formatTime(end) : formatDate(end.toISOString());
   const duration = formatDuration(start, end);
   return `${formatDate(start.toISOString())} - ${endText}${duration ? ` (${duration})` : ""}`;
+}
+
+export function formatMeetingSubjectForDisplay(value: unknown): string {
+  return cleanMeetingSubject(String(value ?? "Meeting")) || "Meeting";
 }
 
 function dateFromValue(value: unknown): Date | null {

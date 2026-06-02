@@ -1,4 +1,4 @@
-import { AppError } from "@minutesbot/shared";
+import { AppError, cleanMeetingSubject } from "@minutesbot/shared";
 import { extractTeamsJoinUrl } from "./extractTeamsJoinUrl";
 import { normalizeAttendees } from "./normalizeAttendees";
 import { parseIcsCalendar } from "./parseIcs";
@@ -39,7 +39,7 @@ function parseLinkOnlyInvite(input: { headers: Map<string, string>; body: string
     throw new AppError("INVITE_PARSE_ERROR", "Inbound email does not include a calendar payload", 400);
   }
 
-  const subject = cleanForwardedSubject(decodeMimeWords(input.headers.get("subject") ?? "").trim()) || "Teams meeting";
+  const subject = cleanMeetingSubject(decodeMimeWords(input.headers.get("subject") ?? "").trim()) || "Teams meeting";
   const forwardedEvent = parseForwardedEventDetails(input.body, subject, input.headers.get("date") ?? "");
   const start = forwardedEvent?.start ?? new Date();
   const end = forwardedEvent?.end ?? new Date(start.getTime() + 60 * 60 * 1000);
@@ -134,14 +134,6 @@ function decodeMimeWords(value: string): string {
   return value.replace(/=\?utf-8\?q\?([^?]+)\?=/gi, (_match, encoded: string) =>
     encoded.replace(/_/g, " ").replace(/=([0-9a-f]{2})/gi, (_hexMatch, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
   );
-}
-
-function cleanForwardedSubject(value: string): string {
-  let subject = value.trim();
-  while (/^(?:fw|fwd|re)\s*:/i.test(subject)) {
-    subject = subject.replace(/^(?:fw|fwd|re)\s*:\s*/i, "").trim();
-  }
-  return subject;
 }
 
 function parseForwardedEventDetails(body: string, subject: string, dateHeader: string): { start: Date; end: Date; recurrence?: ParsedRecurrence } | null {

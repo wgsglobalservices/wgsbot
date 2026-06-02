@@ -51,6 +51,27 @@ END:VCALENDAR`);
     ]);
   });
 
+  it("strips forwarded and reply prefixes from calendar meeting summaries", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: FW: RE: Weekly Sales Meeting
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:abc-forwarded-summary
+SUMMARY:FW: RE: Weekly Sales Meeting
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3asummary%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    expect(invite.subject).toBe("Weekly Sales Meeting");
+  });
+
   it("maps updates to the same calendar UID", () => {
     const invite = parseIncomingInvite(readFixture("teams-invite-update.eml"));
     expect(invite.calendarUid).toBe("abc-123");

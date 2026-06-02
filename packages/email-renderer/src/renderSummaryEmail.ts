@@ -1,4 +1,5 @@
 import { meetingRecapTypeLabels } from "@minutesbot/summary-engine";
+import { cleanMeetingSubject } from "@minutesbot/shared";
 import type { RenderedEmail, SummaryEmailInput, SummaryEmailSummary } from "./types";
 
 type ExecutiveRecap = NonNullable<SummaryEmailSummary["executiveRecap"]>;
@@ -10,11 +11,12 @@ const defaultTranscriptDownloadExpirationHours = 24;
 
 export function renderSummaryEmail(input: SummaryEmailInput): RenderedEmail {
   const summary = normalizeSummary(input.summary);
+  const renderInput = { ...input, subject: cleanMeetingSubject(input.subject) || input.subject.trim() || "Untitled meeting" };
   const meetingTypeLabel = meetingRecapTypeLabels[summary.meetingType];
   const recapDepthLabel = summary.recapDepth === "brief" ? "Brief" : "Standard";
-  const text = renderText({ ...input, summary }, meetingTypeLabel, recapDepthLabel);
-  const html = renderHtml({ ...input, summary }, meetingTypeLabel, recapDepthLabel);
-  return { subject: `${input.recap?.subjectPrefix ?? "Meeting summary"}: ${input.subject}`, text, html };
+  const text = renderText({ ...renderInput, summary }, meetingTypeLabel, recapDepthLabel);
+  const html = renderHtml({ ...renderInput, summary }, meetingTypeLabel, recapDepthLabel);
+  return { subject: `${input.recap?.subjectPrefix ?? "Meeting summary"}: ${renderInput.subject}`, text, html };
 }
 
 function normalizeSummary(summary: SummaryEmailSummary): Required<Pick<SummaryEmailSummary, "meetingType" | "recapDepth" | "executiveRecap" | "meetingNotes" | "followUpTasks">> & SummaryEmailSummary {
