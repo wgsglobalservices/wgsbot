@@ -220,7 +220,7 @@ function parseForwardedDateParts(value: string): { year: number; month: number; 
 }
 
 function parseForwardedTimeRange(value: string): { start: { hour: number; minute: number }; end: { hour: number; minute: number } } | null {
-  const match = value.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*(?:-|–|—|\bto\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+  const match = value.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*(?:-|\u2013|\u2014|\bto\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
   if (!match) return null;
   const startMeridiem = match[3];
   const endMeridiem = match[6] ?? startMeridiem;
