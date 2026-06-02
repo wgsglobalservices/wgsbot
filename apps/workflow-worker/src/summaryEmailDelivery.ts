@@ -2,14 +2,12 @@ import { createEmailDelivery } from "@minutesbot/db";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
 import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
 import { createEmailProvider, formatEmailAddress } from "@minutesbot/email-sender";
-import { createTranscriptDownloadToken, type AppSettings } from "@minutesbot/shared";
+import type { AppSettings } from "@minutesbot/shared";
 import type { EmailSendResult } from "@minutesbot/email-sender";
 import type { MeetingRow } from "@minutesbot/db";
 
 type SummaryEmailEnv = {
   DB: D1Database;
-  API_BASE_URL?: string;
-  TRANSCRIPT_LINK_SECRET?: string;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };
 };
 
@@ -27,8 +25,6 @@ export async function sendMeetingSummaryEmail(
     subject: input.meeting.subject ?? "Untitled meeting",
     date: input.meeting.start_time ?? undefined,
     summary: input.summary,
-    transcriptDownloadUrl: await buildTranscriptDownloadUrl(env, input.meeting.id, input.settings.recap.transcriptDownloadExpirationHours),
-    transcriptDownloadExpirationHours: input.settings.recap.transcriptDownloadExpirationHours,
     excludedRecipients: input.excludedRecipients,
     recap: {
       subjectPrefix: input.settings.recap.subjectPrefix,
@@ -67,12 +63,4 @@ export async function sendMeetingSummaryEmail(
     });
     return { status: "failed", failureReason };
   }
-}
-
-async function buildTranscriptDownloadUrl(env: SummaryEmailEnv, meetingId: string, expirationHours: number): Promise<string | undefined> {
-  if (!env.TRANSCRIPT_LINK_SECRET || !env.API_BASE_URL) return undefined;
-  const cappedExpirationHours = Math.min(Math.max(expirationHours, 1), 24);
-  const expiresAt = Date.now() + cappedExpirationHours * 60 * 60 * 1000;
-  const token = await createTranscriptDownloadToken({ meetingId, artifactType: "transcript_text", expiresAt }, env.TRANSCRIPT_LINK_SECRET);
-  return `${env.API_BASE_URL.replace(/\/+$/, "")}/api/artifacts/${encodeURIComponent(meetingId)}/transcript.txt?token=${encodeURIComponent(token)}`;
 }

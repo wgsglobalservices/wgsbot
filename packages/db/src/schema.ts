@@ -20,6 +20,8 @@ export type MeetingRow = {
   transcript_status?: TranscriptStatus | null;
   summary_status?: SummaryStatus | null;
   latest_error?: string | null;
+  meeting_type?: string | null;
+  source_recipient?: string | null;
   created_at: string;
   updated_at: string;
 };

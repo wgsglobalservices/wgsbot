@@ -1,7 +1,9 @@
 import { createArtifact, createAuditLog, getSettings, markStaleRecurringOccurrencesCancelled, replaceMeetingAttendees, updateMeetingStatus, upsertMeeting } from "@minutesbot/db";
 import { expandInviteOccurrences, parseIncomingInvite } from "@minutesbot/invite-parser";
 import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
-import { createId, shouldCreateBotNow, type MeetingStatus } from "@minutesbot/shared";
+import { createId, shouldCreateBotNow, weeklySalesRecapEmail, type MeetingStatus } from "@minutesbot/shared";
+
+type MeetingType = "weekly_sales" | "general";
 
 type Env = {
   DB: D1Database;
@@ -40,7 +42,9 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     return;
   }
 
-  if (!isRecorderRecipient(message.to, settings.recorderEmail, settings.recorderAliasEmails)) {
+  const salesRecapSourceRecipient = findSalesRecapSourceRecipient(message.to, rawEmail);
+  const recorderAliasEmails = [...settings.recorderAliasEmails, weeklySalesRecapEmail];
+  if (!isRecorderRecipient(message.to, settings.recorderEmail, recorderAliasEmails) && !salesRecapSourceRecipient) {
     await rejectInvite(env, message, "REJECTED_INVALID_RECIPIENT", "Inbound recipient does not match configured recorder email");
     return;
   }
@@ -59,7 +63,9 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     return;
   }
 
-  const meetingInvitees = parsed.attendees.filter((attendee) => !isRecorderRecipient(attendee.email, settings.recorderEmail, settings.recorderAliasEmails));
+  const meetingType: MeetingType = salesRecapSourceRecipient ? "weekly_sales" : "general";
+  const sourceRecipient = salesRecapSourceRecipient ?? normalizeEmailAddress(message.to) ?? message.to.trim().toLowerCase();
+  const meetingInvitees = parsed.attendees.filter((attendee) => !isRecorderRecipient(attendee.email, settings.recorderEmail, recorderAliasEmails));
   const filtered = buildSummaryRecipients({
     organizer: parsed.organizer,
     attendees: meetingInvitees,
@@ -100,6 +106,8 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
       teams_join_url: parsed.teamsJoinUrl,
       start_time: occurrence.startTime,
       end_time: occurrence.endTime,
+      meeting_type: meetingType,
+      source_recipient: sourceRecipient,
       status: parsed.kind === "cancel" ? "CANCELLED" : "SCHEDULED"
     });
 
@@ -150,8 +158,41 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
 }
 
 function isRecorderRecipient(recipient: string, recorderEmail: string, aliases: string[] = []): boolean {
-  const normalizedRecipient = recipient.trim().toLowerCase();
+  const normalizedRecipient = normalizeEmailAddress(recipient);
+  if (!normalizedRecipient) return false;
   return [recorderEmail, ...aliases].some((email) => email.trim().toLowerCase() === normalizedRecipient);
+}
+
+function findSalesRecapSourceRecipient(envelopeRecipient: string, rawEmail: string): string | null {
+  return candidateRecipientEmails(envelopeRecipient, rawEmail).find((email) => email === weeklySalesRecapEmail) ?? null;
+}
+
+function candidateRecipientEmails(envelopeRecipient: string, rawEmail: string): string[] {
+  const candidates = [...extractEmailAddresses(envelopeRecipient)];
+  const headers = rawEmail.split(/\r?\n\r?\n/, 1)[0]?.replace(/\r?\n[ \t]+/g, " ") ?? "";
+  const recipientHeaders = new Set(["to", "cc", "delivered-to", "x-original-to", "envelope-to", "resent-to", "apparently-to"]);
+  for (const line of headers.split(/\r?\n/)) {
+    const separator = line.indexOf(":");
+    if (separator <= 0) continue;
+    const name = line.slice(0, separator).trim().toLowerCase();
+    if (!recipientHeaders.has(name)) continue;
+    candidates.push(...extractEmailAddresses(line.slice(separator + 1)));
+  }
+  return Array.from(new Set(candidates));
+}
+
+function extractEmailAddresses(value: string): string[] {
+  return Array.from(value.matchAll(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z0-9-]+/gi))
+    .map((match) => normalizeEmailAddress(match[0]))
+    .filter((email): email is string => Boolean(email));
+}
+
+function normalizeEmailAddress(value: string): string | null {
+  return extractEmailAddress(value)?.trim().toLowerCase() || null;
+}
+
+function extractEmailAddress(value: string): string | null {
+  return value.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z0-9-]+/i)?.[0] ?? null;
 }
 
 async function rejectInvite(env: Env, message: Pick<EmailMessage, "from" | "setReject">, status: MeetingStatus, reason: string): Promise<void> {

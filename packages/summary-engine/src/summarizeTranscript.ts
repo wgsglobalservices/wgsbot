@@ -13,7 +13,7 @@ export async function summarizeTranscript(input: SummaryInput, provider: Summary
     speakerTurnCount: input.speakerTurnCount ?? depthClassification.speakerTurnCount,
     transcriptDurationMinutes: input.transcriptDurationMinutes ?? depthClassification.transcriptDurationMinutes
   };
-  const meetingType: MeetingRecapType = "general";
+  const meetingType: MeetingRecapType = input.meetingType ?? "general";
   const chunks = enrichedInput.recapDepth === "brief" ? [input.transcriptText] : chunkTranscript(input.transcriptText);
   const partials: MeetingSummary[] = [];
   for (const chunk of chunks) {

@@ -363,6 +363,7 @@ describe("summary engine", () => {
         attendees: [],
         transcriptText: `${"Customer blocker revenue staffing risk action ownership.\n".repeat(500)}${"Customer blocker revenue staffing risk action ownership.\n".repeat(500)}`,
         recapDepth: "standard",
+        meetingType: "weekly_sales",
         classificationEnabled: false,
         defaultTemplate: "weekly_sales"
       },
@@ -470,6 +471,7 @@ describe("summary engine", () => {
       }
     );
 
+    expect(summary.meetingType).toBe("weekly_sales");
     expect(summary.executiveRecap.topPriorities).toHaveLength(1);
     expect(summary.executiveRecap.immediateActions).toHaveLength(1);
     expect(summary.executiveRecap.keyDecisions).toHaveLength(1);

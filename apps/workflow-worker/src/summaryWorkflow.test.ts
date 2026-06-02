@@ -1,4 +1,4 @@
-import { defaultSettings, verifyTranscriptDownloadToken } from "@minutesbot/shared";
+import { defaultSettings } from "@minutesbot/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateAndSendSingleRecipientSummary, generateAndSendSummary, generateAndStoreSummary } from "./summaryWorkflow";
 import { summarizeTranscript } from "@minutesbot/summary-engine";
@@ -11,6 +11,7 @@ vi.mock("@minutesbot/summary-engine", () => ({
     plant_meeting: "Individual Plant Meeting",
     general: "General"
   },
+  meetingRecapTypes: ["weekly_spqrc", "weekly_sales", "plant_meeting", "general"],
   summarizeTranscript: vi.fn(async () => ({
     meetingType: "general",
     recapDepth: "standard",
@@ -30,7 +31,7 @@ class FakeD1 {
   summaryStatuses: unknown[][] = [];
   auditLogs: Array<{ eventType: string; resourceId: string | null; metadata: unknown }> = [];
 
-  constructor(private readonly settings = defaultSettings) {}
+  constructor(private readonly settings = defaultSettings, private readonly meetingOverrides: Record<string, unknown> = {}) {}
 
   prepare(sql: string) {
     const db = this;
@@ -49,7 +50,10 @@ class FakeD1 {
             organizer_email: "owner@wgs.bot",
             organizer_name: "Owner",
             start_time: "2026-05-04T15:00:00.000Z",
-            end_time: "2026-05-04T15:02:00.000Z"
+            end_time: "2026-05-04T15:02:00.000Z",
+            meeting_type: "general",
+            source_recipient: "notetaker@wgs.bot",
+            ...db.meetingOverrides
           };
         }
         if (sql.includes("FROM settings")) {
@@ -213,7 +217,6 @@ describe("summary workflow", () => {
       subject: "Project Sync",
       startTime: "2026-05-04T15:00:00.000Z",
       endTime: "2026-05-04T15:02:00.000Z",
-      transcriptText: "Alex: weekly sales transcript",
       summary: {
         meetingType: "weekly_sales",
         recapDepth: "standard",
@@ -387,9 +390,10 @@ describe("summary workflow", () => {
     expect(db.emailDeliveries.every((values) => values[4] === "sent")).toBe(true);
     expect(send.mock.calls[0][0]).toMatchObject({
       from: "WGS Notetaker <notetaker@wgs.bot>",
-      text: expect.stringContaining("/api/artifacts/mtg_1/transcript.txt?token="),
-      html: expect.stringContaining("Download Transcript")
+      to: "owner@wgs.bot"
     });
+    expect((send.mock.calls[0][0] as { text: string; html: string }).text).not.toContain("/api/artifacts/mtg_1/transcript.txt?token=");
+    expect((send.mock.calls[0][0] as { text: string; html: string }).html).not.toContain("Download Transcript");
   });
 
   it("sends an uploaded transcript test recap only to the requested recipient", async () => {
@@ -428,7 +432,7 @@ describe("summary workflow", () => {
     expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready", "sent"]);
   });
 
-  it("uses the configured transcript link expiration when signing recap downloads", async () => {
+  it("does not include transcript download links in recap emails even when transcript links are configured", async () => {
     const db = new FakeD1({
       ...defaultSettings,
       email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true },
@@ -438,7 +442,6 @@ describe("summary workflow", () => {
       }
     });
     const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
-    const now = Date.now();
 
     await generateAndSendSummary(
       {
@@ -460,13 +463,9 @@ describe("summary workflow", () => {
       "mtg_1"
     );
 
-    const text = send.mock.calls[0][0] as { text: string };
-    const token = text.text.match(/token=([^)\s]+)/)?.[1];
-    expect(token).toBeTruthy();
-    const payload = await verifyTranscriptDownloadToken(decodeURIComponent(token!), "transcript-secret");
-
-    expect(payload?.expiresAt).toBeGreaterThanOrEqual(now + 6 * 60 * 60 * 1000 - 1000);
-    expect(payload?.expiresAt).toBeLessThanOrEqual(now + 6 * 60 * 60 * 1000 + 1000);
+    const email = send.mock.calls[0][0] as { text: string; html: string };
+    expect(email.text).not.toContain("/api/artifacts/mtg_1/transcript.txt?token=");
+    expect(email.html).not.toContain("Download Transcript");
   });
 
   it("passes universal recap defaults into summary generation", async () => {
@@ -503,7 +502,19 @@ describe("summary workflow", () => {
       meetingDurationMinutes: 2,
       transcriptDurationMinutes: 1.3,
       speakerTurnCount: 2,
-      wordCount: 2
+      wordCount: 2,
+      meetingType: "general"
+    });
+  });
+
+  it("passes persisted weekly sales meeting type into summary generation", async () => {
+    await generateAndStoreSummary(
+      env(new FakeD1(defaultSettings, { meeting_type: "weekly_sales", source_recipient: "sales-recap@wgs.services" })),
+      "mtg_1"
+    );
+
+    expect(vi.mocked(summarizeTranscript).mock.calls[0][0]).toMatchObject({
+      meetingType: "weekly_sales"
     });
   });
 

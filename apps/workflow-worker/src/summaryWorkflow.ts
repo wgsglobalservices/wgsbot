@@ -1,7 +1,7 @@
 import { createAuditLog, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, listTranscriptSegments, updateSummaryStatus } from "@minutesbot/db";
 import type { AttendeeRow, MeetingRow } from "@minutesbot/db";
 import { buildSummaryRecipients } from "@minutesbot/recipient-policy";
-import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
+import { createOpenAiCompatibleProvider, meetingRecapTypes, summarizeTranscript, type MeetingRecapType } from "@minutesbot/summary-engine";
 import { AppError, type AppSettings } from "@minutesbot/shared";
 import type { SummaryEmailSummary } from "@minutesbot/email-renderer";
 import type { EmailSendResult } from "@minutesbot/email-sender";
@@ -139,6 +139,7 @@ export async function generateAndStoreSummary(
         organizerEmail: meeting.organizer_email ?? undefined,
         attendees: attendees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
         transcriptText,
+        meetingType: normalizeMeetingType(meeting.meeting_type),
         prompt: settings.recap.prompt,
         classificationEnabled: settings.recap.classificationEnabled,
         defaultTemplate: settings.recap.defaultTemplate,
@@ -153,15 +154,18 @@ export async function generateAndStoreSummary(
   await createSummary(env.DB, { meeting_id: meetingId, r2_key: summaryKey, summary_json: JSON.stringify(summary), model: settings.ai.model });
   await updateSummaryStatus(env.DB, meetingId, "ready", "SUMMARY_READY");
   await createAuditLog(env.DB, { eventType: "summary.generated", resourceType: "meeting", resourceId: meetingId });
-  await importWeeklySalesSummaryToSalesAgenda(env, { meeting, transcriptText, summary });
+  await importWeeklySalesSummaryToSalesAgenda(env, { meeting, summary });
   return { meeting, settings, summary, attendees, excludedRecipients: [] };
+}
+
+function normalizeMeetingType(value: unknown): MeetingRecapType {
+  return meetingRecapTypes.includes(value as MeetingRecapType) ? (value as MeetingRecapType) : "general";
 }
 
 async function importWeeklySalesSummaryToSalesAgenda(
   env: WorkflowEnv,
   input: {
     meeting: MeetingRow;
-    transcriptText: string;
     summary: SummaryEmailSummary;
   }
 ): Promise<void> {
@@ -183,7 +187,6 @@ async function importWeeklySalesSummaryToSalesAgenda(
         subject: input.meeting.subject ?? null,
         startTime: input.meeting.start_time ?? null,
         endTime: input.meeting.end_time ?? null,
-        transcriptText: input.transcriptText,
         summary: input.summary
       })
     });

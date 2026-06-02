@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultRecapPrompt, defaultSampleRecapRecipient, defaultSettings, parseSettings } from "./validation";
+import { defaultRecapPrompt, defaultSampleRecapRecipient, defaultSettings, parseSettings, weeklySalesRecapEmail } from "./validation";
 
 describe("settings validation", () => {
   it("normalizes domains and emails", () => {
@@ -15,15 +15,15 @@ describe("settings validation", () => {
     expect(settings.primaryDomain).toBe("acme.com");
     expect(settings.allowedDomains).toEqual(["acme.com"]);
     expect(settings.recorderEmail).toBe("notetaker@meet.acme.com");
-    expect(settings.recorderAliasEmails).toEqual(["salesnotes@meet.acme.com"]);
+    expect(settings.recorderAliasEmails).toEqual(["salesnotes@meet.acme.com", weeklySalesRecapEmail]);
     expect(settings.email.senderEmail).toBe("notes@acme.com");
   });
 
-  it("defaults legacy settings to no recorder aliases", () => {
+  it("defaults legacy settings to the weekly sales recap alias", () => {
     const legacySettings: Partial<typeof defaultSettings> = { ...defaultSettings };
     delete legacySettings.recorderAliasEmails;
 
-    expect(parseSettings(legacySettings).recorderAliasEmails).toEqual([]);
+    expect(parseSettings(legacySettings).recorderAliasEmails).toEqual([weeklySalesRecapEmail]);
   });
 
   it("defaults legacy settings to UTC and validates configured time zones", () => {

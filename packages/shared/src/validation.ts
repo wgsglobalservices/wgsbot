@@ -5,6 +5,7 @@ export const defaultRecapPrompt = universalDefaultRecapPrompt;
 
 const legacySelfHostedAttendeeBaseUrls = new Set(["https://attendee.wgsglobal.app", "https://attendee.wgs.bot"]);
 const defaultTimeZone = "UTC";
+export const weeklySalesRecapEmail = "sales-recap@wgs.services";
 
 const domainSchema = z
   .string()
@@ -415,7 +416,7 @@ export const defaultSettings: AppSettings = {
   timeZone: defaultTimeZone,
   allowedDomains: ["wgs.bot"],
   recorderEmail: "notetaker@wgs.bot",
-  recorderAliasEmails: [],
+  recorderAliasEmails: [weeklySalesRecapEmail],
   attendee: {
     baseUrl: "https://app.attendee.dev",
     apiKeyConfigured: false,
@@ -488,7 +489,7 @@ export function parseSettings(input: unknown): AppSettings {
 
 function normalizeRecorderAliasEmails(recorderEmail: string, aliases: string[]): string[] {
   const primary = recorderEmail.toLowerCase();
-  return Array.from(new Set(aliases.map((email) => email.toLowerCase()))).filter((email) => email !== primary);
+  return Array.from(new Set([...aliases, weeklySalesRecapEmail].map((email) => email.toLowerCase()))).filter((email) => email !== primary);
 }
 
 function isValidTimeZone(value: string): boolean {

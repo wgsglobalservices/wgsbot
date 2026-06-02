@@ -29,6 +29,8 @@ export async function upsertMeeting(
     transcript_status: input.transcript_status ?? existing?.transcript_status ?? "not_started",
     summary_status: input.summary_status ?? existing?.summary_status ?? "not_started",
     latest_error: input.latest_error ?? null,
+    meeting_type: input.meeting_type ?? existing?.meeting_type ?? "general",
+    source_recipient: input.source_recipient ?? existing?.source_recipient ?? null,
     created_at: existing?.created_at ?? now,
     updated_at: now
   };
@@ -37,8 +39,8 @@ export async function upsertMeeting(
       `INSERT OR REPLACE INTO meetings (
         id, calendar_uid, subject, organizer_email, organizer_name, teams_join_url, start_time, end_time, status,
         attendee_bot_id, attendee_bot_state, attendee_transcription_state, attendee_recording_state, attendee_last_event_at,
-        transcript_status, summary_status, latest_error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        transcript_status, summary_status, latest_error, meeting_type, source_recipient, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       row.id,
@@ -58,6 +60,8 @@ export async function upsertMeeting(
       row.transcript_status,
       row.summary_status,
       row.latest_error,
+      row.meeting_type,
+      row.source_recipient,
       row.created_at,
       row.updated_at
     )

@@ -397,6 +397,83 @@ END:VCALENDAR`
     expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
   });
 
+  it("stamps direct sales recap mailbox invites as weekly sales recaps", async () => {
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "sales-recap@wgs.services", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: sales-recap@wgs.services
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-sales-direct
+SUMMARY:Weekly Sales
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+ATTENDEE;CN=Sales Recap;ROLE=REQ-PARTICIPANT:mailto:sales-recap@wgs.services
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3asales%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
+    expect(db.meetings[0][17]).toBe("weekly_sales");
+    expect(db.meetings[0][18]).toBe("sales-recap@wgs.services");
+    expect(db.attendees.map((values) => values[2])).not.toContain("sales-recap@wgs.services");
+  });
+
+  it("stamps Microsoft 365 redirected sales recap invites from original-recipient headers", async () => {
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+X-Original-To: sales-recap@wgs.services
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-sales-redirect
+SUMMARY:Weekly Sales Redirect
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+ATTENDEE;CN=Sales Recap;ROLE=REQ-PARTICIPANT:mailto:sales-recap@wgs.services
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3asalesredirect%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
+    expect(db.meetings[0][17]).toBe("weekly_sales");
+    expect(db.meetings[0][18]).toBe("sales-recap@wgs.services");
+    expect(db.attendees.map((values) => values[2])).not.toContain("sales-recap@wgs.services");
+  });
+
   it("uses the envelope recipient for forwarded Teams invites", async () => {
     const setReject = vi.fn();
     const queueInvite = vi.fn(async () => undefined);
