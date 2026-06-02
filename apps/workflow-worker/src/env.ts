@@ -11,6 +11,8 @@ export type WorkflowEnv = {
   ATTENDEE_WEBHOOK_BASE_URL?: string;
   API_BASE_URL: string;
   AI_API_KEY?: string;
+  SALES_AGENDA_IMPORT_URL?: string;
+  SALES_AGENDA_IMPORT_KEY?: string;
   SESSION_SECRET?: string;
   TRANSCRIPT_LINK_SECRET?: string;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };

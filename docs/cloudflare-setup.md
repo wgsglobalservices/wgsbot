@@ -43,7 +43,9 @@ CLOUDFLARE_API_TOKEN=... pnpm cloudflare:ensure-webhook-bypass
 wrangler secret put ATTENDEE_API_KEY
 wrangler secret put ATTENDEE_WEBHOOK_SECRET
 wrangler secret put AI_API_KEY
+wrangler secret put SALES_AGENDA_IMPORT_KEY
 wrangler secret put SESSION_SECRET
+wrangler secret put TRANSCRIPT_LINK_SECRET
 pnpm db:migrate:remote
 pnpm run deploy
 ```

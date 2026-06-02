@@ -272,18 +272,98 @@ describe("email renderer", () => {
     expect(rendered.text).not.toContain("Weekly Sales — Executive Recap");
     expect(rendered.text).not.toContain("AI-generated recap. Review for accuracy.");
     expect(rendered.text.match(/June 1, 2026 at 1:00 PM UTC/g)).toHaveLength(1);
-    expect(rendered.text).toContain("1. At a Glance");
-    expect(rendered.text).toContain("Top Priorities");
+    expect(rendered.text).toContain("1. Executive Highlights");
+    expect(rendered.text).toContain("2. Person-Specific Briefs");
     expect(rendered.text).toContain("Immediate Actions");
-    expect(rendered.text).toContain("Detailed Recap");
+    expect(rendered.text).toContain("3. Notes");
     expect(rendered.text).toContain("Full Action Register");
     expect(rendered.text).not.toContain("Meeting notes:");
     expect(rendered.html).not.toContain("Weekly Sales — Executive Recap");
     expect(rendered.html).not.toContain("AI-generated recap. Review for accuracy.");
     expect(rendered.html.match(/June 1, 2026 at 1:00 PM UTC/g)).toHaveLength(1);
-    expect(rendered.html).toContain("At a Glance");
+    expect(rendered.html).toContain("Executive Highlights");
     expect(rendered.html).toContain("Customer blocker");
     expect(rendered.html).not.toContain("Meeting notes");
+  });
+
+  it("renders the layered WGS recap order for executive summaries", () => {
+    const rendered = renderSummaryEmail({
+      subject: "Operations sync",
+      summary: {
+        meetingType: "general",
+        recapDepth: "standard",
+        executiveRecap: {
+          topPriorities: [
+            {
+              title: "Delivery Schedule Risk",
+              summary: "Casey needs to confirm the delivery schedule.",
+              whyItMatters: "The delivery plan depends on the updated schedule.",
+              owner: "Casey",
+              nextStep: "Confirm the schedule.",
+              dueDate: "2026-06-02"
+            }
+          ],
+          immediateActions: [],
+          keyDecisions: [],
+          majorRisks: [],
+          detailedRecap: [{ heading: "Operations and Delivery", summary: "The team reviewed schedule dependency risk." }],
+          winsAndProgress: [],
+          fullActionRegister: [
+            {
+              action: "Confirm the delivery schedule",
+              owner: "Casey",
+              due: "2026-06-02",
+              priority: "High",
+              relatedArea: "Delivery",
+              notes: "Needed before the team can finalize the plan."
+            }
+          ],
+          openQuestions: [],
+          referenceNotes: []
+        },
+        meetingNotes: [
+          {
+            heading: "Person-Specific Briefs:",
+            overview: "Casey owns the schedule confirmation.",
+            items: [{ title: "Casey:", detail: "Casey needs to confirm the delivery schedule." }]
+          },
+          {
+            heading: "Notes:",
+            overview: "Delivery schedule dependency was reviewed.",
+            items: [{ title: "Schedule dependency:", detail: "The plan depends on Casey confirming the date." }]
+          }
+        ],
+        followUpTasks: [],
+        summary: [],
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        risks: [],
+        followUps: []
+      }
+    });
+
+    const expectedTextOrder = [
+      "1. Executive Highlights",
+      "2. Person-Specific Briefs",
+      "3. Notes",
+      "4. Action Items",
+      "5. Decisions",
+      "6. Risks / Blockers",
+      "7. Open Questions",
+      "8. Reference Notes"
+    ];
+    let previousIndex = -1;
+    for (const section of expectedTextOrder) {
+      const index = rendered.text.indexOf(section);
+      expect(index).toBeGreaterThan(previousIndex);
+      previousIndex = index;
+    }
+
+    expect(rendered.text).toContain("Casey needs to confirm the delivery schedule.");
+    expect(rendered.html).toContain("Executive Highlights");
+    expect(rendered.html).toContain("Person-Specific Briefs");
+    expect(rendered.html).toContain("Action Items");
   });
 
   it("renders meeting type in plain text and html and treats legacy summaries as general", () => {

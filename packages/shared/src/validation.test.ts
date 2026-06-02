@@ -138,9 +138,10 @@ describe("settings validation", () => {
     expect(settings.recap.prompt).toContain("Return strict JSON only");
     expect(settings.recap.prompt).toContain("The recap must work for any meeting type");
     expect(settings.recap.prompt).toContain("Primary objective:");
-    expect(settings.recap.prompt).toContain("Create a layered executive recap");
-    expect(settings.recap.prompt).toContain("At a Glance");
-    expect(settings.recap.prompt).toContain("Top Priorities:");
+    expect(settings.recap.prompt).toContain("Create a layered recap");
+    expect(settings.recap.prompt).toContain("Executive Highlights");
+    expect(settings.recap.prompt).toContain("Person-Specific Briefs");
+    expect(settings.recap.prompt).toContain("Action items are grouped by owner");
     expect(settings.recap.prompt).toContain("Prioritize items involving:");
     expect(settings.recap.prompt).toContain("Full Action Register");
     expect(settings.recap.prompt).toContain("Use \"Not defined\" when no mitigation was discussed");

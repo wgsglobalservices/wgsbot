@@ -56,6 +56,7 @@ export const auditEventTypes = [
   "summary.generated",
   "summary.sent",
   "summary.failed",
+  "sales_agenda.import_failed",
   "email.sent",
   "email.failed",
   "artifact.deleted",

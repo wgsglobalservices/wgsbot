@@ -178,25 +178,46 @@ function renderFollowUpTasksHtml(tasks: ReturnType<typeof normalizeSummary>["fol
 
 function renderExecutiveRecapText(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string): string[] {
   const recap = input.summary.executiveRecap;
+  const personSpecificBriefs = notesByHeading(input.summary.meetingNotes, "Person-Specific Briefs:");
+  const noteGroups = notesByHeading(input.summary.meetingNotes, "Notes:");
   return [
-    "1. At a Glance",
+    "1. Executive Highlights",
     "",
-    "Top Priorities",
     ...(recap.topPriorities.length
       ? recap.topPriorities.flatMap((item) => [
           `- **${item.title}** — ${item.summary}`,
-          `  **Why it matters:** ${item.whyItMatters}`,
+          `  **Impact:** ${item.whyItMatters}`,
           `  **Owner / next step:** ${item.owner || "Unassigned"}. ${item.nextStep || "Due TBD"} ${item.dueDate || ""}`.trim(),
           ""
         ])
       : ["None captured.", ""]),
+    "2. Person-Specific Briefs",
+    ...renderMeetingNotesText(personSpecificBriefs),
+    "3. Notes",
+    ...(recap.detailedRecap.length ? recap.detailedRecap.flatMap((item) => [`${item.heading}`, item.summary, ""]) : []),
+    ...renderMeetingNotesText(noteGroups),
+    ...(recap.winsAndProgress.length
+      ? [
+          "Wins & Progress",
+          ...recap.winsAndProgress.flatMap((item) => [`- **${item.title}** — ${item.detail}. **Impact:** ${item.impact}.`]),
+          ""
+        ]
+      : []),
+    ...(recap.detailedRecap.length === 0 && noteGroups.length === 0 && recap.winsAndProgress.length === 0 ? ["No detailed business topics captured.", ""] : []),
+    "4. Action Items",
     "Immediate Actions",
     ...renderTextTable(
       ["Priority", "Action", "Owner", "Due", "Related Customer / Area", "Status"],
       recap.immediateActions.map((item) => [item.priority, item.action, item.owner, item.due, item.relatedCustomerOrArea, item.status])
     ),
     "",
-    "Key Decisions",
+    "Full Action Register",
+    ...renderTextTable(
+      ["#", "Action", "Owner", "Due", "Priority", "Related Area", "Notes"],
+      recap.fullActionRegister.map((item, index) => [String(index + 1), item.action, item.owner, item.due, item.priority, item.relatedArea, item.notes])
+    ),
+    "",
+    "5. Decisions",
     ...(recap.keyDecisions.length
       ? recap.keyDecisions.flatMap((item) => [
           `- **Decision:** ${item.decision}`,
@@ -205,35 +226,20 @@ function renderExecutiveRecapText(input: SummaryEmailInput & { summary: ReturnTy
           ""
         ])
       : ["No clear decisions were confirmed in the transcript.", ""]),
-    "Major Risks / Blockers",
+    "6. Risks / Blockers",
     ...(recap.majorRisks.length
       ? recap.majorRisks.flatMap((item) => [
           `- **${item.title}** — ${item.explanation}. **Impact:** ${item.impact}. **Mitigation / next step:** ${item.mitigationOrNextStep}.`,
           ""
         ])
       : ["None captured.", ""]),
-    "2. Detailed Recap",
-    ...(recap.detailedRecap.length ? recap.detailedRecap.flatMap((item) => [`${item.heading}`, item.summary, ""]) : ["No detailed business topics captured.", ""]),
-    ...(recap.winsAndProgress.length
-      ? [
-          "Wins & Progress",
-          ...recap.winsAndProgress.flatMap((item) => [`- **${item.title}** — ${item.detail}. **Impact:** ${item.impact}.`]),
-          ""
-        ]
-      : []),
-    "3. Full Action Register",
-    ...renderTextTable(
-      ["#", "Action", "Owner", "Due", "Priority", "Related Area", "Notes"],
-      recap.fullActionRegister.map((item, index) => [String(index + 1), item.action, item.owner, item.due, item.priority, item.relatedArea, item.notes])
-    ),
-    "",
-    "4. Open Questions",
+    "7. Open Questions",
     ...renderTextTable(
       ["Question", "Why It Matters", "Owner / Best Next Step"],
       recap.openQuestions.map((item) => [item.question, item.whyItMatters, item.ownerOrBestNextStep])
     ),
     "",
-    "5. Reference Notes",
+    "8. Reference Notes",
     ...(recap.referenceNotes.length
       ? recap.referenceNotes.flatMap((item) => [item.topic, ...item.notes.map((note) => `- ${note}`), ""])
       : [`Meeting type: ${meetingTypeLabel}`, ""])
@@ -242,62 +248,73 @@ function renderExecutiveRecapText(input: SummaryEmailInput & { summary: ReturnTy
 
 function renderExecutiveRecapHtml(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string): string {
   const recap = input.summary.executiveRecap;
+  const personSpecificBriefs = notesByHeading(input.summary.meetingNotes, "Person-Specific Briefs:");
+  const noteGroups = notesByHeading(input.summary.meetingNotes, "Notes:");
   return [
-    sectionHeading("1. At a Glance"),
-    subHeading("Top Priorities"),
+    sectionHeading("1. Executive Highlights"),
     recap.topPriorities.length
       ? `<ol style="margin:0 0 14px 22px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${recap.topPriorities
           .map(
             (item) =>
               `<li style="margin:0 0 10px;"><strong style="color:#111827;">${escapeHtml(item.title)}</strong> — ${escapeHtml(item.summary)}<br>` +
-              `<strong>Why it matters:</strong> ${escapeHtml(item.whyItMatters)}<br>` +
+              `<strong>Impact:</strong> ${escapeHtml(item.whyItMatters)}<br>` +
               `<strong>Owner / next step:</strong> ${escapeHtml(item.owner || "Unassigned")}. ${escapeHtml(item.nextStep || "Due TBD")} ${escapeHtml(item.dueDate || "")}</li>`
           )
           .join("")}</ol>`
       : paragraph("None captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;"),
-    subHeading("Immediate Actions"),
-    renderHtmlTable(
-      ["Priority", "Action", "Owner", "Due", "Related Customer / Area", "Status"],
-      recap.immediateActions.map((item) => [item.priority, item.action, item.owner, item.due, item.relatedCustomerOrArea, item.status])
-    ),
-    subHeading("Key Decisions"),
-    recap.keyDecisions.length
-      ? `<ul style="margin:0 0 14px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${recap.keyDecisions
-          .map((item) => `<li style="margin:0 0 8px;"><strong>Decision:</strong> ${escapeHtml(item.decision)}<br><strong>Impact:</strong> ${escapeHtml(item.impact)}<br><strong>Owner / follow-up:</strong> ${escapeHtml(item.ownerOrFollowUp)}</li>`)
-          .join("")}</ul>`
-      : paragraph("No clear decisions were confirmed in the transcript.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;"),
-    subHeading("Major Risks / Blockers"),
-    recap.majorRisks.length
-      ? `<ul style="margin:0 0 14px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${recap.majorRisks
-          .map((item) => `<li style="margin:0 0 8px;"><strong>${escapeHtml(item.title)}</strong> — ${escapeHtml(item.explanation)} <strong>Impact:</strong> ${escapeHtml(item.impact)} <strong>Mitigation / next step:</strong> ${escapeHtml(item.mitigationOrNextStep)}</li>`)
-          .join("")}</ul>`
-      : paragraph("None captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;"),
-    sectionHeading("2. Detailed Recap"),
+    sectionHeading("2. Person-Specific Briefs"),
+    renderMeetingNotesHtml(personSpecificBriefs),
+    sectionHeading("3. Notes"),
     recap.detailedRecap.length
       ? recap.detailedRecap.map((item) => `${subHeading(item.heading)}${paragraph(item.summary, "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;")}`).join("")
-      : paragraph("No detailed business topics captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;"),
+      : "",
+    renderMeetingNotesHtml(noteGroups),
     recap.winsAndProgress.length
       ? `${subHeading("Wins & Progress")}<ul style="margin:0 0 14px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${recap.winsAndProgress
           .map((item) => `<li style="margin:0 0 8px;"><strong>${escapeHtml(item.title)}</strong> — ${escapeHtml(item.detail)} <strong>Impact:</strong> ${escapeHtml(item.impact)}</li>`)
           .join("")}</ul>`
       : "",
-    sectionHeading("3. Full Action Register"),
+    recap.detailedRecap.length === 0 && noteGroups.length === 0 && recap.winsAndProgress.length === 0 ? paragraph("No detailed business topics captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;") : "",
+    sectionHeading("4. Action Items"),
+    subHeading("Immediate Actions"),
+    renderHtmlTable(
+      ["Priority", "Action", "Owner", "Due", "Related Customer / Area", "Status"],
+      recap.immediateActions.map((item) => [item.priority, item.action, item.owner, item.due, item.relatedCustomerOrArea, item.status])
+    ),
+    subHeading("Full Action Register"),
     renderHtmlTable(
       ["#", "Action", "Owner", "Due", "Priority", "Related Area", "Notes"],
       recap.fullActionRegister.map((item, index) => [String(index + 1), item.action, item.owner, item.due, item.priority, item.relatedArea, item.notes])
     ),
-    sectionHeading("4. Open Questions"),
+    sectionHeading("5. Decisions"),
+    recap.keyDecisions.length
+      ? `<ul style="margin:0 0 14px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${recap.keyDecisions
+          .map((item) => `<li style="margin:0 0 8px;"><strong>Decision:</strong> ${escapeHtml(item.decision)}<br><strong>Impact:</strong> ${escapeHtml(item.impact)}<br><strong>Owner / follow-up:</strong> ${escapeHtml(item.ownerOrFollowUp)}</li>`)
+          .join("")}</ul>`
+      : paragraph("No clear decisions were confirmed in the transcript.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;"),
+    sectionHeading("6. Risks / Blockers"),
+    recap.majorRisks.length
+      ? `<ul style="margin:0 0 14px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${recap.majorRisks
+          .map((item) => `<li style="margin:0 0 8px;"><strong>${escapeHtml(item.title)}</strong> — ${escapeHtml(item.explanation)} <strong>Impact:</strong> ${escapeHtml(item.impact)} <strong>Mitigation / next step:</strong> ${escapeHtml(item.mitigationOrNextStep)}</li>`)
+          .join("")}</ul>`
+      : paragraph("None captured.", "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;"),
+    sectionHeading("7. Open Questions"),
     renderHtmlTable(
       ["Question", "Why It Matters", "Owner / Best Next Step"],
       recap.openQuestions.map((item) => [item.question, item.whyItMatters, item.ownerOrBestNextStep])
     ),
-    sectionHeading("5. Reference Notes"),
+    sectionHeading("8. Reference Notes"),
     recap.referenceNotes.length
       ? recap.referenceNotes
           .map((item) => `${subHeading(item.topic)}<ul style="margin:0 0 12px 20px;padding:0;font-size:15px;line-height:1.55;color:#374151;">${item.notes.map((note) => `<li style="margin:0 0 5px;">${escapeHtml(note)}</li>`).join("")}</ul>`)
           .join("")
       : paragraph(`Meeting type: ${meetingTypeLabel}`, "margin:0 0 12px;font-size:15px;line-height:1.55;color:#374151;")
   ].join("");
+}
+
+function notesByHeading(notes: ReturnType<typeof normalizeSummary>["meetingNotes"], heading: string): ReturnType<typeof normalizeSummary>["meetingNotes"] {
+  const normalizedHeading = heading.toLowerCase();
+  return notes.filter((note) => note.heading.trim().toLowerCase() === normalizedHeading);
 }
 
 function renderTextTable(headers: string[], rows: string[][]): string[] {

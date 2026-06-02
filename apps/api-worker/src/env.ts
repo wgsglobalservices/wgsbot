@@ -21,6 +21,8 @@ export type Env = {
   ATTENDEE_API_KEY?: string;
   ATTENDEE_WEBHOOK_SECRET?: string;
   AI_API_KEY?: string;
+  SALES_AGENDA_IMPORT_URL?: string;
+  SALES_AGENDA_IMPORT_KEY?: string;
   EMAIL_API_KEY?: string;
   SMTP_PASSWORD?: string;
   SESSION_SECRET?: string;

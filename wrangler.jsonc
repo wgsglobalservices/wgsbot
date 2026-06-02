@@ -38,6 +38,7 @@
     "ATTENDEE_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
     "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
     "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
+    "SALES_AGENDA_IMPORT_URL": "https://sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
     "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
     "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
     "ENVIRONMENT": "production"
@@ -87,6 +88,7 @@
         "API_BASE_URL": "https://staging.wgs.bot",
         "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
         "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-staging-artifacts",
+        "SALES_AGENDA_IMPORT_URL": "https://beta.sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
         "DEFAULT_RECORDER_EMAIL": "notetaker-staging@wgs.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker-staging@wgs.bot",
         "ENVIRONMENT": "staging"
@@ -148,6 +150,7 @@
         "ATTENDEE_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
         "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
         "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
+        "SALES_AGENDA_IMPORT_URL": "https://sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
         "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
         "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
         "ENVIRONMENT": "production"

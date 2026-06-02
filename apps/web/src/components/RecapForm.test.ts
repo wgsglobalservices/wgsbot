@@ -32,8 +32,8 @@ describe("recap form helpers", () => {
   it("defines one universal recap template", () => {
     expect(recapTemplates.map((template) => template.title)).toEqual(["Universal WGS recap"]);
     expect(getTemplateById("universal").title).toBe("Universal WGS recap");
-    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("1. At a Glance");
-    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("3. Full Action Register");
+    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("1. Executive Highlights");
+    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("4. Action Items");
     expect(getPromptPreview("universal", defaultSettings.recap.prompt)).toContain("Current saved prompt");
   });
 
@@ -66,9 +66,9 @@ describe("recap form helpers", () => {
   });
 
   it("returns teams-style preview headings for the universal template", () => {
-    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("Major Risks / Blockers");
-    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("4. Open Questions");
-    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("5. Reference Notes");
+    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("6. Risks / Blockers");
+    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("7. Open Questions");
+    expect(getTemplatePreview("universal").meetingNoteHeadings).toContain("8. Reference Notes");
   });
 
   it("copies prompt text when clipboard is available", async () => {

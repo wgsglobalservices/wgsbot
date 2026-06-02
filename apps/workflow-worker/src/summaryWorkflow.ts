@@ -153,7 +153,63 @@ export async function generateAndStoreSummary(
   await createSummary(env.DB, { meeting_id: meetingId, r2_key: summaryKey, summary_json: JSON.stringify(summary), model: settings.ai.model });
   await updateSummaryStatus(env.DB, meetingId, "ready", "SUMMARY_READY");
   await createAuditLog(env.DB, { eventType: "summary.generated", resourceType: "meeting", resourceId: meetingId });
+  await importWeeklySalesSummaryToSalesAgenda(env, { meeting, transcriptText, summary });
   return { meeting, settings, summary, attendees, excludedRecipients: [] };
+}
+
+async function importWeeklySalesSummaryToSalesAgenda(
+  env: WorkflowEnv,
+  input: {
+    meeting: MeetingRow;
+    transcriptText: string;
+    summary: SummaryEmailSummary;
+  }
+): Promise<void> {
+  if (input.summary.meetingType !== "weekly_sales") return;
+  if (!env.SALES_AGENDA_IMPORT_URL || !env.SALES_AGENDA_IMPORT_KEY) return;
+
+  try {
+    const response = await fetch(env.SALES_AGENDA_IMPORT_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-wgs-internal-key": env.SALES_AGENDA_IMPORT_KEY
+      },
+      body: JSON.stringify({
+        source: "wgsbot",
+        sourceMeetingId: input.meeting.id,
+        calendarUid: input.meeting.calendar_uid ?? null,
+        meetingType: "weekly_sales",
+        subject: input.meeting.subject ?? null,
+        startTime: input.meeting.start_time ?? null,
+        endTime: input.meeting.end_time ?? null,
+        transcriptText: input.transcriptText,
+        summary: input.summary
+      })
+    });
+    if (response.ok) return;
+
+    await createAuditLog(env.DB, {
+      eventType: "sales_agenda.import_failed",
+      resourceType: "meeting",
+      resourceId: input.meeting.id,
+      metadata: {
+        status: response.status,
+        statusText: response.statusText,
+        url: env.SALES_AGENDA_IMPORT_URL
+      }
+    });
+  } catch (error) {
+    await createAuditLog(env.DB, {
+      eventType: "sales_agenda.import_failed",
+      resourceType: "meeting",
+      resourceId: input.meeting.id,
+      metadata: {
+        error: error instanceof Error ? error.message : String(error),
+        url: env.SALES_AGENDA_IMPORT_URL
+      }
+    });
+  }
 }
 
 function calculateMeetingDurationMinutes(start?: string, end?: string): number | undefined {

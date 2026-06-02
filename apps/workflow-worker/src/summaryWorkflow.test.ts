@@ -28,6 +28,7 @@ vi.mock("@minutesbot/summary-engine", () => ({
 class FakeD1 {
   emailDeliveries: unknown[][] = [];
   summaryStatuses: unknown[][] = [];
+  auditLogs: Array<{ eventType: string; resourceId: string | null; metadata: unknown }> = [];
 
   constructor(private readonly settings = defaultSettings) {}
 
@@ -43,6 +44,7 @@ class FakeD1 {
         if (sql.includes("FROM meetings")) {
           return {
             id: "mtg_1",
+            calendar_uid: "calendar-uid-1",
             subject: "Project Sync",
             organizer_email: "owner@wgs.bot",
             organizer_name: "Owner",
@@ -93,15 +95,200 @@ class FakeD1 {
       async run() {
         if (sql.includes("INSERT INTO email_deliveries")) db.emailDeliveries.push(this.values);
         if (sql.includes("UPDATE meetings SET summary_status")) db.summaryStatuses.push(this.values);
+        if (sql.includes("INSERT INTO audit_logs")) {
+          db.auditLogs.push({
+            eventType: this.values[2] as string,
+            resourceId: this.values[4] as string | null,
+            metadata: this.values[5] ? JSON.parse(this.values[5] as string) : null
+          });
+        }
         return { success: true };
       }
     };
   }
 }
 
+function env(db: FakeD1, overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    DB: db as unknown as D1Database,
+    ARTIFACTS: {
+      get: vi.fn(async () => ({ text: async () => "Alex: weekly sales transcript" })),
+      put: vi.fn(async () => undefined)
+    } as unknown as R2Bucket,
+    INVITE_QUEUE: { send: vi.fn() },
+    SUMMARY_QUEUE: { send: vi.fn() },
+    EMAIL_QUEUE: { send: vi.fn() },
+    ATTENDEE_API_BASE_URL: "https://attendee.wgsglobal.app",
+    API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
+    AI_API_KEY: "test-ai-key",
+    SESSION_SECRET: "session-secret",
+    TRANSCRIPT_LINK_SECRET: "transcript-secret",
+    ...overrides
+  };
+}
+
+function mockWeeklySalesSummary() {
+  vi.mocked(summarizeTranscript).mockResolvedValueOnce({
+    meetingType: "weekly_sales",
+    recapDepth: "standard",
+    executiveRecap: emptyExecutiveRecap(),
+    meetingNotes: [],
+    followUpTasks: [],
+    summary: ["Pipeline review ready."],
+    decisions: [],
+    actionItems: [],
+    openQuestions: [],
+    risks: [],
+    followUps: []
+  });
+}
+
+function emptyExecutiveRecap() {
+  return {
+    topPriorities: [],
+    immediateActions: [],
+    keyDecisions: [],
+    majorRisks: [],
+    detailedRecap: [],
+    winsAndProgress: [],
+    fullActionRegister: [],
+    openQuestions: [],
+    referenceNotes: []
+  };
+}
+
 describe("summary workflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the configured beta or production Sales OS import URL for weekly_sales recaps", async () => {
+    const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const urls = [
+      "https://beta.sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
+      "https://sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import"
+    ];
+
+    for (const url of urls) {
+      mockWeeklySalesSummary();
+      await generateAndStoreSummary(
+        env(new FakeD1(), {
+          SALES_AGENDA_IMPORT_URL: url,
+          SALES_AGENDA_IMPORT_KEY: "internal-key"
+        }),
+        "mtg_1"
+      );
+    }
+
+    expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual(urls);
+  });
+
+  it("posts weekly_sales recaps to Sales OS with the internal key and recap payload", async () => {
+    const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    mockWeeklySalesSummary();
+
+    await generateAndStoreSummary(
+      env(new FakeD1(), {
+        SALES_AGENDA_IMPORT_URL: "https://sales.example.com/import",
+        SALES_AGENDA_IMPORT_KEY: "internal-key"
+      }),
+      "mtg_1"
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      "content-type": "application/json",
+      "x-wgs-internal-key": "internal-key"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      source: "wgsbot",
+      sourceMeetingId: "mtg_1",
+      calendarUid: "calendar-uid-1",
+      meetingType: "weekly_sales",
+      subject: "Project Sync",
+      startTime: "2026-05-04T15:00:00.000Z",
+      endTime: "2026-05-04T15:02:00.000Z",
+      transcriptText: "Alex: weekly sales transcript",
+      summary: {
+        meetingType: "weekly_sales",
+        recapDepth: "standard",
+        executiveRecap: emptyExecutiveRecap(),
+        meetingNotes: [],
+        followUpTasks: [],
+        summary: ["Pipeline review ready."],
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        risks: [],
+        followUps: []
+      }
+    });
+  });
+
+  it("does not post non-weekly-sales recaps to Sales OS", async () => {
+    const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await generateAndStoreSummary(
+      env(new FakeD1(), {
+        SALES_AGENDA_IMPORT_URL: "https://sales.example.com/import",
+        SALES_AGENDA_IMPORT_KEY: "internal-key"
+      }),
+      "mtg_1"
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("records a Sales OS import audit failure without failing summary generation or email delivery", async () => {
+    const db = new FakeD1({
+      ...defaultSettings,
+      email: { ...defaultSettings.email, sendMeetingRecapsAutomatically: true }
+    });
+    const send = vi.fn(async (message: unknown) => ({ id: `msg-${(message as { to: string }).to}` }));
+    const fetchSpy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("upstream error", { status: 502 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    mockWeeklySalesSummary();
+
+    await generateAndSendSummary(
+      env(db, {
+        SALES_AGENDA_IMPORT_URL: "https://sales.example.com/import",
+        SALES_AGENDA_IMPORT_KEY: "internal-key",
+        SEND_EMAIL: { send }
+      }),
+      "mtg_1"
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalled();
+    expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready", "sent"]);
+    expect(db.auditLogs).toContainEqual({
+      eventType: "sales_agenda.import_failed",
+      resourceId: "mtg_1",
+      metadata: {
+        status: 502,
+        statusText: "",
+        url: "https://sales.example.com/import"
+      }
+    });
+  });
+
+  it("skips Sales OS import cleanly when config is missing", async () => {
+    const db = new FakeD1();
+    const fetchSpy = vi.fn(async () => new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    mockWeeklySalesSummary();
+
+    await generateAndStoreSummary(env(db), "mtg_1");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(db.auditLogs.map((log) => log.eventType)).not.toContain("sales_agenda.import_failed");
+    expect(db.summaryStatuses.map((values) => values[0])).toEqual(["generating", "ready"]);
   });
 
   it("keeps generated recaps ready without emailing meeting attendees by default", async () => {
