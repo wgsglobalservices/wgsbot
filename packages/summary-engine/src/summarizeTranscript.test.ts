@@ -311,10 +311,15 @@ describe("summary engine", () => {
     expect(prompt).toContain("Clean up unclear speaker labels such as \"Conference Room Computer\"");
     expect(prompt).toContain("# {Meeting Name} — Executive Recap");
     expect(prompt).toContain("## 1. At a Glance");
+    expect(prompt).toContain("At a Glance section must appear first");
     expect(prompt).toContain("### Top Priorities");
+    expect(prompt).toContain("Priority ranking order:");
     expect(prompt).toContain("| Priority | Action | Owner | Due | Related Customer / Area | Status |");
+    expect(prompt).toContain("Use \"Not defined\" when no mitigation was discussed");
     expect(prompt).toContain("## 3. Full Action Register");
+    expect(prompt).toContain("Priority definitions:");
     expect(prompt).toContain("Merge duplicate action items.");
+    expect(prompt).toContain("For General meetings, use a concise business recap structure");
     expect(prompt).not.toContain("1. Weekly Summary");
     expect(prompt).not.toContain("9. Action Items");
   });
