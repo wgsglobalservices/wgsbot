@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MeetingArtifactsPanel, MeetingControls, formatMeetingSchedule, meetingArtifactApiPath, meetingRecapRecipientOptions, meetingRegenerateRecapApiPath, normalizeSummaryForDisplay, runMeetingActionWithFeedback, selectMeetingArtifact, summarizeArtifacts } from "./MeetingDetail";
+import { MeetingArtifactsPanel, MeetingControls, formatMeetingSchedule, meetingArtifactApiPath, meetingGenerateTranscriptApiPath, meetingRecapRecipientOptions, meetingRegenerateRecapApiPath, normalizeSummaryForDisplay, runMeetingActionWithFeedback, selectMeetingArtifact, summarizeArtifacts } from "./MeetingDetail";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getRecapEmailDeliveryStatus, RecipientEligibilityTable } from "../components/RecipientEligibilityTable";
@@ -142,6 +142,14 @@ describe("manual meeting recap recipients", () => {
 });
 
 describe("meeting detail action feedback", () => {
+  it("renders transcript generation as a recording-backed action", () => {
+    const html = renderToStaticMarkup(React.createElement(MeetingControls, { meetingId: "mtg_1", done: () => undefined }));
+
+    expect(html).toContain("Generate transcript");
+    expect(html).not.toContain("Fetch transcript");
+    expect(meetingGenerateTranscriptApiPath("mtg/with space")).toBe("/api/meetings/mtg%2Fwith%20space/generate-transcript");
+  });
+
   it("renders a force recap regeneration control", () => {
     const html = renderToStaticMarkup(React.createElement(MeetingControls, { meetingId: "mtg_1", done: () => undefined }));
 

@@ -46,7 +46,7 @@ export async function processAttendeeWebhook(env: Env, payload: AttendeeWebhookP
       status: mapBotStateToMeetingStatus(state, String(payload.data.event_type ?? ""))
     });
     if (payload.data.event_type === "post_processing_completed") {
-      await env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: meeting.id, botId: payload.bot_id });
+      await env.SUMMARY_QUEUE.send({ type: "generate_transcript", meetingId: meeting.id, botId: payload.bot_id });
     }
   }
 

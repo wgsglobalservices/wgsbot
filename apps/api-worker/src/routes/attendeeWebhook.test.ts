@@ -56,7 +56,7 @@ describe("Attendee webhook route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1", botId: "bot_1" });
+    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "generate_transcript", meetingId: "mtg_1", botId: "bot_1" });
     expect(db.webhookEvents).toHaveLength(1);
     expect(db.meetingUpdates).toHaveLength(1);
   });
@@ -80,7 +80,7 @@ describe("Attendee webhook route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1", botId: "bot_1" });
+    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "generate_transcript", meetingId: "mtg_1", botId: "bot_1" });
   });
 
   it("accepts signed chat message update webhooks", async () => {

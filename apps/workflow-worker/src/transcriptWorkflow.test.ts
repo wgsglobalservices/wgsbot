@@ -1,6 +1,6 @@
 import { defaultSettings } from "@minutesbot/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchAndStoreTranscript } from "./transcriptWorkflow";
+import { generateAndStoreTranscript } from "./transcriptWorkflow";
 import type { WorkflowEnv } from "./env";
 
 const getBotRecording = vi.fn();
@@ -91,7 +91,7 @@ describe("transcript workflow", () => {
     const summaryQueue = { send: vi.fn() };
     transcribe.mockResolvedValue({ text: "Alex: hello", usage: { seconds: 2.5 } });
 
-    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
+    await generateAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
 
     expect(getBotTranscript).not.toHaveBeenCalled();
     expect(getBotRecording).not.toHaveBeenCalled();
@@ -102,23 +102,24 @@ describe("transcript workflow", () => {
     expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
   });
 
-  it("stores transcript artifacts from Attendee webhook segments without transcribing the recording", async () => {
+  it("generates transcript artifacts from the recording even when Attendee webhook segments exist", async () => {
     const db = new FakeD1();
     db.transcriptSegments = [
       { speaker_name: "Casey", timestamp_ms: 2000, duration_ms: 500, text: "Second update." },
       { speaker_name: "Alex", timestamp_ms: 1000, duration_ms: 500, text: "First update." },
       { speaker_name: "", timestamp_ms: 3000, duration_ms: 500, text: "  " }
     ];
-    const artifacts = r2WithRecording(new Uint8Array([1, 2, 3]).buffer);
+    const audio = new Uint8Array([1, 2, 3]).buffer;
+    const artifacts = r2WithRecording(audio);
     const summaryQueue = { send: vi.fn() };
+    transcribe.mockResolvedValue({ text: "Whisper-generated transcript.", usage: { seconds: 4 } });
 
-    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
+    await generateAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
 
-    expect(transcribe).not.toHaveBeenCalled();
-    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt", "Alex: First update.\nCasey: Second update.", expect.any(Object));
-    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("\"source\":\"attendee-webhook\""), expect.any(Object));
-    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("\"model\":\"attendee-live-transcript\""), expect.any(Object));
-    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("Alex: First update."), expect.any(Object));
+    expect(transcribe).toHaveBeenCalledWith(audio, "audio/mpeg");
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt", "Whisper-generated transcript.", expect.any(Object));
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.stringContaining("\"source\":\"openrouter\""), expect.any(Object));
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.not.stringContaining("Alex: First update."), expect.any(Object));
     expect(db.meetingUpdates.at(-1)?.[0]).toBe("complete");
     expect(db.meetingUpdates.at(-1)?.[1]).toBe("TRANSCRIPT_AVAILABLE");
     expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
@@ -129,9 +130,9 @@ describe("transcript workflow", () => {
     const artifacts = r2WithoutRecording();
     const summaryQueue = { send: vi.fn() };
 
-    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
+    await generateAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
 
-    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1", botId: "bot_1", attempt: 1 }, { delaySeconds: 60 });
+    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "generate_transcript", meetingId: "mtg_1", botId: "bot_1", attempt: 1 }, { delaySeconds: 60 });
     expect(db.meetingUpdates).toEqual([]);
     expect(db.auditLogs.map((values) => values[2])).toContain("transcript.recording_pending");
     expect(db.auditLogs.map((values) => values[2])).not.toContain("transcript.failed");
@@ -143,7 +144,7 @@ describe("transcript workflow", () => {
     const artifacts = r2WithoutRecording();
     const summaryQueue = { send: vi.fn() };
 
-    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1", undefined, undefined, { attempt: 10 });
+    await generateAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1", undefined, undefined, { attempt: 10 });
 
     expect(summaryQueue.send).not.toHaveBeenCalled();
     expect(db.meetingUpdates.at(-1)?.[0]).toBe("unavailable");
@@ -166,7 +167,7 @@ describe("transcript workflow", () => {
     const artifacts = r2WithRecording(new Uint8Array([1, 2, 3]).buffer);
     transcribe.mockResolvedValue({ text: "Alex: hello", usage: null });
 
-    await fetchAndStoreTranscript(env(db, artifacts, { send: vi.fn() }), "mtg_1");
+    await generateAndStoreTranscript(env(db, artifacts, { send: vi.fn() }), "mtg_1");
 
     expect(db.artifacts.map((values) => values[2])).toEqual(["transcript_text", "transcript_json"]);
     expect(db.artifactUpdates.at(0)).toEqual(["audio/mpeg", 3, "art_1"]);

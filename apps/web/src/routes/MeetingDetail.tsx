@@ -151,12 +151,16 @@ export function MeetingControls({ meetingId, done }: { meetingId: string; done: 
   return (
     <div className="actions">
       <Action label="Retry bot" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/retry-bot`)} done={done} />
-      <Action label="Fetch transcript" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/fetch-transcript`)} done={done} />
+      <Action label="Generate transcript" run={() => apiPost(meetingGenerateTranscriptApiPath(meetingId))} done={done} />
       <Action label="Regenerate recap" run={() => apiPost(meetingRegenerateRecapApiPath(meetingId))} done={done} />
       <Action label="Delete artifacts" run={() => apiDelete(`/api/meetings/${encodeURIComponent(meetingId)}/artifacts`)} done={done} />
       <Action label="Delete Attendee data" run={() => apiPost(`/api/meetings/${encodeURIComponent(meetingId)}/delete-attendee-data`)} done={done} />
     </div>
   );
+}
+
+export function meetingGenerateTranscriptApiPath(meetingId: string): string {
+  return `/api/meetings/${encodeURIComponent(meetingId)}/generate-transcript`;
 }
 
 export function meetingRegenerateRecapApiPath(meetingId: string): string {

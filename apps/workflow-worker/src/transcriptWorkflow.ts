@@ -1,5 +1,5 @@
 import { AttendeeClient } from "@minutesbot/attendee-client";
-import { createAuditLog, getMeeting, getSettings, listTranscriptSegments, updateTranscriptStatus, upsertArtifact } from "@minutesbot/db";
+import { createAuditLog, getMeeting, getSettings, updateTranscriptStatus, upsertArtifact } from "@minutesbot/db";
 import { createOpenRouterTranscriptionProvider } from "@minutesbot/summary-engine";
 import { AppError, recordingR2Key, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import { WorkflowEntrypoint } from "cloudflare:workers";
@@ -21,11 +21,11 @@ type TranscriptResult = {
 
 export class TranscriptWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
-    await fetchAndStoreTranscript(this.env, event.payload.meetingId, event.payload.botId, step.do.bind(step), { attempt: event.payload.attempt });
+    await generateAndStoreTranscript(this.env, event.payload.meetingId, event.payload.botId, step.do.bind(step), { attempt: event.payload.attempt });
   }
 }
 
-export async function fetchAndStoreTranscript(
+export async function generateAndStoreTranscript(
   env: WorkflowEnv,
   meetingId: string,
   botId?: string,
@@ -44,13 +44,6 @@ export async function fetchAndStoreTranscript(
       if (recordingType) {
         await recordRecordingArtifact(env, meetingId, recordingKey, recordingType, recordingObject.size, runStep);
       }
-    }
-
-    const storedTranscript = await transcriptFromStoredSegments(env.DB, meetingId);
-    if (storedTranscript) {
-      await storeTranscriptAndQueueSummary(env, meetingId, storedTranscript);
-      if (settings.attendee.deleteAttendeeDataAfterTranscriptFetch && attendeeBotId) await deleteAttendeeData(env, settings, attendeeBotId);
-      return;
     }
 
     if (!recordingObject) {
@@ -117,7 +110,7 @@ async function handleMissingRecording(env: WorkflowEnv, meetingId: string, atten
   });
   await env.SUMMARY_QUEUE.send(
     {
-      type: "fetch_transcript",
+      type: "generate_transcript",
       meetingId,
       ...(attendeeBotId ? { botId: attendeeBotId } : {}),
       attempt: nextAttempt
@@ -146,27 +139,6 @@ async function recordRecordingArtifact(
   );
 }
 
-async function transcriptFromStoredSegments(db: D1Database, meetingId: string): Promise<TranscriptResult | null> {
-  const segments = await listTranscriptSegments(db, meetingId);
-  const lines = segments
-    .map((segment) => ({
-      speaker: cleanSpeakerName(segment.speaker_name),
-      text: cleanSegmentText(segment.text),
-      timestampMs: typeof segment.timestamp_ms === "number" ? segment.timestamp_ms : Number.POSITIVE_INFINITY,
-      createdAt: typeof segment.created_at === "string" ? segment.created_at : ""
-    }))
-    .filter((segment) => segment.text)
-    .sort((a, b) => a.timestampMs - b.timestampMs || a.createdAt.localeCompare(b.createdAt))
-    .map((segment) => `${segment.speaker}: ${segment.text}`);
-  if (lines.length === 0) return null;
-  return {
-    source: "attendee-webhook",
-    model: "attendee-live-transcript",
-    text: lines.join("\n"),
-    usage: { segments: lines.length }
-  };
-}
-
 async function storeTranscriptAndQueueSummary(env: WorkflowEnv, meetingId: string, transcript: TranscriptResult): Promise<void> {
   const plainText = transcript.text.trim();
   const jsonBody = JSON.stringify({ source: transcript.source, model: transcript.model, text: plainText, usage: transcript.usage ?? null });
@@ -177,7 +149,7 @@ async function storeTranscriptAndQueueSummary(env: WorkflowEnv, meetingId: strin
   await upsertArtifact(env.DB, { meeting_id: meetingId, type: "transcript_text", r2_key: textKey, content_type: "text/plain", size_bytes: byteLength(plainText), deleted_at: null });
   await upsertArtifact(env.DB, { meeting_id: meetingId, type: "transcript_json", r2_key: jsonKey, content_type: "application/json", size_bytes: byteLength(jsonBody), deleted_at: null });
   await updateTranscriptStatus(env.DB, meetingId, "complete", "TRANSCRIPT_AVAILABLE");
-  await createAuditLog(env.DB, { eventType: "transcript.fetched", resourceType: "meeting", resourceId: meetingId, metadata: { source: transcript.source, model: transcript.model } });
+  await createAuditLog(env.DB, { eventType: "transcript.generated", resourceType: "meeting", resourceId: meetingId, metadata: { source: transcript.source, model: transcript.model } });
   await env.SUMMARY_QUEUE.send({ type: "summarize", meetingId });
 }
 
@@ -224,14 +196,6 @@ function inferContentType(key: string): string | null {
 
 function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
-}
-
-function cleanSpeakerName(value: unknown): string {
-  return typeof value === "string" && value.trim() ? value.trim() : "Speaker";
-}
-
-function cleanSegmentText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function openRouterBaseUrl(configuredBaseUrl?: string): string {

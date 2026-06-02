@@ -295,10 +295,10 @@ describe("api worker", () => {
     await expect(allowed.json()).resolves.toMatchObject({ error: { code: "AUTH_NOT_CONFIGURED" } });
   });
 
-  it("queues manual transcript fetches as R2 recording processing requests", async () => {
+  it("queues manual transcript generation as R2 recording processing requests", async () => {
     const send = vi.fn(async () => undefined);
     const response = await app.request(
-      "/api/meetings/mtg_1/fetch-transcript",
+      "/api/meetings/mtg_1/generate-transcript",
       { method: "POST", headers: { authorization: "Bearer test-secret" } },
       {
         DB: new FakeD1() as unknown as D1Database,
@@ -311,7 +311,7 @@ describe("api worker", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(send).toHaveBeenCalledWith({ type: "fetch_transcript", meetingId: "mtg_1" });
+    expect(send).toHaveBeenCalledWith({ type: "generate_transcript", meetingId: "mtg_1" });
   });
 
   it("queues forced recap regeneration from the saved transcript", async () => {

@@ -121,8 +121,12 @@ export const meetingsRoute = new Hono<{ Bindings: Env }>()
       providerMessageId: result.providerMessageId
     });
   })
+  .post("/:id/generate-transcript", async (c) => {
+    await c.env.SUMMARY_QUEUE.send({ type: "generate_transcript", meetingId: c.req.param("id") });
+    return c.json({ ok: true });
+  })
   .post("/:id/fetch-transcript", async (c) => {
-    await c.env.SUMMARY_QUEUE.send({ type: "fetch_transcript", meetingId: c.req.param("id") });
+    await c.env.SUMMARY_QUEUE.send({ type: "generate_transcript", meetingId: c.req.param("id") });
     return c.json({ ok: true });
   })
   .post("/:id/delete-attendee-data", async (c) => {

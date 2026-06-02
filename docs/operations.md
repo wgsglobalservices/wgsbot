@@ -7,7 +7,7 @@ Use `https://attendee.wgsglobal.app/_ops/health` for the Attendee Container rout
 Admins can:
 
 - Retry bot creation.
-- Fetch transcript again.
+- Generate transcript again from the saved recording.
 - Retry summary generation.
 - Delete R2 artifacts.
 - Call Attendee `delete_data` when needed.

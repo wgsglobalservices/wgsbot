@@ -49,6 +49,7 @@ export const auditEventTypes = [
   "transcript.fetch_queued",
   "transcript.recording_pending",
   "transcript.fetched",
+  "transcript.generated",
   "transcript.unavailable",
   "transcript.failed",
   "summary.queued",
