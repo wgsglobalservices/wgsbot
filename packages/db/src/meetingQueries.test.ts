@@ -97,7 +97,7 @@ describe("meeting queries", () => {
       source_recipient: "sales-recap@wgs.services"
     });
 
-    const insert = db.calls.find((call) => call.sql.includes("INSERT OR REPLACE INTO meetings"));
+    const insert = db.calls.find((call) => call.sql.includes("INSERT INTO meetings"));
     expect(insert?.sql).toContain("meeting_type");
     expect(insert?.sql).toContain("source_recipient");
     expect(insert?.values[17]).toBe("weekly_sales");
