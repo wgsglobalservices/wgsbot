@@ -31,6 +31,7 @@ type ArtifactRow = {
 class FakeD1 {
   artifacts: unknown[][] = [];
   artifactUpdates: unknown[][] = [];
+  artifactRows: ArtifactRow[] = [];
   meetingUpdates: unknown[][] = [];
   auditLogs: unknown[][] = [];
   existingArtifacts = new Map<string, ArtifactRow>();
@@ -63,6 +64,7 @@ class FakeD1 {
       },
       async all<T>() {
         if (sql.includes("FROM transcript_segments")) return { results: db.transcriptSegments as T[] };
+        if (sql.includes("FROM artifacts")) return { results: db.artifactRows as T[] };
         return { results: [] as T[] };
       },
       async run() {
@@ -122,6 +124,38 @@ describe("transcript workflow", () => {
     expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.json", expect.not.stringContaining("Alex: First update."), expect.any(Object));
     expect(db.meetingUpdates.at(-1)?.[0]).toBe("complete");
     expect(db.meetingUpdates.at(-1)?.[1]).toBe("TRANSCRIPT_AVAILABLE");
+    expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
+  });
+
+  it("transcribes the latest visible recording artifact when the canonical R2 key is missing", async () => {
+    const db = new FakeD1();
+    const visibleRecording = {
+      id: "art_recording",
+      meeting_id: "mtg_1",
+      type: "recording",
+      r2_key: "recordings/mtg_1/attendee-upload.m4a",
+      content_type: "audio/mp4",
+      size_bytes: 3,
+      created_at: "2026-05-04T00:00:00.000Z",
+      deleted_at: null
+    };
+    db.artifactRows = [visibleRecording];
+    db.existingArtifacts.set(artifactKey("mtg_1", "recording", visibleRecording.r2_key), visibleRecording);
+    const audio = new Uint8Array([4, 5, 6]).buffer;
+    const artifacts = {
+      get: vi.fn(async (key: string) => (key === visibleRecording.r2_key ? r2Object(audio, "audio/mp4", key) : null)),
+      put: vi.fn(async () => undefined)
+    };
+    const summaryQueue = { send: vi.fn() };
+    transcribe.mockResolvedValue({ text: "Alex: visible recording transcript", usage: { seconds: 3 } });
+
+    await generateAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1");
+
+    expect(artifacts.get).toHaveBeenNthCalledWith(1, "recordings/mtg_1/recording.mp3");
+    expect(artifacts.get).toHaveBeenNthCalledWith(2, visibleRecording.r2_key);
+    expect(transcribe).toHaveBeenCalledWith(audio, "audio/mp4");
+    expect(artifacts.put).toHaveBeenCalledWith("transcripts/mtg_1/transcript.txt", "Alex: visible recording transcript", expect.any(Object));
+    expect(db.meetingUpdates.at(-1)?.[0]).toBe("complete");
     expect(summaryQueue.send).toHaveBeenCalledWith({ type: "summarize", meetingId: "mtg_1" });
   });
 
@@ -203,9 +237,9 @@ function r2WithoutRecording() {
   };
 }
 
-function r2Object(data: ArrayBuffer, contentType?: string): R2ObjectBody {
+function r2Object(data: ArrayBuffer, contentType?: string, key = "recordings/mtg_1/recording.mp3"): R2ObjectBody {
   return {
-    key: "recordings/mtg_1/recording.mp3",
+    key,
     size: data.byteLength,
     httpMetadata: contentType ? { contentType } : undefined,
     arrayBuffer: async () => data
