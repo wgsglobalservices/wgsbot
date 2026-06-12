@@ -10,6 +10,8 @@ export type SummaryEmailSummary = Partial<Pick<MeetingSummary, "meetingNotes" | 
 export type SummaryEmailInput = {
   subject: string;
   date?: string;
+  /** IANA time zone for rendering meeting times; defaults to UTC. */
+  timeZone?: string;
   summary: SummaryEmailSummary;
   transcriptDownloadUrl?: string;
   transcriptDownloadExpirationHours?: number;

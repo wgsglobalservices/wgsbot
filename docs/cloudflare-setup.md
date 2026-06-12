@@ -29,9 +29,9 @@ Public traffic will not reach Workers until the relevant domain is active in Clo
 - D1 database binding: `DB`
 - R2 bucket binding: `ARTIFACTS`
 - Recording bucket var: `BOT_RECORDING_BUCKET_NAME`
-- Service binding: `BOT_RUNTIME`
-- Queues: `INVITE_QUEUE`, `SUMMARY_QUEUE`, `EMAIL_QUEUE`
-- Workflow bindings: `MEETING_WORKFLOW`, `TRANSCRIPT_WORKFLOW`, `SUMMARY_WORKFLOW`, `CLEANUP_WORKFLOW`
+- Optional service binding to the bot runtime: `BOT_RUNTIME` (the generated one-shot config sets it; the checked-in root config intentionally does not)
+- Queues: `INVITE_QUEUE`, `SUMMARY_QUEUE` producers; `minutesbot-invites`/`minutesbot-summaries` consumers with the `minutesbot-dlq` dead-letter queue
+- Cron trigger: daily retention cleanup (`triggers.crons` in `wrangler.jsonc`)
 - Optional email binding: `SEND_EMAIL`
 - Meeting bot container deployment: `deploy/bot-container`
 

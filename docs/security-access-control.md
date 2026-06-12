@@ -20,9 +20,10 @@ The admin console stores the entered token in browser local storage and sends it
 The API protects every `/api/*` route except:
 
 - `/api/health`
-- `/api/webhooks/bot`
+- `/api/webhooks/bot` (and the legacy alias `/api/webhooks/attendee`) — protected by the managed internal bot token generated during one-shot deployment; webhooks additionally require an `idempotency_key` and must match the meeting's recorded bot id
+- `/api/artifacts/:meetingId/transcript.txt` — protected by a short-lived HMAC-signed download token embedded in recap emails
 
-Meeting bot webhooks are still protected by the managed internal bot token generated during one-shot deployment.
+Any other named environment (`ENVIRONMENT` set to anything other than `development`, `test`, or `local`) requires Cloudflare Access unless `ALLOW_ADMIN_TOKEN_AUTH=true` is set explicitly; a misspelled environment name fails closed instead of silently downgrading to token auth.
 
 ## Cloudflare Access JWT Validation
 

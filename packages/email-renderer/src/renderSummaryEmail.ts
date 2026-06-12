@@ -27,7 +27,7 @@ function normalizeSummary(summary: SummaryEmailSummary): Required<Pick<SummaryEm
 
 function renderText(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string, recapDepthLabel: string): string {
   const secondarySections = resolveSecondarySections(input, isLegacyOnly(input.summary));
-  const displayDate = input.date ? formatMeetingDate(input.date) : "";
+  const displayDate = input.date ? formatMeetingDate(input.date, input.timeZone) : "";
   return [
     aiDisclaimer,
     "",
@@ -54,7 +54,7 @@ function renderText(input: SummaryEmailInput & { summary: ReturnType<typeof norm
     .join("\n");
 }
 
-function renderHtml(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string, recapDepthLabel: string): string {
+function renderHtml(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string, _recapDepthLabel: string): string {
   const secondarySections = resolveSecondarySections(input, isLegacyOnly(input.summary));
   return [
     '<meta name="color-scheme" content="light only">',
@@ -66,7 +66,7 @@ function renderHtml(input: SummaryEmailInput & { summary: ReturnType<typeof norm
     '<div style="padding:14px 20px 20px;background:#ffffff;background-color:#ffffff;color:#111827;">',
     renderHeader(input, meetingTypeLabel),
     callout(aiDisclaimer),
-    input.summary.recapDepth === "brief" ? callout("Brief meeting detected<br><span style=\"font-weight:650;\">This recap is simplified because the meeting or captured transcript was very short.</span>", "#eef2ff", "#4338ca", "#312e81") : "",
+    input.summary.recapDepth === "brief" ? calloutHtml("Brief meeting detected<br><span style=\"font-weight:650;\">This recap is simplified because the meeting or captured transcript was very short.</span>", "#eef2ff", "#4338ca", "#312e81") : "",
     input.recap?.introText ? paragraph(input.recap.introText, "margin:15px 0 0;font-size:15px;line-height:1.55;color:#374151;") : "",
     sectionHeading("Meeting notes"),
     renderMeetingNotesHtml(input.summary.meetingNotes),
@@ -80,7 +80,7 @@ function renderHtml(input: SummaryEmailInput & { summary: ReturnType<typeof norm
 }
 
 function renderHeader(input: SummaryEmailInput & { summary: ReturnType<typeof normalizeSummary> }, meetingTypeLabel: string): string {
-  const displayDate = input.date ? formatMeetingDate(input.date) : "";
+  const displayDate = input.date ? formatMeetingDate(input.date, input.timeZone) : "";
   return [
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;margin:0 0 4px;">',
     "<tr>",
@@ -209,7 +209,12 @@ function badge(value: string, background = "#ede9fe", color = "#4c1d95"): string
 }
 
 function callout(value: string, background = "#fff7ed", border = "#c2410c", color = "#7c2d12"): string {
-  return `<div style="margin:15px 0 0;padding:11px 13px;border-left:4px solid ${border};background:${background};background-color:${background};font-size:15px;line-height:1.5;color:${color};font-weight:800;">${value}</div>`;
+  return calloutHtml(escapeHtml(value), background, border, color);
+}
+
+/** Only for trusted constant markup; dynamic content must go through callout(). */
+function calloutHtml(html: string, background = "#fff7ed", border = "#c2410c", color = "#7c2d12"): string {
+  return `<div style="margin:15px 0 0;padding:11px 13px;border-left:4px solid ${border};background:${background};background-color:${background};font-size:15px;line-height:1.5;color:${color};font-weight:800;">${html}</div>`;
 }
 
 function paragraph(value: string, style: string): string {
@@ -224,18 +229,24 @@ function transcriptExpirationText(hours = defaultTranscriptDownloadExpirationHou
   return `This transcript link expires after ${hours} ${hours === 1 ? "hour" : "hours"}.`;
 }
 
-function formatMeetingDate(value: string): string {
+function formatMeetingDate(value: string, timeZone = "UTC"): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short"
-  }).format(date);
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short"
+    }).format(date);
+  } catch {
+    // An invalid configured time zone falls back to UTC rather than failing
+    // the entire recap email.
+    return formatMeetingDate(value, "UTC");
+  }
 }
 
 function escapeHtml(value: string): string {

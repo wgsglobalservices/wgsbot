@@ -9,7 +9,10 @@ import { processBotWebhook } from "../services/meetingService";
 const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 
 const payloadSchema = z.object({
-  idempotency_key: z.string().optional(),
+  // Required: without a key, replayed deliveries would re-apply state
+  // changes and re-queue transcript processing on every replay. The
+  // first-party bot runtime always sends one.
+  idempotency_key: z.string().min(1),
   bot_id: z.string(),
   bot_metadata: z.object({ minutesbot_meeting_id: z.string().optional(), calendar_uid: z.string().optional() }).optional(),
   trigger: z.enum(BOT_WEBHOOK_TRIGGERS),

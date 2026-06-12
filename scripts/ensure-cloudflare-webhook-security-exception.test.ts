@@ -13,6 +13,15 @@ describe("ensureWebhookSecurityException", () => {
     );
   });
 
+  it("rejects webhook hosts and paths that could break out of the WAF expression", () => {
+    expect(() => webhookSecurityExceptionExpression({ host: 'evil" or true', path: "/api/webhooks/bot" })).toThrow(
+      'BOT_WEBHOOK_HOST "evil" or true" is invalid'
+    );
+    expect(() => webhookSecurityExceptionExpression({ host: "meeting.minutes.bot", path: '/api" or true' })).toThrow(
+      "BOT_WEBHOOK_PATH"
+    );
+  });
+
   it("inserts the skip rule before existing custom firewall rules", () => {
     const rules = upsertWebhookSecurityException([
       {
@@ -71,6 +80,10 @@ describe("ensureWebhookSecurityException", () => {
       fetcher: fetcher as typeof fetch,
       log: () => undefined
     });
+
+    const zonesRequest = requests[0];
+    expect(zonesRequest?.url).toContain("account.id=account_1");
+    expect(zonesRequest?.url).not.toContain("account_id=");
 
     const update = requests.at(-1);
     expect(update?.url).toBe("https://api.cloudflare.com/client/v4/zones/zone_1/rulesets/phases/http_request_firewall_custom/entrypoint");

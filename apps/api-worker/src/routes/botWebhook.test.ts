@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { app } from "../index";
 
 class WebhookD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   webhookEvents: unknown[][] = [];
   meetingUpdates: unknown[][] = [];
   artifacts: unknown[][] = [];
@@ -28,10 +34,10 @@ class WebhookD1 {
         return null;
       },
       async run() {
-        if (sql.includes("INSERT INTO attendee_webhook_events")) db.webhookEvents.push(this.values);
+        if (sql.includes("INTO attendee_webhook_events")) db.webhookEvents.push(this.values);
         if (sql.includes("UPDATE meetings")) db.meetingUpdates.push(this.values);
         if (sql.includes("INSERT INTO artifacts")) db.artifacts.push(this.values);
-        return { success: true };
+        return { success: true, meta: { changes: 1 } };
       }
     };
   }
@@ -42,17 +48,13 @@ class DuplicateWebhookD1 extends WebhookD1 {
     const statement = super.prepare(sql);
     return {
       ...statement,
-      async first() {
-        if (sql.includes("FROM attendee_webhook_events")) {
-          return {
-            id: "wh_existing",
-            attendee_bot_id: "bot_1",
-            status: "BOT_JOINING",
-            transcript_status: "not_started",
-            summary_status: "not_started"
-          };
+      async run(this: typeof statement) {
+        // Simulate the UNIQUE(idempotency_key) conflict: INSERT OR IGNORE
+        // reports zero changes for a replayed delivery.
+        if (sql.includes("INTO attendee_webhook_events")) {
+          return { success: true, meta: { changes: 0 } };
         }
-        return statement.first();
+        return statement.run.call(this);
       }
     };
   }
@@ -409,7 +411,6 @@ function env(db: WebhookD1, summaryQueue: { send: ReturnType<typeof vi.fn> }) {
     ARTIFACTS: {} as R2Bucket,
     INVITE_QUEUE: { send: vi.fn() },
     SUMMARY_QUEUE: summaryQueue,
-    EMAIL_QUEUE: { send: vi.fn() },
     BOT_INTERNAL_TOKEN: "managed-token",
     SESSION_SECRET: "test-secret"
   };

@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, type FormEvent, type ReactNode } from "react";
-import { setApiAuthTokenProvider } from "./lib/api";
+import { ADMIN_TOKEN_STORAGE_KEY, setApiAuthTokenProvider, verifyAdminToken } from "./lib/api";
 
-const ADMIN_TOKEN_STORAGE_KEY = "minutesbot.adminToken";
 const AdminSessionContext = createContext<{ signOut: () => void } | null>(null);
 
 export function useAdminSession(): { signOut: () => void } {
@@ -23,14 +22,29 @@ setStoredAdminTokenProvider();
 export function AuthGate({ children }: { children: ReactNode }) {
   const [token, setToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) ?? "");
   const [draftToken, setDraftToken] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
 
-  function saveToken(event: FormEvent<HTMLFormElement>) {
+  async function saveToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextToken = draftToken.trim();
     if (!nextToken) return;
-    window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, nextToken);
-    setToken(nextToken);
-    setDraftToken("");
+    setChecking(true);
+    setError("");
+    try {
+      const result = await verifyAdminToken(nextToken);
+      if (!result.ok) {
+        setError(result.status === 401 ? "Invalid admin token." : `Token check failed with ${result.status}.`);
+        return;
+      }
+      window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, nextToken);
+      setToken(nextToken);
+      setDraftToken("");
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : "Token check failed.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   function clearToken() {
@@ -52,7 +66,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
             autoComplete="current-password"
             autoFocus
           />
-          <button type="submit">Continue</button>
+          {error && <span className="fieldError">{error}</span>}
+          <button type="submit" disabled={checking}>{checking ? "Checking..." : "Continue"}</button>
         </form>
       </div>
     );

@@ -4,10 +4,13 @@ import { BotClient, BotClientError } from "@minutesbot/bot-client";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
 import { createEmailProvider, formatEmailAddress } from "@minutesbot/email-sender";
+import { getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider } from "@minutesbot/summary-engine";
-import { botWebhookUrl, defaultSettings } from "@minutesbot/shared";
+import { botWebhookUrl, defaultSettings, readJsonWithLimit } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { readSettings } from "../services/settingsService";
+
+const MAX_TEST_BODY_BYTES = 64 * 1024;
 
 const sampleInvite = `From: Alice <alice@company.com>
 To: notetaker@minutes.bot
@@ -103,11 +106,18 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
   .post("/test-email", async (c) => c.json({ ok: true, message: "Outbound email provider is configured as mock unless a binding/provider is supplied" }))
   .post("/parse-sample-invite", async (c) => c.json({ ok: true, invite: parseIncomingInvite(sampleInvite) }))
   .post("/send-test-summary-email", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await readJsonWithLimit(c.req.raw, MAX_TEST_BODY_BYTES).catch(() => null);
     const parsed = sendTestSummaryEmailSchema.safeParse(body);
     if (!parsed.success) return c.json({ ok: false, message: "Enter a valid recipient email address" }, 400);
 
     const settings = await readSettings(c.env);
+    // Test emails obey the same recipient policy as real recaps: this
+    // endpoint must not be usable to send outbound mail to arbitrary
+    // external addresses.
+    const recipientDomain = getEmailDomain(parsed.data.to);
+    if (!recipientDomain || !isAllowedDomain(recipientDomain, [settings.primaryDomain, ...settings.allowedDomains], settings.policy.allowSubdomains)) {
+      return c.json({ ok: false, message: "Test recipient must belong to an allowed domain" }, 400);
+    }
     const email = renderSummaryEmail({
       subject: "Sample recap email",
       date: "2026-05-07T14:00:00.000Z",
@@ -155,6 +165,7 @@ export const testActionsRoute = new Hono<{ Bindings: Env }>()
     const provider = createEmailProvider({
       provider: settings.email.provider,
       sendEmailBinding: c.env.SEND_EMAIL,
+      smtpEndpoint: settings.email.smtpEndpoint || undefined,
       smtpPassword: c.env.SMTP_PASSWORD
     });
 

@@ -1,6 +1,6 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { env as workerEnv } from "cloudflare:workers";
-import { limitReadableStream, timingSafeEqualString } from "@minutesbot/shared";
+import { timingSafeEqualString } from "@minutesbot/shared";
 
 type BotContainerEnv = {
   MEETING_BOT: DurableObjectNamespace<MeetingBotContainer>;
@@ -22,7 +22,11 @@ export class MeetingBotContainer extends Container {
   sleepAfter = getGlobal("BOT_CONTAINER_SLEEP_AFTER") || "24h";
   envVars = {
     ...stringEnv(workerEnv as BotContainerEnv),
-    BOT_STORAGE_UPLOAD_URL: `${(workerEnv as BotContainerEnv).BOT_API_BASE_URL ?? ""}/internal/recordings`
+    BOT_STORAGE_UPLOAD_URL: `${(workerEnv as BotContainerEnv).BOT_API_BASE_URL ?? ""}/internal/recordings`,
+    // Restrict runtime webhook targets to the configured control-plane
+    // origin so a createBot caller cannot exfiltrate the bearer token to an
+    // arbitrary URL.
+    ...webhookAllowedOrigins(workerEnv as BotContainerEnv)
   };
 }
 
@@ -46,21 +50,35 @@ async function storeRecording(request: Request, env: BotContainerEnv): Promise<R
   }
   const bucket = request.headers.get("x-recording-bucket");
   const key = request.headers.get("x-recording-key");
-  if (!bucket || bucket !== env.BOT_RECORDING_BUCKET_NAME || !isRecordingKey(key)) {
+  if (!bucket || bucket !== env.BOT_RECORDING_BUCKET_NAME || !key || !isRecordingKey(key)) {
     return Response.json({ detail: "Invalid recording target" }, { status: 400 });
   }
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(length) && length > MAX_RECORDING_UPLOAD_BYTES) {
+  const length = Number(request.headers.get("content-length") ?? "");
+  if (!Number.isFinite(length) || length <= 0) {
+    return Response.json({ detail: "Recording upload requires a content-length" }, { status: 411 });
+  }
+  if (length > MAX_RECORDING_UPLOAD_BYTES) {
     return Response.json({ detail: "Recording upload is too large" }, { status: 413 });
   }
-  await env.ARTIFACTS.put(key, limitReadableStream(request.body, MAX_RECORDING_UPLOAD_BYTES), {
+  if (!request.body) {
+    return Response.json({ detail: "Recording upload requires a body" }, { status: 400 });
+  }
+  // R2 put() needs a stream with a known length; FixedLengthStream both
+  // provides it and enforces that the body matches the declared size (an
+  // arbitrary TransformStream here would make every upload fail).
+  const fixed = new FixedLengthStream(length);
+  void request.body.pipeTo(fixed.writable).catch(() => undefined);
+  await env.ARTIFACTS.put(key, fixed.readable, {
     httpMetadata: { contentType: request.headers.get("content-type") ?? "audio/mpeg" }
   });
   return Response.json({ ok: true, key });
 }
 
 function isRecordingKey(key: string): boolean {
-  return /^recordings\/mtg_[a-z0-9]+\/recording\.mp3$/i.test(key);
+  // Accept both control-plane keys (recordings/mtg_<id>/...) and the
+  // runtime's bot-id fallback keys, while still confining writes to the
+  // recordings/ prefix with no traversal.
+  return /^recordings\/[a-z0-9][a-z0-9._-]*\/recording\.(mp3|mp4|webm)$/i.test(key);
 }
 
 function stringEnv(env: BotContainerEnv): Record<string, string> {
@@ -77,6 +95,15 @@ function stringEnv(env: BotContainerEnv): Record<string, string> {
       .map((key) => [key, env[key as keyof BotContainerEnv]])
       .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
   );
+}
+
+function webhookAllowedOrigins(env: BotContainerEnv): Record<string, string> {
+  if (!env.BOT_WEBHOOK_BASE_URL) return {};
+  try {
+    return { BOT_WEBHOOK_ALLOWED_ORIGINS: new URL(env.BOT_WEBHOOK_BASE_URL).origin };
+  } catch {
+    return {};
+  }
 }
 
 function getGlobal(key: "BOT_CONTAINER_SLEEP_AFTER"): string | undefined {

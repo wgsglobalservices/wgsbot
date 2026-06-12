@@ -8,11 +8,15 @@ export function Logs() {
   const [resourceId, setResourceId] = useState("");
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
   const [timeZone, setTimeZone] = useState(defaultSettings.timeZone);
+  const [error, setError] = useState("");
   const load = () => {
     const params = new URLSearchParams();
     if (eventType) params.set("eventType", eventType);
     if (resourceId) params.set("resourceId", resourceId);
-    apiGet<{ auditLogs: Array<Record<string, unknown>> }>(`/api/admin/audit-logs?${params}`).then((data) => setLogs(data.auditLogs));
+    setError("");
+    apiGet<{ auditLogs: Array<Record<string, unknown>> }>(`/api/admin/audit-logs?${params}`)
+      .then((data) => setLogs(data.auditLogs ?? []))
+      .catch((err) => setError(err.message));
   };
   useEffect(() => {
     load();
@@ -26,6 +30,7 @@ export function Logs() {
         <input placeholder="Resource ID" value={resourceId} onChange={(event) => setResourceId(event.target.value)} />
         <button onClick={load}>Filter</button>
       </div>
+      {error && <p className="errorText">{error}</p>}
       <AuditLogTable logs={logs} timeZone={timeZone} />
     </div>
   );

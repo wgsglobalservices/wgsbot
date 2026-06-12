@@ -3,29 +3,35 @@ import {
   findMeetingByBot,
   getMeeting,
   insertWebhookEvent,
-  listMeetingAttendees,
-  updateMeetingBotState,
-  updateMeetingStatus
+  updateMeetingBotState
 } from "@minutesbot/db";
 import type { BotWebhookTrigger } from "@minutesbot/bot-client";
-import { createId } from "@minutesbot/shared";
+import { createId, mapBotStateToMeetingStatus } from "@minutesbot/shared";
 import type { Env } from "../env";
 
 export type BotWebhookPayload = {
-  idempotency_key?: string;
+  idempotency_key: string;
   bot_id: string;
   bot_metadata?: { minutesbot_meeting_id?: string; calendar_uid?: string };
   trigger: BotWebhookTrigger;
   data: Record<string, unknown>;
 };
 
-export async function processBotWebhook(env: Env, payload: BotWebhookPayload): Promise<{ duplicate: boolean; meetingId?: string }> {
+export async function processBotWebhook(env: Env, payload: BotWebhookPayload): Promise<{ duplicate: boolean; meetingId?: string; ignored?: boolean }> {
   const meeting =
     (payload.bot_metadata?.minutesbot_meeting_id ? await getMeeting(env.DB, payload.bot_metadata.minutesbot_meeting_id) : null) ??
     (await findMeetingByBot(env.DB, payload.bot_id));
 
+  // A webhook may only mutate the meeting whose bot it claims to be: events
+  // from a superseded or forged bot id must not clobber live state. A null
+  // attendee_bot_id is allowed because creation webhooks can arrive before
+  // the bot id is recorded.
+  if (meeting && meeting.attendee_bot_id && meeting.attendee_bot_id !== payload.bot_id) {
+    return { duplicate: false, meetingId: meeting.id, ignored: true };
+  }
+
   const event = await insertWebhookEvent(env.DB, {
-    idempotency_key: payload.idempotency_key ?? null,
+    idempotency_key: payload.idempotency_key,
     meeting_id: meeting?.id ?? payload.bot_metadata?.minutesbot_meeting_id ?? null,
     attendee_bot_id: payload.bot_id,
     trigger: payload.trigger,
@@ -80,29 +86,6 @@ async function storeWebhookTranscriptSegment(env: Env, meetingId: string, payloa
   });
 }
 
-export const processAttendeeWebhook = processBotWebhook;
-
-export async function eligibleRecipientCount(env: Env, meetingId: string): Promise<number> {
-  const attendees = await listMeetingAttendees(env.DB, meetingId);
-  return attendees.filter((attendee) => attendee.summary_eligible).length;
-}
-
-function mapBotStateToMeetingStatus(state?: string, eventType?: string) {
-  if (eventType === "post_processing_completed") return "BOT_ENDED";
-  if (eventType === "cancelled" || state === "cancelled") return "CANCELLED";
-  if (eventType === "cancel_requested" || state === "cancelling") return "BOT_LEAVING";
-  if (eventType === "fatal_error") return "BOT_FATAL_ERROR";
-  if (!state) return undefined;
-  if (state === "failed" || state.includes("fatal") || state.includes("error")) return "BOT_FATAL_ERROR";
-  if (state === "prejoin" || state === "joining") return "BOT_JOINING";
-  if (state.includes("waiting")) return "BOT_WAITING_ROOM";
-  if (state === "joined") return "BOT_JOINED";
-  if (state.includes("record")) return "BOT_RECORDING";
-  if (state.includes("post_processing")) return "BOT_POST_PROCESSING";
-  if (state === "ended") return "BOT_ENDED";
-  if (state.includes("leave")) return "BOT_LEAVING";
-  return "BOT_CREATED";
-}
 
 async function applyBotStateChange(env: Env, meetingId: string, payload: BotWebhookPayload): Promise<void> {
   const state = typeof payload.data.new_state === "string" ? payload.data.new_state : undefined;

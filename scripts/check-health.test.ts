@@ -23,7 +23,31 @@ describe("checkHealth", () => {
     expect(exitCode).toBe(1);
     expect(messages).toContain("404 This deployment cannot be found");
     expect(messages).toContain("minutes.bot is resolving through Vercel nameservers, so Cloudflare Workers cannot serve the app.");
-    expect(messages).toContain("Change the registrar nameservers to abby.ns.cloudflare.com and arvind.ns.cloudflare.com, then rerun pnpm check.");
+    expect(messages).toContain(
+      "Change the registrar nameservers to the Cloudflare nameservers assigned to your zone — see the Cloudflare dashboard, then rerun pnpm check."
+    );
+  });
+
+  it("accepts any Cloudflare-assigned nameservers without blaming DNS", async () => {
+    const messages: string[] = [];
+
+    const exitCode = await checkHealth({
+      env: { API_BASE_URL: "https://api.minutes.bot" },
+      fetchHealth: async () =>
+        new Response("This deployment cannot be found", {
+          status: 404,
+          headers: {
+            server: "Vercel",
+            "x-vercel-error": "DEPLOYMENT_NOT_FOUND"
+          }
+        }),
+      resolveNs: async () => ["kiki.ns.cloudflare.com", "carl.ns.cloudflare.com"],
+      log: (message) => messages.push(message),
+      error: (message) => messages.push(message)
+    });
+
+    expect(exitCode).toBe(1);
+    expect(messages).toEqual(["404 This deployment cannot be found"]);
   });
 
   it("returns success for healthy responses", async () => {

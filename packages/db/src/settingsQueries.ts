@@ -20,8 +20,9 @@ export async function saveSettings(db: D1Database, settings: AppSettings): Promi
 }
 
 async function replaceAllowedDomains(db: D1Database, domains: string[]): Promise<void> {
-  await db.prepare("DELETE FROM allowed_domains").run();
-  for (const domain of domains) {
-    await db.prepare("INSERT INTO allowed_domains (id, domain, created_at) VALUES (?, ?, ?)").bind(crypto.randomUUID(), domain, nowIso()).run();
-  }
+  // Batched so a mid-write failure cannot leave the allowlist empty.
+  await db.batch([
+    db.prepare("DELETE FROM allowed_domains"),
+    ...domains.map((domain) => db.prepare("INSERT INTO allowed_domains (id, domain, created_at) VALUES (?, ?, ?)").bind(crypto.randomUUID(), domain, nowIso()))
+  ]);
 }

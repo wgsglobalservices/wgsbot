@@ -15,7 +15,10 @@ export async function summarizeTranscript(input: SummaryInput, provider: Summary
     transcriptDurationMinutes: input.transcriptDurationMinutes ?? depthClassification.transcriptDurationMinutes
   };
   const meetingType = await resolveSummaryMeetingType(input, provider);
-  const chunks = enrichedInput.recapDepth === "brief" ? [input.transcriptText] : chunkTranscript(input.transcriptText);
+  // A "brief" recap can be triggered by a short *meeting duration* while the
+  // transcript itself is arbitrarily long; cap the single chunk so the
+  // prompt cannot balloon.
+  const chunks = enrichedInput.recapDepth === "brief" ? chunkTranscript(input.transcriptText).slice(0, 1) : chunkTranscript(input.transcriptText);
   const partials: MeetingSummary[] = [];
   for (const chunk of chunks) {
     const result = await provider.generate(buildSummaryPrompt({ ...enrichedInput, transcriptText: chunk, meetingType }));
@@ -45,12 +48,24 @@ function combineSummaries(summaries: MeetingSummary[], meetingType: MeetingRecap
     meetingNotes: summaries.flatMap((summary) => summary.meetingNotes),
     followUpTasks: summaries.flatMap((summary) => summary.followUpTasks),
     summary: normalizeSummaryLines(meetingType, recapDepth, summaries.flatMap((summary) => summary.summary)),
-    decisions: summaries.flatMap((summary) => summary.decisions),
+    // Chunk boundaries repeat items the model saw in both chunks; dedupe the
+    // simple string sections so recaps do not list them twice.
+    decisions: dedupeLines(summaries.flatMap((summary) => summary.decisions)),
     actionItems: summaries.flatMap((summary) => summary.actionItems),
-    openQuestions: summaries.flatMap((summary) => summary.openQuestions),
-    risks: summaries.flatMap((summary) => summary.risks),
-    followUps: summaries.flatMap((summary) => summary.followUps)
+    openQuestions: dedupeLines(summaries.flatMap((summary) => summary.openQuestions)),
+    risks: dedupeLines(summaries.flatMap((summary) => summary.risks)),
+    followUps: dedupeLines(summaries.flatMap((summary) => summary.followUps))
   };
+}
+
+function dedupeLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  return lines.filter((line) => {
+    const key = line.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeSummaryLines(meetingType: MeetingRecapType, recapDepth: RecapDepth, lines: string[]): string[] {

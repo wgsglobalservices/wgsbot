@@ -1,28 +1,18 @@
-import { createAuditLog, createEmailDelivery, createSummary, getMeeting, getSettings, listArtifacts, listMeetingAttendees, listTranscriptSegments, updateSummaryStatus } from "@minutesbot/db";
+import { createAuditLog, createEmailDelivery, createSummary, getMeeting, getSettings, listArtifacts, listEmailDeliveries, listMeetingAttendees, listTranscriptSegments, updateSummaryStatus } from "@minutesbot/db";
 import { renderSummaryEmail } from "@minutesbot/email-renderer";
 import { buildSummaryRecipients } from "@minutesbot/recipient-policy";
 import { createOpenAiCompatibleProvider, summarizeTranscript } from "@minutesbot/summary-engine";
 import { AppError, createTranscriptDownloadToken } from "@minutesbot/shared";
 import { createEmailProvider, formatEmailAddress } from "@minutesbot/email-sender";
-import { WorkflowEntrypoint } from "cloudflare:workers";
-import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { WorkflowEnv } from "./env";
 
-type Params = { meetingId: string };
-
-export class SummaryWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
-  async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
-    await generateAndSendSummary(this.env, event.payload.meetingId, step.do.bind(step));
-  }
-}
-
-export async function generateAndSendSummary(
-  env: WorkflowEnv,
-  meetingId: string,
-  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T> = (_name, callback) => callback()
-): Promise<void> {
+export async function generateAndSendSummary(env: WorkflowEnv, meetingId: string): Promise<void> {
   const meeting = await getMeeting(env.DB, meetingId);
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
+  // Queues deliver at least once: a meeting whose recap was already sent
+  // must never blast every recipient again on redelivery.
+  if (meeting.summary_status === "sent") return;
+
   const settings = await getSettings(env.DB);
   const artifacts = await listArtifacts(env.DB, meetingId);
   const transcriptArtifact = artifacts.find((artifact) => artifact.type === "transcript_text" && !artifact.deleted_at);
@@ -32,6 +22,29 @@ export async function generateAndSendSummary(
   if (!transcriptText) throw new AppError("TRANSCRIPT_MISSING", "Transcript artifact is empty", 400);
 
   await updateSummaryStatus(env.DB, meetingId, "generating");
+  try {
+    await generateAndSendSummaryInner(env, meetingId, meeting, settings, transcriptText);
+  } catch (error) {
+    // Without this, a generation failure leaves the meeting stuck on
+    // "generating" forever once queue retries are exhausted.
+    await updateSummaryStatus(env.DB, meetingId, "failed", "FAILED");
+    await createAuditLog(env.DB, {
+      eventType: "summary.failed",
+      resourceType: "meeting",
+      resourceId: meetingId,
+      metadata: { reason: error instanceof Error ? error.message : String(error) }
+    });
+    throw error;
+  }
+}
+
+async function generateAndSendSummaryInner(
+  env: WorkflowEnv,
+  meetingId: string,
+  meeting: NonNullable<Awaited<ReturnType<typeof getMeeting>>>,
+  settings: Awaited<ReturnType<typeof getSettings>>,
+  transcriptText: string
+): Promise<void> {
   const attendees = await listMeetingAttendees(env.DB, meetingId);
   const transcriptSegments = await listTranscriptSegments(env.DB, meetingId);
   const transcriptMetrics = calculateTranscriptMetrics(transcriptText, transcriptSegments);
@@ -41,27 +54,25 @@ export async function generateAndSendSummary(
     apiKey: env.AI_API_KEY ?? "",
     model: settings.ai.model
   });
-  const summary = await runStep("generate summary", () =>
-    summarizeTranscript(
-      {
-        meetingSubject: meeting.subject ?? "Untitled meeting",
-        meetingStartTime: meeting.start_time ?? undefined,
-        meetingEndTime: meeting.end_time ?? undefined,
-        meetingDurationMinutes,
-        transcriptDurationMinutes: transcriptMetrics.transcriptDurationMinutes,
-        speakerTurnCount: transcriptMetrics.speakerTurnCount,
-        wordCount: transcriptMetrics.wordCount,
-        organizerEmail: meeting.organizer_email ?? undefined,
-        attendees: attendees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
-        transcriptText,
-        prompt: settings.recap.prompt,
-        classificationEnabled: settings.recap.classificationEnabled,
-        defaultTemplate: settings.recap.defaultTemplate,
-        shortMeetingBriefRecapEnabled: settings.recap.shortMeetingBriefRecapEnabled,
-        shortMeetingDurationThresholdMinutes: settings.recap.shortMeetingDurationThresholdMinutes
-      },
-      provider
-    )
+  const summary = await summarizeTranscript(
+    {
+      meetingSubject: meeting.subject ?? "Untitled meeting",
+      meetingStartTime: meeting.start_time ?? undefined,
+      meetingEndTime: meeting.end_time ?? undefined,
+      meetingDurationMinutes,
+      transcriptDurationMinutes: transcriptMetrics.transcriptDurationMinutes,
+      speakerTurnCount: transcriptMetrics.speakerTurnCount,
+      wordCount: transcriptMetrics.wordCount,
+      organizerEmail: meeting.organizer_email ?? undefined,
+      attendees: attendees.map((attendee) => ({ email: attendee.email, name: attendee.name ?? undefined })),
+      transcriptText,
+      prompt: settings.recap.prompt,
+      classificationEnabled: settings.recap.classificationEnabled,
+      defaultTemplate: settings.recap.defaultTemplate,
+      shortMeetingBriefRecapEnabled: settings.recap.shortMeetingBriefRecapEnabled,
+      shortMeetingDurationThresholdMinutes: settings.recap.shortMeetingDurationThresholdMinutes
+    },
+    provider
   );
   const summaryKey = `summaries/${meetingId}/summary.json`;
   await env.ARTIFACTS.put(summaryKey, JSON.stringify(summary), { httpMetadata: { contentType: "application/json" } });
@@ -86,6 +97,7 @@ export async function generateAndSendSummary(
   const email = renderSummaryEmail({
     subject: meeting.subject ?? "Untitled meeting",
     date: meeting.start_time ?? undefined,
+    timeZone: settings.timeZone,
     summary,
     transcriptDownloadUrl: await buildTranscriptDownloadUrl(env, meetingId, settings.recap.transcriptDownloadExpirationHours),
     transcriptDownloadExpirationHours: settings.recap.transcriptDownloadExpirationHours,
@@ -96,9 +108,22 @@ export async function generateAndSendSummary(
       sections: settings.recap.sections
     }
   });
-  const sender = createEmailProvider({ provider: settings.email.provider, sendEmailBinding: env.SEND_EMAIL });
-  let sentCount = 0;
+  const sender = createEmailProvider({
+    provider: settings.email.provider,
+    sendEmailBinding: env.SEND_EMAIL,
+    smtpEndpoint: settings.email.smtpEndpoint || undefined,
+    smtpPassword: env.SMTP_PASSWORD
+  });
+  // Partial-failure resume: recipients that already have a "sent" delivery
+  // row are skipped, so a retry after a mid-loop crash cannot double-send.
+  const alreadySent = new Set(
+    (await listEmailDeliveries(env.DB, meetingId))
+      .filter((delivery) => delivery.type === "summary" && delivery.status === "sent")
+      .map((delivery) => delivery.recipient_email)
+  );
+  let sentCount = alreadySent.size;
   for (const recipient of filtered.included) {
+    if (alreadySent.has(recipient.email)) continue;
     try {
       const result = await sender.send({ from: formatEmailAddress(settings.email.senderName, settings.email.senderEmail), to: recipient.email, ...email });
       if (result.status === "sent") sentCount += 1;

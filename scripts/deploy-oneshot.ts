@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { stableStringify } from "../packages/shared/src/json";
 import {
   ensureCloudflareResources,
+  errorMessage,
   runWrangler,
   type CloudflareEnvironment,
   type RequiredCloudflareResources,
@@ -22,6 +23,7 @@ type OneshotDeployOptions = {
   runCommand?: RunCommand;
   runCommandWithInput?: RunCommandWithInput;
   fetchHealth?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
   readTextFile?: (path: string) => Promise<string>;
   writeTextFile?: (path: string, contents: string) => Promise<void>;
   makeDir?: (path: string, options: { recursive: true }) => Promise<unknown>;
@@ -33,12 +35,16 @@ type OneshotEnv = Record<string, string>;
 
 const GENERATED_MINUTESBOT_CONFIG = ".wrangler/oneshot-minutesbot.jsonc";
 const GENERATED_BOT_CONFIG = ".wrangler/oneshot-bot.jsonc";
+const MINUTES_BOT_ZONE = "minutes.bot";
 const EXPECTED_APP_BASE_DOMAIN = "app.minutes.bot";
 const EXPECTED_API_BASE_DOMAIN = "api.minutes.bot";
 const EXPECTED_BOT_WEBHOOK_DOMAIN = "meeting.minutes.bot";
 const EXPECTED_BOT_API_DOMAIN = "meeting-api.minutes.bot";
+const RETENTION_CLEANUP_CRONS = ["0 3 * * *"];
+const BOT_HEALTH_CHECK_ATTEMPTS = 5;
+const BOT_HEALTH_CHECK_RETRY_DELAY_MS = 10_000;
 
-const REQUIRED_ENV_KEYS = [
+export const REQUIRED_ENV_KEYS = [
   "CLOUDFLARE_ACCOUNT_ID",
   "CLOUDFLARE_ENV",
   "APP_BASE_URL",
@@ -60,6 +66,7 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   const runCommand = options.runCommand ?? runWrangler;
   const runCommandWithInput = options.runCommandWithInput ?? runWithInput;
   const fetchHealth = options.fetchHealth ?? fetch;
+  const sleep = options.sleep ?? defaultSleep;
   const log = options.log ?? console.log;
   const error = options.error ?? console.error;
   const loadedEnv = await loadOneshotEnv(options);
@@ -94,10 +101,21 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
     });
   });
 
+  // Push the freshly generated BOT_INTERNAL_TOKEN to BOTH workers before any deploy or
+  // health check so a mid-deploy failure cannot leave the two workers with mismatched tokens.
   await putSecrets({
     label: "meeting bot container",
     configPath: GENERATED_BOT_CONFIG,
     secrets: botContainerSecrets(oneshotEnv),
+    dryRun,
+    runCommandWithInput,
+    log
+  });
+
+  await putSecrets({
+    label: "minutesbot",
+    configPath: GENERATED_MINUTESBOT_CONFIG,
+    secrets: minutesbotSecrets(oneshotEnv),
     dryRun,
     runCommandWithInput,
     log
@@ -108,16 +126,7 @@ export async function deployOneshot(options: OneshotDeployOptions = {}): Promise
   });
 
   await runOrLog(dryRun, log, "check meeting bot health", async () => {
-    await verifyBotHealth({ baseUrl: oneshotEnv.BOT_API_BASE_URL, fetchHealth, log, error });
-  });
-
-  await putSecrets({
-    label: "minutesbot",
-    configPath: GENERATED_MINUTESBOT_CONFIG,
-    secrets: minutesbotSecrets(oneshotEnv),
-    dryRun,
-    runCommandWithInput,
-    log
+    await verifyBotHealth({ baseUrl: oneshotEnv.BOT_API_BASE_URL, fetchHealth, sleep, log, error });
   });
 
   await runOrLog(dryRun, log, "build minutesbot web and worker bundles", async () => {
@@ -169,8 +178,10 @@ export function validateOneshotEnv(env: Record<string, string | undefined>, envi
     throw new Error(`CLOUDFLARE_ENV must match --env. Got "${env.CLOUDFLARE_ENV}" and "${environment}".`);
   }
   for (const key of ["APP_BASE_URL", "API_BASE_URL", "BOT_WEBHOOK_BASE_URL", "BOT_API_BASE_URL"] as const) {
-    assertUrl(key, env[key] ?? "");
+    assertHttpsUrl(key, env[key] ?? "");
   }
+  // Only enforce the canonical hostnames when the configured URLs use the minutes.bot zone;
+  // self-hosters on other domains just need well-formed https URLs.
   assertUrlHostname("APP_BASE_URL", env.APP_BASE_URL ?? "", EXPECTED_APP_BASE_DOMAIN);
   assertUrlHostname("API_BASE_URL", env.API_BASE_URL ?? "", EXPECTED_API_BASE_DOMAIN);
   assertUrlHostname("BOT_WEBHOOK_BASE_URL", env.BOT_WEBHOOK_BASE_URL ?? "", EXPECTED_BOT_WEBHOOK_DOMAIN);
@@ -222,12 +233,7 @@ export function buildMinutesbotWranglerConfig(env: OneshotEnv, environment: Clou
     r2_buckets: [{ binding: "ARTIFACTS", bucket_name: env.BOT_RECORDING_BUCKET_NAME }],
     services: [{ binding: "BOT_RUNTIME", service: workerName("minutesbot-meeting-bot", environment) }],
     queues: queueConfig(resources.queues),
-    workflows: [
-      { name: scopedName("minutesbot-meeting-workflow", environment), binding: "MEETING_WORKFLOW", class_name: "MeetingWorkflow" },
-      { name: scopedName("minutesbot-transcript-workflow", environment), binding: "TRANSCRIPT_WORKFLOW", class_name: "TranscriptWorkflow" },
-      { name: scopedName("minutesbot-summary-workflow", environment), binding: "SUMMARY_WORKFLOW", class_name: "SummaryWorkflow" },
-      { name: scopedName("minutesbot-cleanup-workflow", environment), binding: "CLEANUP_WORKFLOW", class_name: "CleanupWorkflow" }
-    ],
+    triggers: { crons: RETENTION_CLEANUP_CRONS },
     send_email: [{ name: "SEND_EMAIL", allowed_sender_addresses: [env.DEFAULT_SENDER_EMAIL] }]
   });
 }
@@ -333,12 +339,26 @@ async function runSmokeChecks(options: {
   await runOrLog(options.dryRun, options.log, "smoke check minutesbot API health", async () => {
     await getOk(options.fetchHealth, `${trimUrl(options.env.API_BASE_URL)}/api/health`);
   });
-  await runOrLog(options.dryRun, options.log, "smoke check R2 binding", async () => {
-    await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-r2`, options.env.SESSION_SECRET);
-  });
-  await runOrLog(options.dryRun, options.log, "smoke check meeting bot API auth", async () => {
-    await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-bot`, options.env.SESSION_SECRET);
-  });
+  // The admin endpoints sit behind Cloudflare Access, so they only respond to requests that
+  // carry a service token. Without one, the checks would deterministically fail with 403.
+  const accessClientId = options.env.CF_ACCESS_CLIENT_ID?.trim();
+  const accessClientSecret = options.env.CF_ACCESS_CLIENT_SECRET?.trim();
+  if (accessClientId && accessClientSecret) {
+    const accessHeaders = {
+      "CF-Access-Client-Id": accessClientId,
+      "CF-Access-Client-Secret": accessClientSecret
+    };
+    await runOrLog(options.dryRun, options.log, "smoke check R2 binding", async () => {
+      await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-r2`, options.env.SESSION_SECRET, "{}", accessHeaders);
+    });
+    await runOrLog(options.dryRun, options.log, "smoke check meeting bot API auth", async () => {
+      await postJson(options.fetchHealth, `${trimUrl(options.env.APP_BASE_URL)}/api/admin/test-bot`, options.env.SESSION_SECRET, "{}", accessHeaders);
+    });
+  } else {
+    options.log(
+      "Skipping admin smoke checks: Cloudflare Access is enforced and no service token provided. Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to enable them."
+    );
+  }
   await runOrLog(options.dryRun, options.log, "smoke check managed meeting bot webhook", async () => {
     const payload = {
       idempotency_key: `oneshot-smoke-${Date.now()}`,
@@ -356,24 +376,33 @@ async function runSmokeChecks(options: {
 async function verifyBotHealth(options: {
   baseUrl: string;
   fetchHealth: typeof fetch;
+  sleep: (ms: number) => Promise<void>;
   log: (message: string) => void;
   error: (message: string) => void;
 }): Promise<void> {
   const url = `${trimUrl(options.baseUrl)}/_ops/health`;
-  let response: Response;
-  try {
-    response = await options.fetchHealth(url);
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    options.error(`Meeting bot health check failed for ${url}: ${message}`);
-    throw new Error(`Meeting bot health check failed for ${url}: ${message}`);
+  let lastFailure = "";
+  // Custom-domain DNS provisions asynchronously on first deploys, so retry with backoff.
+  for (let attempt = 1; attempt <= BOT_HEALTH_CHECK_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await options.fetchHealth(url);
+      if (response.ok) {
+        options.log(`Meeting bot health check succeeded for ${url}.`);
+        return;
+      }
+      lastFailure = `returned ${response.status}: ${await response.text()}`;
+    } catch (cause) {
+      lastFailure = cause instanceof Error ? cause.message : String(cause);
+    }
+    if (attempt < BOT_HEALTH_CHECK_ATTEMPTS) {
+      options.log(
+        `Meeting bot health check attempt ${attempt}/${BOT_HEALTH_CHECK_ATTEMPTS} failed for ${url}: ${lastFailure}. Retrying in ${BOT_HEALTH_CHECK_RETRY_DELAY_MS / 1000}s...`
+      );
+      await options.sleep(BOT_HEALTH_CHECK_RETRY_DELAY_MS);
+    }
   }
-  if (!response.ok) {
-    const body = await response.text();
-    options.error(`Meeting bot health check returned ${response.status} for ${url}: ${body}`);
-    throw new Error(`Meeting bot health check returned ${response.status} for ${url}`);
-  }
-  options.log(`Meeting bot health check succeeded for ${url}.`);
+  options.error(`Meeting bot health check failed for ${url}: ${lastFailure}`);
+  throw new Error(`Meeting bot health check failed for ${url}: ${lastFailure}`);
 }
 
 async function getOk(fetcher: typeof fetch, url: string): Promise<void> {
@@ -414,20 +443,20 @@ function resourceNames(environment: CloudflareEnvironment, env: OneshotEnv): Req
   return {
     d1: { binding: "DB", databaseName: `minutesbot${suffix}` },
     r2Buckets: [env.BOT_RECORDING_BUCKET_NAME],
-    queues: [`minutesbot${suffix}-invites`, `minutesbot${suffix}-summaries`, `minutesbot${suffix}-email`]
+    queues: [`minutesbot${suffix}-invites`, `minutesbot${suffix}-summaries`, `minutesbot${suffix}-dlq`]
   };
 }
 
 function queueConfig(queues: string[]) {
+  const [inviteQueue, summaryQueue, deadLetterQueue] = queues;
   return {
     producers: [
-      { binding: "INVITE_QUEUE", queue: queues[0] },
-      { binding: "SUMMARY_QUEUE", queue: queues[1] },
-      { binding: "EMAIL_QUEUE", queue: queues[2] }
+      { binding: "INVITE_QUEUE", queue: inviteQueue },
+      { binding: "SUMMARY_QUEUE", queue: summaryQueue }
     ],
     consumers: [
-      { queue: queues[0], max_batch_size: 10, max_batch_timeout: 5 },
-      { queue: queues[1], max_batch_size: 10, max_batch_timeout: 5 }
+      { queue: inviteQueue, max_batch_size: 10, max_batch_timeout: 5, max_retries: 5, dead_letter_queue: deadLetterQueue },
+      { queue: summaryQueue, max_batch_size: 10, max_batch_timeout: 5, max_retries: 5, dead_letter_queue: deadLetterQueue }
     ]
   };
 }
@@ -440,10 +469,6 @@ function workerName(base: string, environment: CloudflareEnvironment): string {
   return environment === "production" ? base : `${base}-${environment}`;
 }
 
-function scopedName(base: string, environment: CloudflareEnvironment): string {
-  return environment === "production" ? base : `${base}-${environment}`;
-}
-
 function stringifyConfig(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -452,23 +477,37 @@ function trimUrl(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-function assertUrl(key: string, value: string): void {
+function assertHttpsUrl(key: string, value: string): void {
+  let url: URL;
   try {
-    new URL(value);
+    url = new URL(value);
   } catch {
     throw new Error(`${key} must be a valid URL.`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`${key} must be an https URL.`);
   }
 }
 
 function assertUrlHostname(key: string, value: string, expectedHostname: string): void {
-  if (new URL(value).hostname !== expectedHostname) {
+  const hostname = new URL(value).hostname;
+  if (!isMinutesBotZoneHostname(hostname)) return;
+  if (hostname !== expectedHostname) {
     throw new Error(`${key} must use ${expectedHostname}.`);
   }
+}
+
+function isMinutesBotZoneHostname(hostname: string): boolean {
+  return hostname === MINUTES_BOT_ZONE || hostname.endsWith(`.${MINUTES_BOT_ZONE}`);
 }
 
 function unquote(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) return value.slice(1, -1);
   return value;
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function generateInternalToken(): string {
@@ -515,7 +554,8 @@ const isCli = process.argv[1] === fileURLToPath(import.meta.url);
 if (isCli) {
   const parsed = parseOneshotArgs(process.argv);
   deployOneshot(parsed).catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    // errorMessage includes the captured wrangler output from CommandError failures.
+    console.error(errorMessage(error));
     process.exitCode = 1;
   });
 }

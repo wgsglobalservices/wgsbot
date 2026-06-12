@@ -8,12 +8,24 @@ import { formatDate } from "../lib/dates";
 export function MeetingDetail({ id }: { id: string }) {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [message, setMessage] = useState("");
-  const load = () => apiGet<Record<string, unknown>>(`/api/meetings/${id}`).then(setData).catch((error) => setMessage(error.message));
+  const load = (shouldApply: () => boolean = () => true) =>
+    apiGet<Record<string, unknown>>(`/api/meetings/${id}`)
+      .then((next) => {
+        if (shouldApply()) setData(next);
+      })
+      .catch((error) => {
+        if (shouldApply()) setMessage(error.message);
+      });
   useEffect(() => {
-    void load();
+    let ignore = false;
+    void load(() => !ignore);
+    return () => {
+      ignore = true;
+    };
   }, [id]);
   if (!data) return <p>{message || "Loading meeting..."}</p>;
-  const meeting = data.meeting as Record<string, unknown>;
+  const meeting = data.meeting as Record<string, unknown> | undefined;
+  if (!meeting) return <p>{message || "Meeting not found."}</p>;
   return (
     <div className="page">
       <header>

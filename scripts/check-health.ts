@@ -1,7 +1,7 @@
 import { resolveNs as nodeResolveNs } from "node:dns/promises";
 import { fileURLToPath } from "node:url";
 
-const CLOUDFLARE_NAMESERVERS = ["abby.ns.cloudflare.com", "arvind.ns.cloudflare.com"];
+const CLOUDFLARE_NAMESERVER_SUFFIX = ".ns.cloudflare.com";
 
 type CheckHealthOptions = {
   env?: Record<string, string | undefined>;
@@ -53,10 +53,14 @@ async function explainDeploymentNotFound(options: {
   const nameservers = await options.resolveNs(domain);
   const normalizedNameservers = nameservers.map((value) => value.toLowerCase().replace(/\.$/, ""));
 
-  if (!CLOUDFLARE_NAMESERVERS.every((nameserver) => normalizedNameservers.includes(nameserver))) {
+  const usesCloudflareNameservers =
+    normalizedNameservers.length > 0 && normalizedNameservers.every((nameserver) => nameserver.endsWith(CLOUDFLARE_NAMESERVER_SUFFIX));
+  if (!usesCloudflareNameservers) {
     options.error(`${domain} is resolving through Vercel nameservers, so Cloudflare Workers cannot serve the app.`);
     options.error(`Current nameservers: ${normalizedNameservers.join(", ") || "none"}`);
-    options.error(`Change the registrar nameservers to ${CLOUDFLARE_NAMESERVERS.join(" and ")}, then rerun pnpm check.`);
+    options.error(
+      "Change the registrar nameservers to the Cloudflare nameservers assigned to your zone — see the Cloudflare dashboard, then rerun pnpm check."
+    );
   }
 }
 

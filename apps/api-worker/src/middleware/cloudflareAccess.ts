@@ -85,7 +85,9 @@ export async function verifyCloudflareAccessJwt(input: {
   if (typeof payload.nbf === "number" && payload.nbf > nowSeconds + CLOCK_SKEW_SECONDS) return false;
 
   const keys = await getJwks(input.jwksUrl, input.fetcher ?? fetch, input.now);
-  const key = keys.find((candidate) => candidate.kid === header.kid) ?? keys.find((candidate) => candidate.kty === "RSA");
+  // Fail closed when the token names a key id that is not published; fall
+  // back to any RSA key only for tokens without a kid header.
+  const key = header.kid ? keys.find((candidate) => candidate.kid === header.kid) : keys.find((candidate) => candidate.kty === "RSA");
   if (!key) return false;
 
   try {

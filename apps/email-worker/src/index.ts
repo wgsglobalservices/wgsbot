@@ -1,7 +1,8 @@
-import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, upsertMeeting } from "@minutesbot/db";
+import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, upsertMeeting, type MeetingRow } from "@minutesbot/db";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
 import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
 import { createId, readStreamTextWithLimit, type MeetingStatus } from "@minutesbot/shared";
+import { verifySenderAuthentication } from "./senderAuthentication";
 
 type Env = {
   DB: D1Database;
@@ -39,12 +40,27 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     return;
   }
 
+  if (parsed.kind === "other") {
+    // Attendee responses (METHOD:REPLY/COUNTER/...) must not reschedule the
+    // meeting or spawn another bot.
+    await ignoreInvite(env, message, "REJECTED_PARSE_ERROR", "Calendar method is not a meeting request or cancellation");
+    return;
+  }
+
   if (!isRecorderRecipient(message.to, settings.recorderEmail, settings.recorderAliasEmails)) {
     await rejectInvite(env, message, "REJECTED_INVALID_RECIPIENT", "Inbound recipient does not match configured recorder email");
     return;
   }
 
-  if (!parsed.teamsJoinUrl) {
+  if (settings.policy.requireAuthenticatedSender) {
+    const senderAuth = verifySenderAuthentication(rawEmail, message.from);
+    if (!senderAuth.allowed) {
+      await rejectInvite(env, message, "REJECTED_UNAUTHENTICATED_SENDER", senderAuth.reason);
+      return;
+    }
+  }
+
+  if (parsed.kind === "request" && !parsed.teamsJoinUrl) {
     await rejectInvite(env, message, "REJECTED_NO_TEAMS_LINK", "No Teams join URL found");
     return;
   }
@@ -55,6 +71,11 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     (!organizerDomain || !isAllowedDomain(organizerDomain, [settings.primaryDomain, ...settings.allowedDomains], settings.policy.allowSubdomains))
   ) {
     await rejectInvite(env, message, "REJECTED_EXTERNAL_ORGANIZER", "Organizer domain is not allowed");
+    return;
+  }
+
+  if (parsed.kind === "cancel") {
+    await handleCancellation(env, parsed, rawEmail, rawKey);
     return;
   }
 
@@ -77,20 +98,13 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     subject: parsed.subject,
     organizer_email: parsed.organizer.email,
     organizer_name: parsed.organizer.name,
-    teams_join_url: parsed.teamsJoinUrl,
+    teams_join_url: parsed.teamsJoinUrl ?? undefined,
     start_time: parsed.startTime,
     end_time: parsed.endTime,
-    status: parsed.kind === "cancel" ? "CANCELLED" : "SCHEDULED"
+    status: "SCHEDULED"
   });
 
-  await createArtifact(env.DB, {
-    meeting_id: meeting.id,
-    type: "raw_invite",
-    r2_key: rawKey,
-    content_type: "message/rfc822",
-    size_bytes: new TextEncoder().encode(rawEmail).byteLength,
-    deleted_at: null
-  });
+  await recordRawInviteArtifact(env, meeting.id, rawKey, rawEmail);
 
   await replaceMeetingAttendees(
     env.DB,
@@ -115,21 +129,47 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
     ]
   );
 
-  if (parsed.kind === "cancel") {
-    if (meeting.attendee_bot_id && shouldCancelBot(meeting.attendee_bot_state, meeting.status)) {
-      await env.INVITE_QUEUE.send({
-        type: "cancel_bot",
-        meetingId: meeting.id,
-        botId: meeting.attendee_bot_id,
-        reason: "calendar_cancel"
-      });
-    }
-    await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.cancelled", resourceType: "meeting", resourceId: meeting.id });
-    return;
-  }
-
   await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
   await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.scheduled", resourceType: "meeting", resourceId: meeting.id });
+}
+
+async function handleCancellation(env: Env, parsed: ReturnType<typeof parseIncomingInvite>, rawEmail: string, rawKey: string): Promise<void> {
+  // Cancellations are matched by calendar UID. Fields missing from the
+  // CANCEL payload (subject, times, join URL) keep their stored values, and
+  // the attendee list is preserved as meeting history.
+  const meeting: MeetingRow = await upsertMeeting(env.DB, {
+    calendar_uid: parsed.calendarUid,
+    subject: parsed.subject || undefined,
+    organizer_email: parsed.organizer.email || undefined,
+    organizer_name: parsed.organizer.name,
+    teams_join_url: parsed.teamsJoinUrl ?? undefined,
+    start_time: parsed.startTime || undefined,
+    end_time: parsed.endTime || undefined,
+    status: "CANCELLED"
+  });
+
+  await recordRawInviteArtifact(env, meeting.id, rawKey, rawEmail);
+
+  if (meeting.attendee_bot_id && shouldCancelBot(meeting.attendee_bot_state, meeting.status)) {
+    await env.INVITE_QUEUE.send({
+      type: "cancel_bot",
+      meetingId: meeting.id,
+      botId: meeting.attendee_bot_id,
+      reason: "calendar_cancel"
+    });
+  }
+  await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.cancelled", resourceType: "meeting", resourceId: meeting.id });
+}
+
+async function recordRawInviteArtifact(env: Env, meetingId: string, rawKey: string, rawEmail: string): Promise<void> {
+  await createArtifact(env.DB, {
+    meeting_id: meetingId,
+    type: "raw_invite",
+    r2_key: rawKey,
+    content_type: "message/rfc822",
+    size_bytes: new TextEncoder().encode(rawEmail).byteLength,
+    deleted_at: null
+  });
 }
 
 function isRecorderRecipient(recipient: string, recorderEmail: string, aliases: string[] = []): boolean {

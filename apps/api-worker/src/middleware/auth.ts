@@ -57,8 +57,14 @@ export function isPublicApiPath(path: string): boolean {
 
 export const adminTokenAuthMiddleware = createAuthMiddleware();
 
+// Fail closed: any named deployed environment ("production", "staging", a
+// typo like "prod") requires Cloudflare Access unless token auth is
+// explicitly allowed. Only unset/development/test environments may fall back
+// to the static admin token implicitly.
 function requiresCloudflareAccess(env: Pick<Env, "ENVIRONMENT" | "ALLOW_ADMIN_TOKEN_AUTH">): boolean {
-  return env.ENVIRONMENT === "production" && env.ALLOW_ADMIN_TOKEN_AUTH !== "true";
+  if (env.ALLOW_ADMIN_TOKEN_AUTH === "true") return false;
+  const environment = (env.ENVIRONMENT ?? "").trim().toLowerCase();
+  return environment !== "" && environment !== "development" && environment !== "test" && environment !== "local";
 }
 
 function readBearerToken(request: Request): string | null {

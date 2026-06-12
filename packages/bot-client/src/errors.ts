@@ -12,5 +12,5 @@ export class BotClientError extends Error {
 export { BotClientError as AttendeeClientError };
 
 export function retryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
+  return status === 408 || status === 429 || status >= 500;
 }

@@ -40,16 +40,34 @@ describe("validateOneshotEnv", () => {
     expect(() => validateOneshotEnv(env, "production")).toThrow("CLOUDFLARE_ENV must match --env");
   });
 
-  it("requires production base URLs to use the configured minutes.bot hosts", () => {
-    expect(() => validateOneshotEnv(sampleEnv({ API_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
+  it("requires minutes.bot zone URLs to use the canonical hostnames", () => {
+    expect(() => validateOneshotEnv(sampleEnv({ API_BASE_URL: "https://wrong.minutes.bot" }), "production")).toThrow(
       "API_BASE_URL must use api.minutes.bot"
     );
-    expect(() => validateOneshotEnv(sampleEnv({ BOT_WEBHOOK_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
+    expect(() => validateOneshotEnv(sampleEnv({ BOT_WEBHOOK_BASE_URL: "https://wrong.minutes.bot" }), "production")).toThrow(
       "BOT_WEBHOOK_BASE_URL must use meeting.minutes.bot"
     );
-    expect(() => validateOneshotEnv(sampleEnv({ BOT_API_BASE_URL: "https://wrong.example.com" }), "production")).toThrow(
+    expect(() => validateOneshotEnv(sampleEnv({ BOT_API_BASE_URL: "https://wrong.minutes.bot" }), "production")).toThrow(
       "BOT_API_BASE_URL must use meeting-api.minutes.bot"
     );
+  });
+
+  it("allows self-hosted deployments on other domains with well-formed https URLs", () => {
+    expect(() =>
+      validateOneshotEnv(
+        sampleEnv({
+          APP_BASE_URL: "https://notes.company.com",
+          API_BASE_URL: "https://api.company.com",
+          BOT_WEBHOOK_BASE_URL: "https://meeting.company.com",
+          BOT_API_BASE_URL: "https://meeting-api.company.com"
+        }),
+        "production"
+      )
+    ).not.toThrow();
+    expect(() => validateOneshotEnv(sampleEnv({ API_BASE_URL: "http://api.company.com" }), "production")).toThrow(
+      "API_BASE_URL must be an https URL"
+    );
+    expect(() => validateOneshotEnv(sampleEnv({ API_BASE_URL: "not-a-url" }), "production")).toThrow("API_BASE_URL must be a valid URL");
   });
 });
 
@@ -84,11 +102,40 @@ describe("build oneshot Wrangler configs", () => {
     expect(minutesbotConfig).toContain('"consumers"');
     expect(minutesbotConfig).toContain('"queue": "minutesbot-invites"');
     expect(minutesbotConfig).toContain('"queue": "minutesbot-summaries"');
+    expect(minutesbotConfig).not.toContain("EMAIL_QUEUE");
+    expect(minutesbotConfig).not.toContain("minutesbot-email");
+    expect(minutesbotConfig).not.toContain('"workflows"');
     expect(minutesbotConfig).not.toContain("notes.company.com");
     expect(minutesbotConfig).not.toContain("api.company.com");
     expect(minutesbotConfig).not.toContain("webhook.company.com");
     expect(`${minutesbotConfig}\n${botConfig}`).not.toContain("legacy-customer");
     expect(`${minutesbotConfig}\n${botConfig}`).not.toContain("customer.example");
+  });
+
+  it("mirrors the root config cron trigger and dead-letter queue consumers", () => {
+    const parsed = JSON.parse(buildMinutesbotWranglerConfig(sampleEnv(), "production")) as {
+      triggers?: { crons?: string[] };
+      workflows?: unknown;
+      queues: { consumers: Array<{ queue: string; max_retries?: number; dead_letter_queue?: string }> };
+    };
+
+    expect(parsed.workflows).toBeUndefined();
+    expect(parsed.triggers).toEqual({ crons: ["0 3 * * *"] });
+    expect(parsed.queues.consumers).toHaveLength(2);
+    for (const consumer of parsed.queues.consumers) {
+      expect(consumer.max_retries).toBe(5);
+      expect(consumer.dead_letter_queue).toBe("minutesbot-dlq");
+    }
+  });
+
+  it("scopes the dead-letter queue name for staging", () => {
+    const parsed = JSON.parse(buildMinutesbotWranglerConfig(sampleEnv({ CLOUDFLARE_ENV: "staging" }), "staging")) as {
+      queues: { consumers: Array<{ dead_letter_queue?: string }> };
+    };
+
+    for (const consumer of parsed.queues.consumers) {
+      expect(consumer.dead_letter_queue).toBe("minutesbot-staging-dlq");
+    }
   });
 });
 
@@ -131,10 +178,11 @@ describe("deployOneshot", () => {
     const commands: string[] = [];
     const secrets: string[] = [];
     const fetches: string[] = [];
+    const adminHeaders: Array<Record<string, string>> = [];
     const writes = new Map<string, string>();
 
     await deployOneshot({
-      env: sampleEnv(),
+      env: sampleEnv({ CF_ACCESS_CLIENT_ID: "access-client-id", CF_ACCESS_CLIENT_SECRET: "access-client-secret" }),
       runCommand: async (command, args) => {
         commands.push(`${command} ${args.join(" ")}`);
         if (args[0] === "d1" && args[1] === "list") return JSON.stringify([{ name: "minutesbot", uuid: "db-id" }]);
@@ -144,6 +192,7 @@ describe("deployOneshot", () => {
       },
       fetchHealth: async (url, init) => {
         fetches.push(`${init?.method ?? "GET"} ${url.toString()}`);
+        if (url.toString().includes("/api/admin/")) adminHeaders.push({ ...((init?.headers ?? {}) as Record<string, string>) });
         return Response.json({ ok: true });
       },
       readTextFile: async (path) => {
@@ -176,9 +225,128 @@ describe("deployOneshot", () => {
     expect(fetches).toContain("POST https://app.minutes.bot/api/admin/test-r2");
     expect(fetches).toContain("POST https://app.minutes.bot/api/admin/test-bot");
     expect(fetches).toContain("POST https://meeting.minutes.bot/api/webhooks/bot");
+    expect(adminHeaders).toHaveLength(2);
+    for (const headers of adminHeaders) {
+      expect(headers["CF-Access-Client-Id"]).toBe("access-client-id");
+      expect(headers["CF-Access-Client-Secret"]).toBe("access-client-secret");
+    }
     expect([...writes.keys()]).toContain(".wrangler/oneshot-minutesbot.jsonc");
     expect([...writes.keys()]).toContain(".wrangler/oneshot-bot.jsonc");
     expect(writes.get(".wrangler/oneshot-bot.jsonc")).toMatch(/"BOT_CONTAINER_INSTANCE_ID": "production-\d{14}-[0-9a-f]{8}"/);
+  });
+
+  it("skips admin smoke checks when no Cloudflare Access service token is provided", async () => {
+    const fetches: string[] = [];
+    const messages: string[] = [];
+    const writes = new Map<string, string>();
+
+    await deployOneshot({
+      env: sampleEnv(),
+      runCommand: async (command, args) => {
+        if (args[0] === "d1" && args[1] === "list") return JSON.stringify([{ name: "minutesbot", uuid: "db-id" }]);
+      },
+      runCommandWithInput: async () => undefined,
+      fetchHealth: async (url, init) => {
+        fetches.push(`${init?.method ?? "GET"} ${url.toString()}`);
+        return Response.json({ ok: true });
+      },
+      readTextFile: async (path) => {
+        const contents = writes.get(path);
+        if (!contents) throw new Error(`missing ${path}`);
+        return contents;
+      },
+      makeDir: async () => undefined,
+      writeTextFile: async (path, contents) => {
+        writes.set(path, contents);
+      },
+      log: (message) => messages.push(message),
+      error: () => undefined
+    });
+
+    expect(fetches).toContain("GET https://api.minutes.bot/api/health");
+    expect(fetches).toContain("POST https://meeting.minutes.bot/api/webhooks/bot");
+    expect(fetches).not.toContain("POST https://app.minutes.bot/api/admin/test-r2");
+    expect(fetches).not.toContain("POST https://app.minutes.bot/api/admin/test-bot");
+    expect(
+      messages.some((message) => message.includes("Skipping admin smoke checks: Cloudflare Access is enforced and no service token provided"))
+    ).toBe(true);
+  });
+
+  it("pushes the internal token to both workers before deploying either", async () => {
+    const events: string[] = [];
+    const writes = new Map<string, string>();
+
+    await deployOneshot({
+      env: sampleEnv(),
+      runCommand: async (command, args) => {
+        events.push(`${command} ${args.join(" ")}`);
+        if (args[0] === "d1" && args[1] === "list") return JSON.stringify([{ name: "minutesbot", uuid: "db-id" }]);
+      },
+      runCommandWithInput: async (command, args) => {
+        events.push(`${command} ${args.join(" ")}`);
+      },
+      fetchHealth: async () => Response.json({ ok: true }),
+      readTextFile: async (path) => {
+        const contents = writes.get(path);
+        if (!contents) throw new Error(`missing ${path}`);
+        return contents;
+      },
+      makeDir: async () => undefined,
+      writeTextFile: async (path, contents) => {
+        writes.set(path, contents);
+      },
+      log: () => undefined,
+      error: () => undefined
+    });
+
+    const botSecretIndex = events.indexOf("wrangler secret put BOT_INTERNAL_TOKEN --config .wrangler/oneshot-bot.jsonc");
+    const minutesbotSecretIndex = events.indexOf("wrangler secret put BOT_INTERNAL_TOKEN --config .wrangler/oneshot-minutesbot.jsonc");
+    const botDeployIndex = events.indexOf("wrangler deploy --config .wrangler/oneshot-bot.jsonc");
+    const minutesbotDeployIndex = events.indexOf("wrangler deploy --config .wrangler/oneshot-minutesbot.jsonc");
+    expect(botSecretIndex).toBeGreaterThanOrEqual(0);
+    expect(minutesbotSecretIndex).toBeGreaterThanOrEqual(0);
+    expect(botDeployIndex).toBeGreaterThanOrEqual(0);
+    expect(botSecretIndex).toBeLessThan(botDeployIndex);
+    expect(minutesbotSecretIndex).toBeLessThan(botDeployIndex);
+    expect(botDeployIndex).toBeLessThan(minutesbotDeployIndex);
+  });
+
+  it("retries the meeting bot health check while custom-domain DNS provisions", async () => {
+    let healthAttempts = 0;
+    const sleeps: number[] = [];
+    const writes = new Map<string, string>();
+
+    await deployOneshot({
+      env: sampleEnv(),
+      runCommand: async (command, args) => {
+        if (args[0] === "d1" && args[1] === "list") return JSON.stringify([{ name: "minutesbot", uuid: "db-id" }]);
+      },
+      runCommandWithInput: async () => undefined,
+      fetchHealth: async (url) => {
+        if (url.toString().endsWith("/_ops/health")) {
+          healthAttempts += 1;
+          if (healthAttempts < 3) throw new Error("getaddrinfo ENOTFOUND meeting-api.minutes.bot");
+        }
+        return Response.json({ ok: true });
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      readTextFile: async (path) => {
+        const contents = writes.get(path);
+        if (!contents) throw new Error(`missing ${path}`);
+        return contents;
+      },
+      makeDir: async () => undefined,
+      writeTextFile: async (path, contents) => {
+        writes.set(path, contents);
+      },
+      log: () => undefined,
+      error: () => undefined
+    });
+
+    expect(healthAttempts).toBe(3);
+    expect(sleeps).toEqual([10_000, 10_000]);
   });
 
   it("generates a fresh bot container instance id even when the env file has an old one", async () => {

@@ -91,6 +91,32 @@ describe("settings form", () => {
     expect(html).toContain("Sender display name");
     expect(html).toContain('value="minutesbot"');
   });
+
+  it("constrains numeric setup fields to the server schema ranges", () => {
+    const html = renderToStaticMarkup(React.createElement(SettingsForm, { value: defaultSettings, onChange: () => undefined }));
+
+    expect(html).toContain('min="0"');
+    expect(html).toContain('max="180"');
+    expect(html).toContain('max="240"');
+    expect(html).toContain('max="3650"');
+    expect(html).toContain('max="720"');
+  });
+
+  it("renders the authenticated sender policy toggle", () => {
+    const html = renderToStaticMarkup(React.createElement(SettingsForm, { value: defaultSettings, onChange: () => undefined }));
+
+    expect(html).toContain("Require authenticated sender (SPF/DKIM/DMARC)");
+  });
+
+  it("renders the smtp endpoint field only for the smtp email provider", () => {
+    const smtpSettings: AppSettings = { ...defaultSettings, email: { ...defaultSettings.email, provider: "smtp" } };
+    const smtpHtml = renderToStaticMarkup(React.createElement(SettingsForm, { value: smtpSettings, onChange: () => undefined }));
+    const mockHtml = renderToStaticMarkup(React.createElement(SettingsForm, { value: defaultSettings, onChange: () => undefined }));
+
+    expect(smtpHtml).toContain("SMTP endpoint");
+    expect(smtpHtml).toContain("https://smtp-bridge.example.com/send");
+    expect(mockHtml).not.toContain("SMTP endpoint");
+  });
 });
 
 describe("sample recap recipient", () => {

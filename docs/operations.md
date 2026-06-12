@@ -13,7 +13,9 @@ Admins can:
 - Delete meeting bot runtime data when needed.
 - Review audit logs and webhook events.
 
-Retention cleanup deletes old raw invites, transcripts, summaries, and audit logs according to settings and marks artifacts as deleted after R2 deletion.
+Retention cleanup runs on the Worker cron trigger (daily at 03:00 UTC, configured in `wrangler.jsonc`) and deletes old raw invites, recordings, transcripts, transcript segments, summaries, and audit logs according to settings, marking artifacts as deleted after R2 deletion.
+
+Queue consumers retry failed messages with a delay and route messages that exhaust retries to the `minutesbot-dlq` dead-letter queue; malformed messages are dropped with an audit log entry instead of poisoning the batch.
 
 Status meanings are intentionally explicit: invite rejection statuses identify policy failures, bot statuses mirror meeting bot state, transcript statuses separate partial/complete/unavailable/failed, and summary statuses track queued/generating/ready/sent/failed.
 

@@ -1,37 +1,48 @@
 import { BotClientError, retryableStatus } from "./errors";
 import type { BotClientOptions, BotHealth, BotRecording, BotRun, BotTranscriptSegment, CreateBotInput } from "./types";
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 export class BotClient {
   private readonly baseUrl: string;
   private readonly internalToken: string | undefined;
   private readonly fetcher: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(options: BotClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.internalToken = options.internalToken;
     this.fetcher = options.fetcher ?? ((input, init) => globalThis.fetch(input, init));
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   async createBot(input: CreateBotInput): Promise<BotRun> {
+    // Named fields first with undefined values stripped, then rawOverrides
+    // applied on top — overrides must actually override (the previous spread
+    // order silently discarded any override that had a named counterpart).
+    const payload: Record<string, unknown> = {
+      meeting_url: input.meetingUrl,
+      bot_name: input.botName,
+      bot_image: input.botImage,
+      bot_chat_message: input.botChatMessage ? { to: "everyone", message: input.botChatMessage } : undefined,
+      join_timeout_seconds: input.joinTimeoutSeconds,
+      recording_settings: input.recordingSettings ? { format: input.recordingSettings.format } : undefined,
+      external_media_storage_settings: input.externalMediaStorageSettings
+        ? {
+            bucket_name: input.externalMediaStorageSettings.bucketName,
+            recording_file_name: input.externalMediaStorageSettings.recordingFileName
+          }
+        : undefined,
+      webhooks: input.webhooks,
+      metadata: input.metadata
+    };
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+    Object.assign(payload, input.rawOverrides ?? {});
     return this.request<BotRun>("/api/v1/bots", {
       method: "POST",
-      body: JSON.stringify({
-        ...(input.rawOverrides ?? {}),
-        meeting_url: input.meetingUrl,
-        bot_name: input.botName,
-        bot_image: input.botImage,
-        bot_chat_message: input.botChatMessage ? { to: "everyone", message: input.botChatMessage } : undefined,
-        join_timeout_seconds: input.joinTimeoutSeconds,
-        recording_settings: input.recordingSettings ? { format: input.recordingSettings.format } : undefined,
-        external_media_storage_settings: input.externalMediaStorageSettings
-          ? {
-              bucket_name: input.externalMediaStorageSettings.bucketName,
-              recording_file_name: input.externalMediaStorageSettings.recordingFileName
-            }
-          : undefined,
-        webhooks: input.webhooks,
-        metadata: input.metadata
-      })
+      body: JSON.stringify(payload)
     });
   }
 
@@ -78,7 +89,13 @@ export class BotClient {
     const response = await this.rawRequest(path, init, errorMapper);
 
     if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      // A non-JSON 2xx body must surface as a typed client error so callers
+      // branching on code/retryable keep working.
+      throw new BotClientError("Meeting bot response was not valid JSON", response.status, true, "BOT_INVALID_RESPONSE");
+    }
   }
 
   private async rawRequest(path: string, init: RequestInit = {}, errorMapper = mapStatus): Promise<Response> {
@@ -87,10 +104,21 @@ export class BotClient {
       ...(this.internalToken ? { authorization: `Bearer ${this.internalToken}` } : {}),
       ...(init.headers as Record<string, string> | undefined)
     };
-    const response = await this.fetcher(`${this.baseUrl}${path}`, {
-      ...init,
-      headers
-    });
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.baseUrl}${path}`, {
+        ...init,
+        headers,
+        // A wedged runtime (e.g. a cold or hung container) must not hang the
+        // calling queue consumer indefinitely.
+        signal: init.signal ?? AbortSignal.timeout(this.timeoutMs)
+      });
+    } catch (error) {
+      if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        throw new BotClientError(`Meeting bot request timed out after ${this.timeoutMs}ms`, 408, true, "BOT_REQUEST_TIMEOUT");
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const retryable = retryableStatus(response.status);

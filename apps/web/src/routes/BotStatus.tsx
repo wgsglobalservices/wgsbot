@@ -12,6 +12,7 @@ export function BotStatus() {
   return (
     <div className="page">
       <header><h1>Meeting bot status</h1><p>The first-party meeting bot runtime joins Teams meetings, records audio, and uploads recordings to R2.</p></header>
+      {typeof status?.error === "string" && status.error && <p className="errorText">{status.error}</p>}
       <div className="metricGrid">
         <div className="metric"><span>Connection</span><strong><StatusBadge value={status?.ok ? "ready" : "not_tested"} /></strong></div>
         <div className="metric"><span>Base URL</span><strong>{String(botRuntime.baseUrl ?? "")}</strong></div>

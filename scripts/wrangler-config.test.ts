@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { stripJsonComments } from "./ensure-cloudflare-resources";
 
 type WranglerConfig = {
   vars?: Record<string, string>;
   queues?: {
     producers?: Array<{ binding?: string; queue?: string }>;
-    consumers?: Array<{ queue?: string; max_batch_size?: number; max_batch_timeout?: number }>;
+    consumers?: Array<{ queue?: string; max_batch_size?: number; max_batch_timeout?: number; max_retries?: number; dead_letter_queue?: string }>;
   };
+  triggers?: { crons?: string[] };
+  workflows?: unknown;
   services?: Array<{ binding?: string; service?: string }>;
   durable_objects?: unknown;
   containers?: unknown;
@@ -14,7 +17,7 @@ type WranglerConfig = {
 };
 
 function readRootWranglerConfig(): WranglerConfig {
-  return JSON.parse(readFileSync("wrangler.jsonc", "utf8")) as WranglerConfig;
+  return JSON.parse(stripJsonComments(readFileSync("wrangler.jsonc", "utf8"))) as WranglerConfig;
 }
 
 describe("root wrangler config", () => {
@@ -27,6 +30,30 @@ describe("root wrangler config", () => {
         expect.objectContaining({ queue: "minutesbot-summaries" })
       ])
     );
+  });
+
+  it("routes exhausted queue retries to the dead-letter queue", () => {
+    const config = readRootWranglerConfig();
+    const consumers = config.queues?.consumers ?? [];
+
+    expect(consumers.length).toBeGreaterThan(0);
+    for (const consumer of consumers) {
+      expect(consumer.dead_letter_queue).toBe("minutesbot-dlq");
+      expect(consumer.max_retries).toBe(5);
+    }
+  });
+
+  it("does not declare an EMAIL_QUEUE producer or workflows", () => {
+    const config = readRootWranglerConfig();
+
+    expect(config.queues?.producers ?? []).not.toEqual(expect.arrayContaining([expect.objectContaining({ binding: "EMAIL_QUEUE" })]));
+    expect(config.workflows).toBeUndefined();
+  });
+
+  it("schedules the retention cleanup cron trigger", () => {
+    const config = readRootWranglerConfig();
+
+    expect(config.triggers?.crons?.length ?? 0).toBeGreaterThan(0);
   });
 
   it("does not bind the meeting bot runtime to the connected minutesbot Worker", () => {

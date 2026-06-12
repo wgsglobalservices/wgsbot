@@ -3,7 +3,6 @@ export type WorkflowEnv = {
   ARTIFACTS: R2Bucket;
   INVITE_QUEUE: { send(message: unknown, options?: { delaySeconds?: number }): Promise<void> };
   SUMMARY_QUEUE: { send(message: unknown, options?: { delaySeconds?: number }): Promise<void> };
-  EMAIL_QUEUE: { send(message: unknown): Promise<void> };
   BOT_RUNTIME?: Fetcher;
   BOT_API_BASE_URL: string;
   BOT_RECORDING_BUCKET_NAME?: string;
@@ -11,6 +10,7 @@ export type WorkflowEnv = {
   BOT_WEBHOOK_BASE_URL?: string;
   API_BASE_URL: string;
   AI_API_KEY?: string;
+  SMTP_PASSWORD?: string;
   SESSION_SECRET?: string;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };
 };

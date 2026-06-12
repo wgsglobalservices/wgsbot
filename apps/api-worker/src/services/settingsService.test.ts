@@ -4,6 +4,12 @@ import { readSettings, uploadBotImage, writeSettings } from "./settingsService";
 import type { Env } from "../env";
 
 class MemoryD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   rows = new Map<string, string>();
   prepare(sql: string) {
     const db = this;
@@ -37,7 +43,6 @@ function env(overrides: Partial<Env> = {}): Env {
     ARTIFACTS: {} as R2Bucket,
     INVITE_QUEUE: { send: async () => undefined },
     SUMMARY_QUEUE: { send: async () => undefined },
-    EMAIL_QUEUE: { send: async () => undefined },
     APP_BASE_URL: "https://minutesbot.example.com",
     API_BASE_URL: "https://minutesbot.example.com",
     BOT_API_BASE_URL: "https://meeting-bot.example.com",

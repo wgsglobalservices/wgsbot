@@ -1,36 +1,34 @@
 import { createAuditLog, getMeeting, getSettings, updateTranscriptStatus, upsertArtifact } from "@minutesbot/db";
 import { createOpenRouterTranscriptionProvider } from "@minutesbot/summary-engine";
 import { AppError, recordingR2Key, resolveBotBaseUrl } from "@minutesbot/shared";
-import { WorkflowEntrypoint } from "cloudflare:workers";
-import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import { createBotClient } from "./botCreation";
 import type { WorkflowEnv } from "./env";
 
-type Params = { meetingId: string; botId?: string; attempt?: number };
-
 const RECORDING_RETRY_DELAY_SECONDS = 60;
 const MAX_RECORDING_FETCH_ATTEMPTS = 10;
-
-export class TranscriptWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
-  async run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<void> {
-    await fetchAndStoreTranscript(this.env, event.payload.meetingId, event.payload.botId, step.do.bind(step), { attempt: event.payload.attempt });
-  }
-}
 
 export async function fetchAndStoreTranscript(
   env: WorkflowEnv,
   meetingId: string,
   botId?: string,
-  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T> = (_name, callback) => callback(),
-  options: { attempt?: number } = {}
+  options: { attempt?: number; force?: boolean } = {}
 ): Promise<void> {
-  const meeting = await runStep("load meeting", () => getMeeting(env.DB, meetingId));
+  const meeting = await getMeeting(env.DB, meetingId);
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
-  const settings = await runStep("load settings", () => getSettings(env.DB));
+  const settings = await getSettings(env.DB);
   const attendeeBotId = botId ?? meeting.attendee_bot_id;
   const recordingKey = recordingR2Key(meetingId);
+
+  // Re-delivered messages must not pay for a second transcription: when the
+  // transcript is already complete, just make sure summarization is queued.
+  // Admin-triggered re-fetches pass force=true to redo the transcription.
+  if (meeting.transcript_status === "complete" && !options.force) {
+    await env.SUMMARY_QUEUE.send({ type: "summarize", meetingId });
+    return;
+  }
+
   try {
-    const recordingObject = await runStep("load R2 recording", () => env.ARTIFACTS.get(recordingKey));
+    const recordingObject = await env.ARTIFACTS.get(recordingKey);
     if (!recordingObject) {
       await handleMissingRecording(env, meetingId, attendeeBotId ?? undefined, recordingKey, options.attempt ?? 0);
       return;
@@ -48,18 +46,16 @@ export async function fetchAndStoreTranscript(
       return;
     }
 
-    const recordingData = await runStep("read R2 recording", () => recordingObject.arrayBuffer());
-    await runStep("record recording artifact", () =>
-      upsertArtifact(env.DB, {
-        meeting_id: meetingId,
-        type: "recording",
-        r2_key: recordingKey,
-        content_type: contentType,
-        size_bytes: recordingObject.size,
-        deleted_at: null
-      })
-    );
-    const transcription = await transcribeRecording(env, settings, recordingData, contentType, runStep);
+    const recordingData = await recordingObject.arrayBuffer();
+    await upsertArtifact(env.DB, {
+      meeting_id: meetingId,
+      type: "recording",
+      r2_key: recordingKey,
+      content_type: contentType,
+      size_bytes: recordingObject.size,
+      deleted_at: null
+    });
+    const transcription = await transcribeRecording(env, settings, recordingData, contentType);
     const plainText = transcription.text.trim();
     if (!plainText) {
       await updateTranscriptStatus(env.DB, meetingId, "unavailable", "NO_TRANSCRIPT_AVAILABLE");
@@ -76,8 +72,6 @@ export async function fetchAndStoreTranscript(
     await upsertArtifact(env.DB, { meeting_id: meetingId, type: "transcript_json", r2_key: jsonKey, content_type: "application/json", size_bytes: byteLength(jsonBody), deleted_at: null });
     await updateTranscriptStatus(env.DB, meetingId, "complete", "TRANSCRIPT_AVAILABLE");
     await createAuditLog(env.DB, { eventType: "transcript.fetched", resourceType: "meeting", resourceId: meetingId, metadata: { source: transcription.source, model: transcription.model } });
-    await env.SUMMARY_QUEUE.send({ type: "summarize", meetingId });
-    if (settings.attendee.deleteAttendeeDataAfterTranscriptFetch && attendeeBotId) await deleteAttendeeData(env, settings, attendeeBotId);
   } catch (error) {
     await updateTranscriptStatus(env.DB, meetingId, "failed", "FAILED");
     await createAuditLog(env.DB, {
@@ -87,6 +81,21 @@ export async function fetchAndStoreTranscript(
       metadata: { reason: error instanceof Error ? error.message : String(error) }
     });
     throw error;
+  }
+
+  // Outside the catch: a failure past this point must not flip the
+  // already-complete transcript to "failed" (a queue retry will re-enter the
+  // idempotent fast path above and only re-enqueue summarization).
+  await env.SUMMARY_QUEUE.send({ type: "summarize", meetingId });
+
+  if (settings.attendee.deleteAttendeeDataAfterTranscriptFetch && attendeeBotId) {
+    // Best effort: bot runtime data deletion must not fail the transcript.
+    try {
+      await deleteAttendeeData(env, settings, attendeeBotId);
+      await createAuditLog(env.DB, { eventType: "attendee.delete_data_called", resourceType: "meeting", resourceId: meetingId, metadata: { botId: attendeeBotId } });
+    } catch (error) {
+      console.error("post-transcript bot data deletion failed", error);
+    }
   }
 }
 
@@ -133,8 +142,7 @@ async function transcribeRecording(
   env: WorkflowEnv,
   settings: Awaited<ReturnType<typeof getSettings>>,
   recordingData: ArrayBuffer,
-  contentType: string,
-  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T>
+  contentType: string
 ) {
   if (!env.AI_API_KEY) throw new AppError("AI_API_KEY_MISSING", "AI_API_KEY secret is not configured", 500);
   const transcriber = createOpenRouterTranscriptionProvider({
@@ -143,7 +151,7 @@ async function transcribeRecording(
     model: settings.recap.transcriptionModel,
     language: settings.recap.language || undefined
   });
-  const transcription = await runStep("transcribe recording", () => transcriber.transcribe(recordingData, contentType));
+  const transcription = await transcriber.transcribe(recordingData, contentType);
   return { source: "openrouter", model: settings.recap.transcriptionModel, text: transcription.text, usage: transcription.usage ?? null };
 }
 

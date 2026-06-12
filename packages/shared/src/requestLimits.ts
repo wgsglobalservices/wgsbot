@@ -40,6 +40,16 @@ export async function readBodyWithLimit(
   return body;
 }
 
+/** Reads and parses a JSON body with a size cap; malformed JSON is a 400, not a 500. */
+export async function readJsonWithLimit(request: Request, maxBytes: number, code = "PAYLOAD_TOO_LARGE"): Promise<unknown> {
+  const text = await readTextWithLimit(request, maxBytes, code);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new AppError("INVALID_JSON_BODY", "Request body must be valid JSON.", 400);
+  }
+}
+
 export function limitReadableStream(stream: ReadableStream<Uint8Array> | null, maxBytes: number): ReadableStream<Uint8Array> | null {
   if (!stream) return null;
   let total = 0;

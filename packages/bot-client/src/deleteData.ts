@@ -1,1 +1,0 @@
-export { BotClient } from "./client";

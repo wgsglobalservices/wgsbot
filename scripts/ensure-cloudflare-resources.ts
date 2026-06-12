@@ -6,17 +6,17 @@ const REQUIRED_RESOURCES = {
   development: {
     d1: { binding: "DB", databaseName: "minutesbot" },
     r2Buckets: ["minutesbot-artifacts"],
-    queues: ["minutesbot-invites", "minutesbot-summaries", "minutesbot-email"]
+    queues: ["minutesbot-invites", "minutesbot-summaries", "minutesbot-dlq"]
   },
   production: {
     d1: { binding: "DB", databaseName: "minutesbot" },
     r2Buckets: ["minutesbot-artifacts"],
-    queues: ["minutesbot-invites", "minutesbot-summaries", "minutesbot-email"]
+    queues: ["minutesbot-invites", "minutesbot-summaries", "minutesbot-dlq"]
   },
   staging: {
     d1: { binding: "DB", databaseName: "minutesbot-staging" },
     r2Buckets: ["minutesbot-staging-artifacts"],
-    queues: ["minutesbot-staging-invites", "minutesbot-staging-summaries", "minutesbot-staging-email"]
+    queues: ["minutesbot-staging-invites", "minutesbot-staging-summaries", "minutesbot-staging-dlq"]
   }
 } as const;
 
@@ -63,13 +63,70 @@ class CommandError extends Error {
 
 function isMissingQueueError(error: unknown): boolean {
   const message = error instanceof CommandError ? `${error.message}\n${error.output}` : error instanceof Error ? error.message : String(error);
+  // Best effort: "not found"-style text also shows up in auth and network failures, so only
+  // treat the resource as missing when the output does not look like an auth/network error.
+  if (/authentication|fetch failed/i.test(message)) return false;
   return /does not exist|not found|could not find/i.test(message);
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
   if (error instanceof CommandError && error.output) return `${error.message}\n${error.output}`;
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+// Strips // and /* */ comments from JSONC text so it can be parsed with JSON.parse.
+// Comment markers inside string literals are left untouched.
+export function stripJsonComments(text: string): string {
+  let result = "";
+  let inString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (inLineComment) {
+      if (char === "\n") {
+        inLineComment = false;
+        result += char;
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (char === "*" && next === "/") {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (inString) {
+      result += char;
+      if (char === "\\" && next !== undefined) {
+        result += next;
+        index += 1;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    result += char;
+  }
+  return result;
 }
 
 export async function runWrangler(command: string, args: string[]): Promise<string> {
@@ -238,7 +295,9 @@ function updateD1DatabaseIdInConfig(options: {
   databaseName: string;
   databaseId: string;
 }): string {
-  const config = JSON.parse(options.configText) as WranglerConfig;
+  // Parse as JSONC; note that rewriting via JSON.stringify drops any comments
+  // (acceptable: the config currently has none).
+  const config = JSON.parse(stripJsonComments(options.configText)) as WranglerConfig;
   if (options.environment === "production" || options.environment === "development") {
     config.d1_databases = updateD1Bindings(config.d1_databases, options.binding, options.databaseName, options.databaseId);
   }
@@ -277,7 +336,8 @@ function isObject(value: unknown): value is { result?: unknown } {
 const isCli = process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isCli) {
-  ensureCloudflareResources({ environment: parseEnvironment(process.argv) }).catch(() => {
+  ensureCloudflareResources({ environment: parseEnvironment(process.argv) }).catch((error: unknown) => {
+    console.error(errorMessage(error));
     process.exitCode = 1;
   });
 }

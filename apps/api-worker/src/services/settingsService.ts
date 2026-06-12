@@ -1,9 +1,16 @@
+import { z } from "zod";
 import { getSettings, saveSettings } from "@minutesbot/db";
 import { AppError, parseSettings, resolveBotBaseUrl, type AppSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 
 const botImageContentTypes = new Set(["image/png", "image/jpeg"]);
 const MAX_BOT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const botImageInputSchema = z.object({
+  contentType: z.string(),
+  data: z.string(),
+  fileName: z.string().max(255).optional()
+});
 
 export async function readSettings(env: Env): Promise<AppSettings> {
   const settings = await getSettings(env.DB);
@@ -32,10 +39,12 @@ export async function writeSettings(env: Env, input: unknown): Promise<AppSettin
   return readSettings(env);
 }
 
-export async function uploadBotImage(
-  env: Env,
-  input: { contentType: string; data: string; fileName?: string }
-): Promise<AppSettings> {
+export async function uploadBotImage(env: Env, rawInput: unknown): Promise<AppSettings> {
+  const parsedInput = botImageInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) {
+    throw new AppError("INVALID_BOT_IMAGE", "Bot image upload payload is invalid.");
+  }
+  const input = parsedInput.data;
   if (!botImageContentTypes.has(input.contentType)) {
     throw new AppError("INVALID_BOT_IMAGE", "Bot image must be a PNG or JPEG.");
   }

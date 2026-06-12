@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiGet, setApiAuthTokenProvider } from "./api";
+import { ADMIN_TOKEN_STORAGE_KEY, ApiError, apiGet, setApiAuthTokenProvider, verifyAdminToken } from "./api";
 
 describe("web api client auth", () => {
   afterEach(() => {
     setApiAuthTokenProvider(null);
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -47,6 +48,33 @@ describe("web api client auth", () => {
       message: "Configure SESSION_SECRET before exposing admin routes."
     });
     await expect(apiGet<{ ok: boolean }>("/api/settings")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("clears the stored admin token on an unauthorized response", async () => {
+    const storage = new Map([[ADMIN_TOKEN_STORAGE_KEY, "stale-token"]]);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        removeItem: (key: string) => storage.delete(key)
+      }
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Invalid admin token" } }), { status: 401 }))
+    );
+
+    await expect(apiGet<{ ok: boolean }>("/api/settings")).rejects.toMatchObject({ status: 401 });
+    expect(storage.has(ADMIN_TOKEN_STORAGE_KEY)).toBe(false);
+  });
+
+  it("verifies a candidate admin token with a bearer header", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(verifyAdminToken("candidate-token")).resolves.toEqual({ ok: true, status: 200 });
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/status", {
+      headers: { authorization: "Bearer candidate-token" }
+    });
   });
 
   it("uses plain admin test action messages on failed responses", async () => {

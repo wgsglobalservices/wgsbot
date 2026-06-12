@@ -73,47 +73,30 @@
       {
         "binding": "SUMMARY_QUEUE",
         "queue": "minutesbot-summaries"
-      },
-      {
-        "binding": "EMAIL_QUEUE",
-        "queue": "minutesbot-email"
       }
     ],
     "consumers": [
       {
         "queue": "minutesbot-invites",
         "max_batch_size": 10,
-        "max_batch_timeout": 5
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "minutesbot-dlq"
       },
       {
         "queue": "minutesbot-summaries",
         "max_batch_size": 10,
-        "max_batch_timeout": 5
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "minutesbot-dlq"
       }
     ]
   },
-  "workflows": [
-    {
-      "name": "minutesbot-meeting-workflow",
-      "binding": "MEETING_WORKFLOW",
-      "class_name": "MeetingWorkflow"
-    },
-    {
-      "name": "minutesbot-transcript-workflow",
-      "binding": "TRANSCRIPT_WORKFLOW",
-      "class_name": "TranscriptWorkflow"
-    },
-    {
-      "name": "minutesbot-summary-workflow",
-      "binding": "SUMMARY_WORKFLOW",
-      "class_name": "SummaryWorkflow"
-    },
-    {
-      "name": "minutesbot-cleanup-workflow",
-      "binding": "CLEANUP_WORKFLOW",
-      "class_name": "CleanupWorkflow"
-    }
-  ],
+  "triggers": {
+    "crons": [
+      "0 3 * * *"
+    ]
+  },
   "send_email": [
     {
       "name": "SEND_EMAIL",

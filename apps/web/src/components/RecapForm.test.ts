@@ -6,9 +6,7 @@ import {
   RecapForm,
   copyPromptText,
   getPromptPreview,
-  getTemplateById,
   getTemplatePreview,
-  moveSection,
   recapTemplates,
   updateSection
 } from "./RecapForm";
@@ -20,13 +18,6 @@ describe("recap form helpers", () => {
 
     expect(next.find((section) => section.key === "summary")).toMatchObject({ label: "Overview", enabled: false });
     expect(sections.find((section) => section.key === "summary")).toMatchObject({ label: "Summary", enabled: true });
-  });
-
-  it("moves sections by one slot and ignores out-of-range moves", () => {
-    const moved = moveSection(defaultSettings.recap.sections, 1, -1);
-
-    expect(moved.map((section) => section.key).slice(0, 2)).toEqual(["decisions", "summary"]);
-    expect(moveSection(defaultSettings.recap.sections, 0, -1)).toBe(defaultSettings.recap.sections);
   });
 
   it("defines the five suggested recap templates", () => {

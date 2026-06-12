@@ -5,6 +5,8 @@ const DEFAULT_ZONE_NAME = "minutes.bot";
 const DEFAULT_WEBHOOK_HOST = "meeting.minutes.bot";
 const DEFAULT_WEBHOOK_PATH = "/api/webhooks/bot";
 const FIREWALL_CUSTOM_PHASE = "http_request_firewall_custom";
+const WEBHOOK_HOST_PATTERN = /^[a-z0-9.-]+$/i;
+const WEBHOOK_PATH_PATTERN = /^[A-Za-z0-9/_.-]*$/;
 
 export const BOT_WEBHOOK_SECURITY_EXCEPTION_REF = "minutesbot_bot_webhook_security_exception";
 export const BOT_WEBHOOK_SECURITY_EXCEPTION_EXPRESSION =
@@ -94,6 +96,14 @@ export async function ensureWebhookSecurityException(options: EnsureWebhookSecur
 }
 
 export function webhookSecurityExceptionExpression(input: { host: string; path: string }): string {
+  // host and path are interpolated into a WAF expression string, so reject anything that
+  // could break out of the quoted literals.
+  if (!WEBHOOK_HOST_PATTERN.test(input.host)) {
+    throw new Error(`BOT_WEBHOOK_HOST "${input.host}" is invalid: only letters, digits, dots, and hyphens are allowed.`);
+  }
+  if (!WEBHOOK_PATH_PATTERN.test(input.path)) {
+    throw new Error(`BOT_WEBHOOK_PATH "${input.path}" is invalid: only letters, digits, slashes, underscores, dots, and hyphens are allowed.`);
+  }
   return `http.host eq "${input.host}" and http.request.uri.path eq "${input.path}" and http.request.method eq "POST"`;
 }
 
@@ -121,7 +131,7 @@ async function findZoneId(input: { apiToken: string; accountId: string; zoneName
     apiToken: input.apiToken,
     fetcher: input.fetcher,
     method: "GET",
-    path: `/zones?name=${encodeURIComponent(input.zoneName)}&account_id=${encodeURIComponent(input.accountId)}`
+    path: `/zones?name=${encodeURIComponent(input.zoneName)}&account.id=${encodeURIComponent(input.accountId)}`
   });
   const zone = response[0];
   if (!zone) throw new Error(`Cloudflare zone ${input.zoneName} was not found in account ${input.accountId}.`);

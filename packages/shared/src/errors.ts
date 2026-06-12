@@ -32,9 +32,10 @@ export function toErrorResponse(error: unknown): { status: number; body: ErrorRe
       body: { error: { code: "VALIDATION_ERROR", message: "Invalid request data", details: error.flatten() } }
     };
   }
-  const message = error instanceof Error ? error.message : "Unexpected error";
+  // Never echo internal error details (SQL text, stack fragments, provider
+  // responses) to clients; callers log the original error.
   return {
     status: 500,
-    body: { error: { code: "INTERNAL_ERROR", message } }
+    body: { error: { code: "INTERNAL_ERROR", message: "Unexpected error" } }
   };
 }

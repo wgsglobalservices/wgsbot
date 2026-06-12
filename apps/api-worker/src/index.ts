@@ -15,22 +15,17 @@ import { isCloudflareAccessConfigured, requireCloudflareAccess } from "./middlew
 import { cleanupOldArtifacts, handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
 import emailWorker from "../../email-worker/src/index";
 
-export { CleanupWorkflow } from "../../workflow-worker/src/cleanupWorkflow";
-export { MeetingWorkflow } from "../../workflow-worker/src/meetingWorkflow";
-export { SummaryWorkflow } from "../../workflow-worker/src/summaryWorkflow";
-export { TranscriptWorkflow } from "../../workflow-worker/src/transcriptWorkflow";
-
 export const app = new Hono<{ Bindings: Env }>();
 
 app.onError((error, c) => {
   const response = toErrorResponse(error);
+  if (response.status >= 500) console.error("api-worker unhandled error", error);
   return c.json(response.body, response.status as 400);
 });
 
 app.use("*", errorMiddleware);
 app.use("*", corsMiddleware);
 app.use("/api/*", adminTokenAuthMiddleware);
-app.options("*", (c) => c.body(null, 204));
 
 app.route("/api/health", healthRoute);
 app.route("/api/settings", settingsRoute);

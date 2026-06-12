@@ -5,6 +5,12 @@ import type { Env } from "./env";
 import { createTranscriptDownloadToken } from "@minutesbot/shared";
 
 class FakeD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   prepare() {
     return {
       bind() {
@@ -24,6 +30,12 @@ class FakeD1 {
 }
 
 class MeetingDetailD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   prepare(sql: string) {
     return {
       bind() {
@@ -73,6 +85,12 @@ class MeetingDetailD1 {
 }
 
 class RetriedMeetingDetailD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   prepare(sql: string) {
     return {
       bind() {
@@ -134,6 +152,12 @@ class RetriedMeetingDetailD1 {
 }
 
 class ActiveBotMeetingD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   updates: unknown[][] = [];
   audits: Array<{ eventType: string; metadata: string | null }> = [];
 
@@ -180,6 +204,12 @@ class ActiveBotMeetingD1 {
 }
 
 class DeleteMeetingD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   deletedTables: string[] = [];
 
   prepare(sql: string) {
@@ -248,8 +278,10 @@ describe("api worker", () => {
     });
   });
 
-  it("exports the configured meeting workflow entrypoint", () => {
-    expect(entrypoint).toHaveProperty("MeetingWorkflow");
+  it("exports queue, scheduled, and email handlers on the deployed worker entrypoint", () => {
+    expect(entrypoint.default).toHaveProperty("queue");
+    expect(entrypoint.default).toHaveProperty("scheduled");
+    expect(entrypoint.default).toHaveProperty("email");
   });
 
   it("serves admin UI assets only from APP_BASE_URL host", async () => {
@@ -324,7 +356,6 @@ describe("api worker", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send },
-        EMAIL_QUEUE: { send: vi.fn() },
         SESSION_SECRET: "test-secret"
       }
     );
@@ -354,7 +385,6 @@ describe("api worker", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
         BOT_INTERNAL_TOKEN: "managed-token",
         BOT_RUNTIME: { fetch: runtimeFetch } as unknown as Fetcher,
@@ -399,7 +429,6 @@ describe("api worker", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
         BOT_INTERNAL_TOKEN: "managed-token",
         BOT_RUNTIME: { fetch: runtimeFetch } as unknown as Fetcher,
@@ -432,7 +461,6 @@ describe("api worker", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
         BOT_INTERNAL_TOKEN: "managed-token",
         BOT_RUNTIME: { fetch: runtimeFetch } as unknown as Fetcher,
@@ -461,7 +489,6 @@ describe("api worker", () => {
         } as unknown as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         SESSION_SECRET: "test-secret"
       }
     );
@@ -489,7 +516,6 @@ describe("api worker", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         SESSION_SECRET: "test-secret"
       }
     );
@@ -511,7 +537,6 @@ describe("api worker", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         SESSION_SECRET: "test-secret"
       }
     );

@@ -463,15 +463,6 @@ export function updateSection(
   return sections.map((section) => (section.key === key ? { ...section, ...patch } : section));
 }
 
-export function moveSection(sections: RecapSettings["sections"], index: number, delta: -1 | 1): RecapSettings["sections"] {
-  const nextIndex = index + delta;
-  if (nextIndex < 0 || nextIndex >= sections.length) return sections;
-  const copy = [...sections];
-  const [item] = copy.splice(index, 1);
-  copy.splice(nextIndex, 0, item);
-  return copy;
-}
-
 function sectionLabel(key: RecapSectionKey): string {
   return {
     summary: "Summary",

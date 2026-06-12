@@ -45,8 +45,8 @@ export function SettingsForm({
         </div>
         <EmailAliasesField value={recorderAliasEmailsText} emails={value.recorderAliasEmails} onChange={(v) => update("recorderAliasEmails", parseEmailList(v))} />
         <div className="compactSettingRows">
-          <NumberWithUnit label="Join meeting early" unit="minutes" value={value.attendee.createBotMinutesBeforeStart} onChange={(v) => update("attendee.createBotMinutesBeforeStart", v)} />
-          <NumberWithUnit label="Waiting room timeout" unit="minutes" value={value.attendee.maxWaitingRoomMinutes} onChange={(v) => update("attendee.maxWaitingRoomMinutes", v)} />
+          <NumberWithUnit label="Join meeting early" unit="minutes" min={0} max={180} value={value.attendee.createBotMinutesBeforeStart} onChange={(v) => update("attendee.createBotMinutesBeforeStart", v)} />
+          <NumberWithUnit label="Waiting room timeout" unit="minutes" min={1} max={240} value={value.attendee.maxWaitingRoomMinutes} onChange={(v) => update("attendee.maxWaitingRoomMinutes", v)} />
         </div>
       </SettingsSection>
 
@@ -91,6 +91,9 @@ export function SettingsForm({
           <SelectField label="Provider" value={value.email.provider} options={["mock", "cloudflare-email-service", "smtp"]} width="medium" onChange={(v) => update("email.provider", v)} />
           <TextField label="Sender display name" value={value.email.senderName} width="medium" onChange={(v) => update("email.senderName", v)} />
           <TextField label="Sender email" value={value.email.senderEmail} width="medium" onChange={(v) => update("email.senderEmail", v)} />
+          {value.email.provider === "smtp" && (
+            <TextField label="SMTP endpoint" value={value.email.smtpEndpoint ?? ""} width="url" placeholder="https://smtp-bridge.example.com/send" onChange={(v) => update("email.smtpEndpoint", v)} />
+          )}
         </div>
         <div className="inlineActions">
           <TestActionButton path="/api/admin/test-email" label="Test outbound email" variant="secondary" />
@@ -121,6 +124,12 @@ export function SettingsForm({
             label="Allow subdomains"
             onChange={(v) => update("policy.allowSubdomains", v)}
           />
+          <ToggleRow
+            checked={value.policy.requireAuthenticatedSender}
+            description="Reject inbound invites whose sender fails SPF, DKIM, or DMARC verification."
+            label="Require authenticated sender (SPF/DKIM/DMARC)"
+            onChange={(v) => update("policy.requireAuthenticatedSender", v)}
+          />
         </div>
       </SettingsSection>
 
@@ -130,11 +139,11 @@ export function SettingsForm({
             <span>Data type</span>
             <span>Retain for</span>
           </div>
-          <NumberWithUnit label="Raw invites" unit="days" value={value.retention.rawInviteDays} onChange={(v) => update("retention.rawInviteDays", v)} />
-          <NumberWithUnit label="Transcripts" unit="days" value={value.retention.transcriptDays} onChange={(v) => update("retention.transcriptDays", v)} />
-          <NumberWithUnit label="Summaries" unit="days" value={value.retention.summaryDays} onChange={(v) => update("retention.summaryDays", v)} />
-          <NumberWithUnit label="Audit logs" unit="days" value={value.retention.auditLogDays} onChange={(v) => update("retention.auditLogDays", v)} />
-          <NumberWithUnit label="Transcript link expiration" unit="hours" value={value.recap.transcriptDownloadExpirationHours} onChange={(v) => update("recap.transcriptDownloadExpirationHours", v)} />
+          <NumberWithUnit label="Raw invites" unit="days" min={1} max={3650} value={value.retention.rawInviteDays} onChange={(v) => update("retention.rawInviteDays", v)} />
+          <NumberWithUnit label="Transcripts" unit="days" min={1} max={3650} value={value.retention.transcriptDays} onChange={(v) => update("retention.transcriptDays", v)} />
+          <NumberWithUnit label="Summaries" unit="days" min={1} max={3650} value={value.retention.summaryDays} onChange={(v) => update("retention.summaryDays", v)} />
+          <NumberWithUnit label="Audit logs" unit="days" min={1} max={3650} value={value.retention.auditLogDays} onChange={(v) => update("retention.auditLogDays", v)} />
+          <NumberWithUnit label="Transcript link expiration" unit="hours" min={1} max={720} value={value.recap.transcriptDownloadExpirationHours} onChange={(v) => update("recap.transcriptDownloadExpirationHours", v)} />
         </div>
       </SettingsSection>
 
@@ -229,11 +238,13 @@ function SettingsSection({
 
 function TextField({
   label,
+  placeholder,
   value,
   width = "medium",
   onChange
 }: {
   label: string;
+  placeholder?: string;
   value: string;
   width?: "medium" | "wide" | "url";
   onChange: (value: string) => void;
@@ -241,7 +252,7 @@ function TextField({
   return (
     <label className={`setupField fieldWidth-${width}`}>
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      <input placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -357,12 +368,22 @@ function EmailAliasesField({
   );
 }
 
-function NumberWithUnit({ label, unit, value, onChange }: { label: string; unit: string; value: number; onChange: (value: number) => void }) {
+function NumberWithUnit({ label, max, min, unit, value, onChange }: { label: string; max: number; min: number; unit: string; value: number; onChange: (value: number) => void }) {
   return (
     <label className="numberUnitRow">
       <span>{label}</span>
       <span className="numberUnitControl">
-        <input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))} />
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={1}
+          value={value}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            onChange(Number.isNaN(next) ? value : next);
+          }}
+        />
         <span>{unit}</span>
       </span>
     </label>

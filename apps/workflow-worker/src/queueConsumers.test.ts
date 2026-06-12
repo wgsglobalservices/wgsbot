@@ -60,7 +60,6 @@ describe("retention cleanup", () => {
       ARTIFACTS: { delete: deleteObject } as unknown as R2Bucket,
       INVITE_QUEUE: { send: vi.fn() },
       SUMMARY_QUEUE: { send: vi.fn() },
-      EMAIL_QUEUE: { send: vi.fn() },
       BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
       API_BASE_URL: "https://api.minutes.bot"
     });
@@ -88,7 +87,6 @@ describe("queue consumers", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
         API_BASE_URL: "https://api.minutes.bot"
       }
@@ -124,7 +122,6 @@ describe("queue consumers", () => {
         ARTIFACTS: {} as R2Bucket,
         INVITE_QUEUE: { send: vi.fn() },
         SUMMARY_QUEUE: { send: vi.fn() },
-        EMAIL_QUEUE: { send: vi.fn() },
         BOT_API_BASE_URL: "https://meeting-api.minutes.bot",
         API_BASE_URL: "https://api.minutes.bot"
       }

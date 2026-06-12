@@ -84,7 +84,7 @@ export function resolveMeetingType(votes: MeetingClassification[], input: Pick<S
 
   return {
     meetingType,
-    confidence: meetingType === "general" ? Math.max(scores.general, 0.5) : Math.min(1, Math.max(bestConfidence, scores[meetingType] / 5)),
+    confidence: meetingType === "general" ? Math.min(1, Math.max(scores.general, 0.5)) : Math.min(1, Math.max(bestConfidence, scores[meetingType] / 5)),
     signals: Array.from(allSignals).slice(0, 12),
     reason: `Resolved from ${votes.length} chunk classification${votes.length === 1 ? "" : "s"}, confidence, title signals, and precedence rules.`
   };

@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,17 +55,20 @@ export function createDefaultDeps(env: RuntimeProcessEnv): BotRuntimeDeps {
     env,
     checkBinary: async (name) => {
       if (name === "ffmpeg") return binaryAvailable("ffmpeg");
-      if (name === "pulseaudio") return binaryAvailable("pulseaudio") && binaryAvailable("pactl");
+      if (name === "pulseaudio") return (await binaryAvailable("pulseaudio")) && (await binaryAvailable("pactl"));
       if (env.CHROMIUM_EXECUTABLE_PATH) return binaryAvailable(env.CHROMIUM_EXECUTABLE_PATH);
       return playwrightChromiumAvailable();
     },
     recorder: createBrowserRecorder(env),
     recordingStore: createHttpRecordingStore(env),
     sendWebhook: async ({ url, body, internalToken }) => {
+      // A blackholed webhook endpoint must not wedge the bot lifecycle while
+      // Chromium/ffmpeg resources stay alive.
       const response = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json", ...(internalToken ? { authorization: `Bearer ${internalToken}` } : {}) },
-        body
+        body,
+        signal: AbortSignal.timeout(timeoutMs(env.BOT_WEBHOOK_TIMEOUT_MS, 15_000))
       });
       if (!response.ok) throw new Error(`Webhook ${url} returned ${response.status}`);
     }
@@ -85,8 +88,12 @@ function createBrowserRecorder(env: RuntimeProcessEnv): BotRuntimeDeps["recorder
       }
 
       const joinDeadline = createJoinDeadline(input.joinTimeoutSeconds);
-      await input.onLog?.({ level: "info", message: "Starting browser audio capture", details: { sinkName: env.BOT_AUDIO_SINK_NAME?.trim() || "teams_capture" } });
-      const audio = await withJoinDeadline(startPulseAudioSink(env), joinDeadline);
+      // Each recording gets its own null sink: concurrent meetings sharing a
+      // sink would either fail to load the module or mix each other's audio
+      // into the capture — a cross-meeting confidentiality breach.
+      const sinkName = uniqueSinkName(env);
+      await input.onLog?.({ level: "info", message: "Starting browser audio capture", details: { sinkName } });
+      const audio = await withJoinDeadline(startPulseAudioSink(env, defaultAudioIo, sinkName), joinDeadline);
       await input.onLog?.({ level: "info", message: "Browser audio capture ready", details: { sinkName: audio.sinkName } });
       const userDataDir = env.BOT_BROWSER_PROFILE_DIR || (await mkdtemp(join(tmpdir(), "minutesbot-profile-")));
       let context: any;
@@ -155,6 +162,9 @@ function createBrowserRecorder(env: RuntimeProcessEnv): BotRuntimeDeps["recorder
   };
 }
 
+const RECORDING_UPLOAD_ATTEMPTS = 3;
+const RECORDING_UPLOAD_RETRY_DELAY_MS = 5_000;
+
 function createHttpRecordingStore(env: RuntimeProcessEnv): BotRuntimeDeps["recordingStore"] {
   return {
     async putRecording(input) {
@@ -162,17 +172,38 @@ function createHttpRecordingStore(env: RuntimeProcessEnv): BotRuntimeDeps["recor
       if (!uploadUrl) throw new Error("BOT_STORAGE_UPLOAD_URL is not configured");
       const body = new ArrayBuffer(input.bytes.byteLength);
       new Uint8Array(body).set(input.bytes);
-      const response = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          ...(env.BOT_INTERNAL_TOKEN ? { authorization: `Bearer ${env.BOT_INTERNAL_TOKEN}` } : {}),
-          "content-type": input.contentType,
-          "x-recording-bucket": input.bucketName,
-          "x-recording-key": input.key
-        },
-        body
-      });
-      if (!response.ok) throw new Error(`Recording upload failed with ${response.status}`);
+      // The bytes are already buffered in memory, so retrying a transient
+      // upload failure is cheap — and a single failed attempt would lose the
+      // entire meeting's audio.
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= RECORDING_UPLOAD_ATTEMPTS; attempt += 1) {
+        let response: Response | null = null;
+        try {
+          response = await fetch(uploadUrl, {
+            method: "PUT",
+            headers: {
+              ...(env.BOT_INTERNAL_TOKEN ? { authorization: `Bearer ${env.BOT_INTERNAL_TOKEN}` } : {}),
+              "content-type": input.contentType,
+              "x-recording-bucket": input.bucketName,
+              "x-recording-key": input.key
+            },
+            body,
+            signal: AbortSignal.timeout(timeoutMs(env.BOT_UPLOAD_TIMEOUT_MS, 300_000))
+          });
+        } catch (error) {
+          lastError = error;
+        }
+        if (response?.ok) return;
+        if (response) {
+          lastError = new Error(`Recording upload failed with ${response.status}`);
+          // Client errors will not succeed on retry.
+          if (response.status >= 400 && response.status < 500) break;
+        }
+        if (attempt < RECORDING_UPLOAD_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, RECORDING_UPLOAD_RETRY_DELAY_MS * attempt));
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
     }
   };
 }
@@ -475,7 +506,9 @@ async function waitForTeamsMeetingEnd(page: any, signal: AbortSignal): Promise<"
   while (!signal.aborted) {
     const reason = await meetingEndReason(page, CONTROL_PROBE_TIMEOUT_MS);
     if (reason) return reason;
-    await page.waitForTimeout(2_000).catch(() => undefined);
+    // Out-of-band sleep: page.waitForTimeout rejects instantly once the page
+    // is closed, which would turn this loop into a CPU-pegging busy-wait.
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
   return "left";
 }
@@ -808,11 +841,16 @@ async function recordBrowserJoinedAudio(
   }
 }
 
+function uniqueSinkName(env: RuntimeProcessEnv): string {
+  const base = env.BOT_AUDIO_SINK_NAME?.trim() || "teams_capture";
+  return `${base}_${crypto.randomUUID().slice(0, 8)}`;
+}
+
 async function startPulseAudioSink(
   env: RuntimeProcessEnv,
-  io: AudioIo = defaultAudioIo
+  io: AudioIo = defaultAudioIo,
+  sinkName = env.BOT_AUDIO_SINK_NAME?.trim() || "teams_capture"
 ): Promise<{ sinkName: string; cleanup: () => Promise<void> }> {
-  const sinkName = env.BOT_AUDIO_SINK_NAME?.trim() || "teams_capture";
   await withProcessTimeout(env, io.runCommand("pulseaudio", ["--start"]), "pulseaudio");
   const moduleOutput = await withProcessTimeout(
     env,
@@ -824,10 +862,15 @@ async function startPulseAudioSink(
     ]),
     "pactl"
   );
-  const moduleId = typeof moduleOutput === "string" && moduleOutput.trim() ? moduleOutput.trim() : "0";
+  const moduleId = typeof moduleOutput === "string" && moduleOutput.trim() ? moduleOutput.trim() : null;
   return {
     sinkName,
-    cleanup: () => withProcessTimeout(env, io.runCommand("pactl", ["unload-module", moduleId]), "pactl").then(() => undefined)
+    cleanup: async () => {
+      // Without a parsed module id, skip the unload: unloading a guessed id
+      // (the old fallback was "0") could tear down another recording's sink.
+      if (!moduleId) return;
+      await withProcessTimeout(env, io.runCommand("pactl", ["unload-module", moduleId]), "pactl");
+    }
   };
 }
 
@@ -839,7 +882,7 @@ async function captureBrowserAudio(
 ): Promise<Uint8Array> {
   const dir = await io.mkdtemp(join(tmpdir(), "minutesbot-recording-"));
   const file = join(dir, "recording.mp3");
-  const seconds = Math.max(1, Number(env.BOT_RECORDING_SECONDS ?? env.BOT_RECORDING_MAX_SECONDS ?? "3600"));
+  const seconds = positiveIntOr(env.BOT_RECORDING_SECONDS ?? env.BOT_RECORDING_MAX_SECONDS, 3600);
   const captureController = new AbortController();
   const abortCapture = () => {
     if (!captureController.signal.aborted) captureController.abort();
@@ -931,8 +974,19 @@ function runProcess(command: string, args: string[], options: { signal?: AbortSi
   });
 }
 
-function binaryAvailable(name: string): boolean {
-  return spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0 || spawnSync("which", [name], { stdio: "ignore" }).status === 0;
+// Async spawn: the health endpoint shares the event loop with every live
+// recording, so synchronous process spawns would stall them.
+async function binaryAvailable(name: string): Promise<boolean> {
+  if (await commandSucceeds(name, ["--version"])) return true;
+  return commandSucceeds("which", [name]);
+}
+
+function commandSucceeds(command: string, args: string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { stdio: "ignore" });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
 }
 
 async function playwrightChromiumAvailable(): Promise<boolean> {
@@ -942,6 +996,11 @@ async function playwrightChromiumAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function positiveIntOr(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback;
 }
 
 function contentTypeForFormat(format: string): string {

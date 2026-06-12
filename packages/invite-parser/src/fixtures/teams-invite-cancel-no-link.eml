@@ -1,0 +1,16 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Canceled: Project sync
+Content-Type: text/calendar; method=CANCEL
+
+BEGIN:VCALENDAR
+METHOD:CANCEL
+BEGIN:VEVENT
+UID:abc-123
+SUMMARY:Canceled: Project sync
+DTSTART:20260504T150000Z
+DTEND:20260504T153000Z
+ORGANIZER;CN=Alice Organizer:mailto:alice@company.com
+DESCRIPTION:
+END:VEVENT
+END:VCALENDAR

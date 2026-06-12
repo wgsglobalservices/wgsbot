@@ -116,7 +116,7 @@ describe("transcript workflow", () => {
     const artifacts = r2WithoutRecording();
     const summaryQueue = { send: vi.fn() };
 
-    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1", undefined, undefined, { attempt: 10 });
+    await fetchAndStoreTranscript(env(db, artifacts, summaryQueue), "mtg_1", undefined, { attempt: 10 });
 
     expect(summaryQueue.send).not.toHaveBeenCalled();
     expect(db.meetingUpdates.at(-1)?.[0]).toBe("unavailable");
@@ -152,7 +152,6 @@ function env(db: FakeD1, artifacts: { get: ReturnType<typeof vi.fn>; put: Return
     ARTIFACTS: artifacts as unknown as R2Bucket,
     INVITE_QUEUE: { send: vi.fn() },
     SUMMARY_QUEUE: summaryQueue,
-    EMAIL_QUEUE: { send: vi.fn() },
     BOT_API_BASE_URL: "https://meeting-bot.example.com",
     API_BASE_URL: "https://minutesbot-api.example.com",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",

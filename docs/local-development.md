@@ -3,7 +3,7 @@
 ```bash
 pnpm install
 pnpm db:migrate:local
-pnpm seed:dev
+pnpm seed:dev # prints a settings template to adapt; it does not write to the database
 pnpm dev
 ```
 

@@ -193,7 +193,10 @@ describe("bot runtime app", () => {
       recorder: {
         record: async (input) => {
           await input.onState?.("prejoin");
-          await new Promise<void>((resolve) => input.abortSignal?.addEventListener("abort", () => resolve(), { once: true }));
+          await new Promise<void>((resolve) => {
+            if (input.abortSignal?.aborted) return resolve();
+            input.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          });
           throw new Error("cancelled");
         }
       },
@@ -260,7 +263,10 @@ describe("bot runtime app", () => {
         record: async (input) => {
           signal = input.abortSignal;
           await input.onState?.("recording");
-          await new Promise<void>((resolve) => input.abortSignal?.addEventListener("abort", () => resolve(), { once: true }));
+          await new Promise<void>((resolve) => {
+            if (input.abortSignal?.aborted) return resolve();
+            input.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          });
           return { bytes: new Uint8Array([1]), contentType: "audio/mpeg", joinMode: "guest" };
         }
       },
@@ -303,7 +309,10 @@ describe("bot runtime app", () => {
         record: async (input) => {
           await input.onState?.("joined");
           await input.onState?.("recording");
-          await new Promise<void>((resolve) => input.abortSignal?.addEventListener("abort", () => resolve(), { once: true }));
+          await new Promise<void>((resolve) => {
+            if (input.abortSignal?.aborted) return resolve();
+            input.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          });
           return { bytes: new Uint8Array([5, 6, 7]), contentType: "audio/mpeg", joinMode: "guest" };
         }
       },

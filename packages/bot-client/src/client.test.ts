@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stableStringify } from "@minutesbot/shared";
-import { BotClient, verifyBotWebhookSignature } from "./index";
+import { BotClient } from "./index";
 
 describe("BotClient", () => {
   afterEach(() => {
@@ -231,18 +230,5 @@ describe("BotClient", () => {
         headers: expect.objectContaining({ "content-type": "application/json" })
       })
     );
-  });
-});
-
-describe("webhook verification", () => {
-  it("verifies canonicalized HMAC signatures", async () => {
-    const secret = Buffer.from("webhook-secret").toString("base64");
-    const rawBody = JSON.stringify({ b: 2, a: { z: true, c: "value" } });
-    const key = await crypto.subtle.importKey("raw", Buffer.from(secret, "base64"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(stableStringify(JSON.parse(rawBody))));
-    const signature = Buffer.from(digest).toString("base64");
-
-    await expect(verifyBotWebhookSignature({ rawBody, webhookSecretBase64: secret, signature })).resolves.toBe(true);
-    await expect(verifyBotWebhookSignature({ rawBody, webhookSecretBase64: secret, signature: `${signature}x` })).resolves.toBe(false);
   });
 });

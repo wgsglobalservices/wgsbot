@@ -72,6 +72,8 @@ export type BotClientOptions = {
   baseUrl: string;
   internalToken?: string;
   fetcher?: typeof fetch;
+  /** Per-request timeout; defaults to 30 seconds. */
+  timeoutMs?: number;
 };
 
 export type AttendeeWebhookTrigger = BotWebhookTrigger;

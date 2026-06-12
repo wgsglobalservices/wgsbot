@@ -92,7 +92,6 @@ function env(overrides: Partial<WorkflowEnv> = {}, db = new BotCreationD1()): Wo
     ARTIFACTS: {} as R2Bucket,
     INVITE_QUEUE: { send: vi.fn() },
     SUMMARY_QUEUE: { send: vi.fn() },
-    EMAIL_QUEUE: { send: vi.fn() },
     BOT_API_BASE_URL: "https://meeting-bot.example.com",
     BOT_RECORDING_BUCKET_NAME: "minutesbot-artifacts",
     API_BASE_URL: "https://minutesbot.example.com",

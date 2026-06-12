@@ -1,18 +1,15 @@
 import { Hono } from "hono";
 import { BotClient } from "@minutesbot/bot-client";
-import { createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
-import { AppError } from "@minutesbot/shared";
+import { countEligibleRecipientsByMeeting, createAuditLog, getLatestSummary, getMeeting, listArtifacts, listEmailDeliveries, listMeetingAttendees, listMeetings, listTranscriptSegments, listWebhookEvents, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
+import { AppError, isTerminalBotState, mapBotStateToMeetingStatus } from "@minutesbot/shared";
 import type { Env } from "../env";
 import { deleteMeetingArtifacts, deleteMeetingHistory } from "../services/artifactService";
-import { eligibleRecipientCount } from "../services/meetingService";
 import { readSettings } from "../services/settingsService";
 
 export const meetingsRoute = new Hono<{ Bindings: Env }>()
   .get("/", async (c) => {
-    const meetings = await listMeetings(c.env.DB);
-    const enriched = [];
-    for (const meeting of meetings) enriched.push({ ...meeting, eligible_recipient_count: await eligibleRecipientCount(c.env, meeting.id) });
-    return c.json({ meetings: enriched });
+    const [meetings, eligibleCounts] = await Promise.all([listMeetings(c.env.DB), countEligibleRecipientsByMeeting(c.env.DB)]);
+    return c.json({ meetings: meetings.map((meeting) => ({ ...meeting, eligible_recipient_count: eligibleCounts.get(meeting.id) ?? 0 })) });
   })
   .get("/:id", async (c) => {
     const id = c.req.param("id");
@@ -124,15 +121,6 @@ function latestWebhookError(events: Array<{ attendee_bot_id?: string | null; pay
   return null;
 }
 
-function mapBotStateToMeetingStatus(state?: string, eventType?: string) {
-  if (eventType === "cancelled" || state === "cancelled") return "CANCELLED";
-  if (eventType === "cancel_requested" || state === "cancelling") return "BOT_LEAVING";
-  if (state === "failed" || state?.includes("fatal") || state?.includes("error")) return "BOT_FATAL_ERROR";
-  if (state === "post_processing") return "BOT_POST_PROCESSING";
-  if (state === "ended") return "BOT_ENDED";
-  return undefined;
-}
-
 function mapForceEndBotStateToMeetingStatus(state?: string) {
   if (state === "ended") return "BOT_ENDED";
   if (state === "post_processing") return "BOT_POST_PROCESSING";
@@ -145,11 +133,6 @@ function forceEndAuditEventType(state?: string): string {
   if (state === "post_processing") return "bot.post_processing";
   if (state === "failed" || state?.includes("fatal") || state?.includes("error")) return "bot.fatal_error";
   return "bot.cancel_requested";
-}
-
-function isTerminalBotState(state?: string | null, status?: string | null): boolean {
-  if (status && ["CANCELLED", "BOT_ENDED", "SUMMARY_SENT", "BOT_FATAL_ERROR", "FAILED"].includes(status)) return true;
-  return state === "ended" || state === "failed" || state === "cancelled";
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {

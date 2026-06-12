@@ -676,6 +676,7 @@ describe("Teams runtime browser flow", () => {
         rm: vi.fn(async () => undefined),
         runCommand: async (command, args) => {
           commands.push({ command, args });
+          if (command === "pactl" && args[0] === "load-module") return "42";
         }
       }
     );
@@ -702,7 +703,7 @@ describe("Teams runtime browser flow", () => {
           "/tmp/minutesbot-recording/recording.mp3"
         ]
       },
-      { command: "pactl", args: ["unload-module", "0"] }
+      { command: "pactl", args: ["unload-module", "42"] }
     ]);
     expect(result).toEqual(new Uint8Array([7, 8, 9]));
   });

@@ -1,6 +1,7 @@
 import type { AppSettings } from "@minutesbot/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+export const ADMIN_TOKEN_STORAGE_KEY = "minutesbot.adminToken";
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 
 export class ApiError extends Error {
@@ -47,6 +48,13 @@ export async function uploadBotImage(input: { contentType: string; data: string;
   return apiPost<AppSettings>("/api/settings/bot-image", input);
 }
 
+export async function verifyAdminToken(token: string): Promise<{ ok: boolean; status: number }> {
+  const response = await fetch(`${API_BASE}/api/admin/status`, {
+    headers: { authorization: `Bearer ${token}` }
+  });
+  return { ok: response.ok, status: response.status };
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = authTokenProvider ? await authTokenProvider() : null;
   const response = await fetch(`${API_BASE}${path}`, {
@@ -59,6 +67,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const data = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string }; message?: string } | null;
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    }
     const message = data?.error?.message ?? data?.message ?? `Request failed with ${response.status}`;
     throw new ApiError(message, response.status, data?.error?.code);
   }

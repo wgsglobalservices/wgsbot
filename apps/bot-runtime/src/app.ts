@@ -9,7 +9,16 @@ type RuntimeEnv = {
   BOT_RUNTIME_VERSION?: string;
   BOT_CONTAINER_INSTANCE_ID?: string;
   BOT_ALLOW_GUEST_JOIN?: string;
+  /**
+   * Comma-separated list of origins webhooks may target. When set, createBot
+   * rejects webhook URLs outside this list so a caller cannot point the
+   * runtime (and its bearer token) at an attacker-controlled endpoint.
+   */
+  BOT_WEBHOOK_ALLOWED_ORIGINS?: string;
 };
+
+const WEBHOOK_DELIVERY_ATTEMPTS = 3;
+const WEBHOOK_RETRY_DELAY_MS = 2_000;
 
 const MAX_CREATE_BOT_BODY_BYTES = 5 * 1024 * 1024;
 
@@ -94,9 +103,14 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
   const app = new Hono();
   const bots = new Map<string, BotRecord>();
   const controls = new Map<string, BotControl>();
+  // Binary availability cannot change within a container's lifetime; caching
+  // keeps the unauthenticated health endpoint from spawning processes (and
+  // blocking the event loop shared with live recordings) on every request.
+  let missingSettingsCache: Promise<string[]> | null = null;
 
   app.get("/_ops/health", async (c) => {
-    const missing = await missingRuntimeSettings(deps);
+    missingSettingsCache ??= missingRuntimeSettings(deps);
+    const missing = await missingSettingsCache;
     return c.json(
       {
         ok: missing.length === 0,
@@ -122,11 +136,19 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
   app.post("/api/v1/bots", async (c) => {
     const length = Number(c.req.header("content-length") ?? "0");
     if (Number.isFinite(length) && length > MAX_CREATE_BOT_BODY_BYTES) return c.json({ detail: "Request body is too large" }, 413);
-    const parsed = createBotSchema.safeParse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      return c.json({ detail: "Request body must be valid JSON" }, 400);
+    }
+    const parsed = createBotSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json({ detail: "Invalid bot creation request", issues: parsed.error.issues }, 400);
     }
     const input = parsed.data;
+    const webhookOriginError = validateWebhookOrigins(input.webhooks, deps.env.BOT_WEBHOOK_ALLOWED_ORIGINS);
+    if (webhookOriginError) return c.json({ detail: webhookOriginError }, 400);
     const id = deps.randomUUID?.() ?? crypto.randomUUID();
     const bot: BotRecord = {
       id,
@@ -142,7 +164,11 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
     const created = publicBot(bot);
     const control = { abortController: new AbortController(), input };
     controls.set(id, control);
-    void runBotLifecycle(deps, bot, input, control).finally(() => controls.delete(id));
+    // The trailing catch is load-bearing: an unhandled rejection here would
+    // crash the Node process and kill every other in-flight recording.
+    void runBotLifecycle(deps, bot, input, control)
+      .catch((error) => console.error(`bot ${id} lifecycle failed`, error))
+      .finally(() => controls.delete(id));
     return c.json(created, 201);
   });
 
@@ -161,10 +187,14 @@ export function createBotRuntimeApp(deps: BotRuntimeDeps): Hono {
     if (!bot) return c.json({ detail: "Not found" }, 404);
     const control = controls.get(bot.id);
     if (isTerminalBotState(bot.state)) return c.json(publicBot(bot));
-    if (bot.state !== "cancelling") {
-      await updateBot(deps, bot, control?.input ?? fallbackInput(bot), { state: "cancelling" }, "cancel_requested");
-    }
+    // Abort before any webhook delivery: a hung or failing webhook endpoint
+    // must not keep the bot recording after an explicit cancel.
+    const wasCancelling = bot.state === "cancelling";
+    bot.state = "cancelling";
     control?.abortController.abort("cancelled");
+    if (!wasCancelling) {
+      await emitStateWebhook(deps, control?.input ?? fallbackInput(bot), bot, "cancel_requested");
+    }
     return c.json(publicBot(bot));
   });
 
@@ -196,6 +226,9 @@ async function runBotLifecycle(deps: BotRuntimeDeps, bot: BotRecord, input: z.in
         await emitBotLog(deps, input, bot, log);
       }
     });
+    // delete_data removes the bot entirely: its partial recording must not
+    // be uploaded and no further webhooks may reference the deleted id.
+    if (control.abortController.signal.reason === "deleted") return;
     if (bot.state !== "recording" && bot.state !== "cancelling") {
       await emitBotLog(deps, input, bot, { level: "info", message: "Teams joined; starting recording", details: { state: bot.state } });
       await updateBot(deps, bot, input, { state: "recording", recording_state: "recording" });
@@ -211,6 +244,7 @@ async function runBotLifecycle(deps: BotRuntimeDeps, bot: BotRecord, input: z.in
     await updateBot(deps, bot, input, { state: "post_processing", recording_state: "complete" });
     await updateBot(deps, bot, input, { state: "ended", recording_state: "complete", transcription_state: "complete" }, "post_processing_completed");
   } catch (error) {
+    if (control.abortController.signal.reason === "deleted") return;
     if (control.abortController.signal.aborted) {
       await emitBotLog(deps, input, bot, { level: "info", message: "Meeting bot run cancelled", details: { state: bot.state } });
       await updateBot(deps, bot, input, { state: "cancelled", recording_state: bot.recording_state === "recording" ? "cancelled" : bot.recording_state ?? "cancelled", transcription_state: bot.transcription_state ?? "failed" }, "cancelled");
@@ -248,11 +282,54 @@ async function emitStateWebhook(deps: BotRuntimeDeps, input: z.infer<typeof crea
     }
   };
   const body = JSON.stringify(payload);
+  // Webhook delivery is retried but never throws: a failing control-plane
+  // endpoint must not abort a healthy recording (and a throw out of a catch
+  // block would crash the whole runtime process).
   await Promise.all(
     input.webhooks
       .filter((webhook) => webhook.triggers.includes("bot.state_change"))
-      .map((webhook) => deps.sendWebhook({ url: webhook.url, body, internalToken: deps.env.BOT_INTERNAL_TOKEN }))
+      .map((webhook) => deliverWebhookWithRetry(deps, { url: webhook.url, body, internalToken: deps.env.BOT_INTERNAL_TOKEN }, bot.id, eventType))
   );
+}
+
+async function deliverWebhookWithRetry(
+  deps: BotRuntimeDeps,
+  input: { url: string; body: string; internalToken?: string },
+  botId: string,
+  eventType: string
+): Promise<void> {
+  for (let attempt = 1; attempt <= WEBHOOK_DELIVERY_ATTEMPTS; attempt += 1) {
+    try {
+      await deps.sendWebhook(input);
+      return;
+    } catch (error) {
+      if (attempt === WEBHOOK_DELIVERY_ATTEMPTS) {
+        console.error(`bot ${botId} failed to deliver ${eventType} webhook after ${attempt} attempts`, error);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, WEBHOOK_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
+
+function validateWebhookOrigins(webhooks: Array<{ url: string }>, allowedOrigins: string | undefined): string | null {
+  const allowed = (allowedOrigins ?? "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (allowed.length === 0) return null;
+  for (const webhook of webhooks) {
+    let origin: string;
+    try {
+      origin = new URL(webhook.url).origin;
+    } catch {
+      return `Webhook URL is invalid: ${webhook.url}`;
+    }
+    if (!allowed.includes(origin)) {
+      return `Webhook origin ${origin} is not allowed`;
+    }
+  }
+  return null;
 }
 
 async function emitBotLog(deps: BotRuntimeDeps, input: z.infer<typeof createBotSchema>, bot: BotRecord, log: BotRuntimeLog): Promise<void> {

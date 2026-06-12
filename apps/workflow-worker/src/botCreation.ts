@@ -1,9 +1,10 @@
 import { BOT_WEBHOOK_TRIGGERS, BotClient, BotClientError, type BotRun } from "@minutesbot/bot-client";
 import { createAuditLog, getMeeting, getSettings, listWebhookEvents, updateMeetingBotState, updateMeetingStatus, type MeetingRow } from "@minutesbot/db";
-import { AppError, botWebhookUrl, minutesBefore, recordingR2Key, resolveBotBaseUrl } from "@minutesbot/shared";
+import { AppError, botWebhookUrl, mapBotStateToMeetingStatus, minutesBefore, recordingR2Key, resolveBotBaseUrl } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 
 const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
+const MAX_UNREACHABLE_MONITOR_ATTEMPTS = 5;
 
 export async function handleCreateBotQueueMessage(env: WorkflowEnv, meetingId: string): Promise<void> {
   const meeting = await getMeeting(env.DB, meetingId);
@@ -26,6 +27,19 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
   const meeting = await getMeeting(env.DB, meetingId);
   if (!meeting) throw new AppError("NOT_FOUND", "Meeting not found", 404);
   if (meeting.status === "CANCELLED") return;
+
+  // A meeting with a live (or still pending) bot must not get a second one:
+  // calendar updates and redelivered create_bot messages would otherwise
+  // spawn duplicate bots that overwrite each other's recording in R2.
+  if (meeting.attendee_bot_id && !isSettledBotState(meeting.attendee_bot_state)) {
+    await createAuditLog(env.DB, {
+      eventType: "bot.create_queued",
+      resourceType: "meeting",
+      resourceId: meetingId,
+      metadata: { skipped: "bot already active", botId: meeting.attendee_bot_id, state: meeting.attendee_bot_state }
+    });
+    return;
+  }
 
   const settings = await getSettings(env.DB);
   const joinTimeoutSeconds = Math.max(60, settings.attendee.maxWaitingRoomMinutes * 60);
@@ -100,7 +114,16 @@ export async function monitorBotJoin(env: WorkflowEnv, meetingId: string, botId:
 
   const settings = await getSettings(env.DB);
   const client = createBotClient(env, resolveBotBaseUrl(settings.attendee.baseUrl, env.BOT_API_BASE_URL));
-  const runtimeBot = await client.getBot(botId).catch(() => null);
+  // Distinguish "runtime reports a stuck bot" from "runtime unreachable":
+  // a transient outage of the bot runtime must not mark a healthy recording
+  // bot as fatally failed.
+  let runtimeBot: BotRun | null = null;
+  let runtimeUnreachable = false;
+  try {
+    runtimeBot = await client.getBot(botId);
+  } catch {
+    runtimeUnreachable = true;
+  }
   if (runtimeBot) {
     const status = mapBotStateToMeetingStatus(runtimeBot.state, runtimeBot.state === "failed" ? "fatal_error" : "state_change");
     if (runtimeBot.latest_error) {
@@ -139,12 +162,14 @@ export async function monitorBotJoin(env: WorkflowEnv, meetingId: string, botId:
     }
   }
 
-  if (attempt < 1) {
+  if (attempt < 1 || (runtimeUnreachable && attempt < MAX_UNREACHABLE_MONITOR_ATTEMPTS)) {
     await env.INVITE_QUEUE.send({ type: "monitor_bot_join", meetingId, botId, attempt: attempt + 1 }, { delaySeconds: 60 });
     return;
   }
 
-  const latestError = monitorTimeoutError(runtimeBot?.state ?? meeting.attendee_bot_state, settings.attendee.maxWaitingRoomMinutes);
+  const latestError = runtimeUnreachable
+    ? `Meeting bot runtime was unreachable while monitoring the join after ${attempt + 1} attempts`
+    : monitorTimeoutError(runtimeBot?.state ?? meeting.attendee_bot_state, settings.attendee.maxWaitingRoomMinutes);
   await updateMeetingBotState(env.DB, meetingId, {
     botId,
     state: "failed",
@@ -268,25 +293,16 @@ async function latestRecordedLifecycleState(
   return null;
 }
 
-function mapBotStateToMeetingStatus(state?: string, eventType?: string): MeetingRow["status"] | undefined {
-  if (eventType === "post_processing_completed") return "BOT_ENDED";
-  if (eventType === "cancelled" || state === "cancelled") return "CANCELLED";
-  if (eventType === "cancel_requested" || state === "cancelling") return "BOT_LEAVING";
-  if (eventType === "fatal_error") return "BOT_FATAL_ERROR";
-  if (!state) return undefined;
-  if (state === "failed" || state.includes("fatal") || state.includes("error")) return "BOT_FATAL_ERROR";
-  if (state === "prejoin" || state === "joining") return "BOT_JOINING";
-  if (state.includes("waiting")) return "BOT_WAITING_ROOM";
-  if (state === "joined") return "BOT_JOINED";
-  if (state.includes("record")) return "BOT_RECORDING";
-  if (state.includes("post_processing")) return "BOT_POST_PROCESSING";
-  if (state === "ended") return "BOT_ENDED";
-  if (state.includes("leave")) return "BOT_LEAVING";
-  return "BOT_CREATED";
-}
-
+// Deliberately narrower than the shared isTerminalBotState: a meeting whose
+// *status* is already CANCELLED can still have a live bot that this worker
+// must cancel (the email worker marks the meeting cancelled before queueing
+// cancel_bot), so only bot-side states count here.
 function isTerminalBotState(state?: string | null, status?: MeetingRow["status"]): boolean {
   if (status && ["BOT_ENDED", "SUMMARY_SENT", "BOT_FATAL_ERROR", "FAILED"].includes(status)) return true;
+  return isSettledBotState(state);
+}
+
+function isSettledBotState(state?: string | null): boolean {
   return state === "ended" || state === "failed" || state === "cancelled";
 }
 
