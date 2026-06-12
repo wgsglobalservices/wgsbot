@@ -30,7 +30,7 @@ describe("OpenRouter transcription provider", () => {
     );
   });
 
-  it("preserves mp4 format for Attendee video recordings", async () => {
+  it("preserves mp4 format for meeting bot video recordings", async () => {
     const fetcher = vi.fn(async () => Response.json({ text: "Alex: hello" }));
     const provider = createOpenRouterTranscriptionProvider({
       baseUrl: "https://openrouter.ai/api/v1",

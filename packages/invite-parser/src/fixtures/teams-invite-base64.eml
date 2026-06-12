@@ -1,0 +1,23 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Base64 sync
+Content-Type: multipart/alternative; boundary="bnd"
+
+--bnd
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Join the meeting using the link in the calendar attachment. Caf=C3=A9 agen=
+da attached.
+--bnd
+Content-Type: text/calendar; charset="utf-8"; method=REQUEST
+Content-Transfer-Encoding: base64
+
+QkVHSU46VkNBTEVOREFSCk1FVEhPRDpSRVFVRVNUCkJFR0lOOlZFVkVOVApVSUQ6YjY0LTEy
+MwpTVU1NQVJZOkJhc2U2NCBzeW5jCkRUU1RBUlQ6MjAyNjA1MDRUMTUwMDAwWgpEVEVORDoy
+MDI2MDUwNFQxNTMwMDBaCk9SR0FOSVpFUjtDTj1BbGljZTptYWlsdG86YWxpY2VAY29tcGFu
+eS5jb20KQVRURU5ERUU7Q049QWxleDtST0xFPVJFUS1QQVJUSUNJUEFOVDptYWlsdG86YWxl
+eEBjb21wYW55LmNvbQpERVNDUklQVElPTjpodHRwczovL3RlYW1zLm1pY3Jvc29mdC5jb20v
+bC9tZWV0dXAtam9pbi8xOSUzYWI2NCU0MHRocmVhZC52Mi8wP2NvbnRleHQ9JTdiJTdkCkVO
+RDpWRVZFTlQKRU5EOlZDQUxFTkRBUgo=
+--bnd--

@@ -3,8 +3,6 @@ export * from "./attendeeQueries";
 export * from "./auditQueries";
 export * from "./emailQueries";
 export * from "./meetingQueries";
-export * from "./migrations";
-export * from "./queries";
 export * from "./schema";
 export * from "./settingsQueries";
 export * from "./summaryQueries";

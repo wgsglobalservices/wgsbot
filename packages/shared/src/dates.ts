@@ -3,7 +3,11 @@ export function nowIso(): string {
 }
 
 export function minutesBefore(iso: string, minutes: number): string {
-  return new Date(new Date(iso).getTime() - minutes * 60_000).toISOString();
+  const base = new Date(iso).getTime();
+  // An unparseable timestamp falls back to "now" instead of throwing a
+  // RangeError out of queue consumers.
+  if (Number.isNaN(base)) return new Date().toISOString();
+  return new Date(base - minutes * 60_000).toISOString();
 }
 
 export function minutesAfter(iso: string, minutes: number): string {
@@ -25,8 +29,10 @@ export function daysAgoIso(days: number): string {
 
 export function formatDateTime(iso?: string): string {
   if (!iso) return "Not set";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short"
-  }).format(new Date(iso));
+  }).format(date);
 }

@@ -5,6 +5,10 @@ import type { Env } from "../env";
 
 class MemoryD1 {
   rows = new Map<string, string>();
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    return Promise.all(statements.map((statement) => statement.run()));
+  }
+
   prepare(sql: string) {
     const db = this;
     return {

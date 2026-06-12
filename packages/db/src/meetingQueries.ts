@@ -3,24 +3,31 @@ import type { AttendeeRow, MeetingRow, TranscriptSegmentRow, WebhookEventRow } f
 
 export type MeetingListRow = MeetingRow & { eligible_recipient_count: number };
 
+const settledBotStates = ["ended", "failed", "cancelled", "fatal_error"];
+
+function hasLiveBot(meeting: MeetingRow): boolean {
+  return Boolean(meeting.attendee_bot_id) && !settledBotStates.includes(meeting.attendee_bot_state ?? "");
+}
+
 export async function upsertMeeting(
   db: D1Database,
-  input: Partial<MeetingRow> & Pick<MeetingRow, "calendar_uid" | "subject" | "organizer_email" | "teams_join_url" | "start_time" | "end_time" | "status">
+  input: Partial<MeetingRow> & Pick<MeetingRow, "calendar_uid" | "status">
 ): Promise<MeetingRow> {
   const now = nowIso();
   const existing = input.calendar_uid
     ? await db.prepare("SELECT * FROM meetings WHERE calendar_uid = ?").bind(input.calendar_uid).first<MeetingRow>()
     : null;
+  const status = input.status === "SCHEDULED" && existing && hasLiveBot(existing) ? existing.status : input.status;
   const row: MeetingRow = {
     id: existing?.id ?? input.id ?? createId("mtg"),
     calendar_uid: input.calendar_uid,
-    subject: input.subject,
-    organizer_email: input.organizer_email,
-    organizer_name: input.organizer_name ?? null,
-    teams_join_url: input.teams_join_url,
-    start_time: input.start_time,
-    end_time: input.end_time,
-    status: input.status,
+    subject: input.subject ?? existing?.subject ?? null,
+    organizer_email: input.organizer_email ?? existing?.organizer_email ?? null,
+    organizer_name: input.organizer_name ?? existing?.organizer_name ?? null,
+    teams_join_url: input.teams_join_url ?? existing?.teams_join_url ?? null,
+    start_time: input.start_time ?? existing?.start_time ?? null,
+    end_time: input.end_time ?? existing?.end_time ?? null,
+    status,
     attendee_bot_id: input.attendee_bot_id ?? existing?.attendee_bot_id ?? null,
     attendee_bot_state: input.attendee_bot_state ?? existing?.attendee_bot_state ?? null,
     attendee_transcription_state: input.attendee_transcription_state ?? existing?.attendee_transcription_state ?? null,
@@ -28,7 +35,7 @@ export async function upsertMeeting(
     attendee_last_event_at: input.attendee_last_event_at ?? existing?.attendee_last_event_at ?? null,
     transcript_status: input.transcript_status ?? existing?.transcript_status ?? "not_started",
     summary_status: input.summary_status ?? existing?.summary_status ?? "not_started",
-    latest_error: input.latest_error ?? null,
+    latest_error: input.latest_error ?? existing?.latest_error ?? null,
     meeting_type: input.meeting_type ?? existing?.meeting_type ?? "general",
     source_recipient: input.source_recipient ?? existing?.source_recipient ?? null,
     created_at: existing?.created_at ?? now,
@@ -36,11 +43,30 @@ export async function upsertMeeting(
   };
   await db
     .prepare(
-      `INSERT OR REPLACE INTO meetings (
+      `INSERT INTO meetings (
         id, calendar_uid, subject, organizer_email, organizer_name, teams_join_url, start_time, end_time, status,
         attendee_bot_id, attendee_bot_state, attendee_transcription_state, attendee_recording_state, attendee_last_event_at,
         transcript_status, summary_status, latest_error, meeting_type, source_recipient, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(calendar_uid) WHERE calendar_uid IS NOT NULL DO UPDATE SET
+        subject = excluded.subject,
+        organizer_email = excluded.organizer_email,
+        organizer_name = excluded.organizer_name,
+        teams_join_url = excluded.teams_join_url,
+        start_time = excluded.start_time,
+        end_time = excluded.end_time,
+        status = excluded.status,
+        attendee_bot_id = excluded.attendee_bot_id,
+        attendee_bot_state = excluded.attendee_bot_state,
+        attendee_transcription_state = excluded.attendee_transcription_state,
+        attendee_recording_state = excluded.attendee_recording_state,
+        attendee_last_event_at = excluded.attendee_last_event_at,
+        transcript_status = excluded.transcript_status,
+        summary_status = excluded.summary_status,
+        latest_error = excluded.latest_error,
+        meeting_type = excluded.meeting_type,
+        source_recipient = excluded.source_recipient,
+        updated_at = excluded.updated_at`
     )
     .bind(
       row.id,
@@ -66,6 +92,10 @@ export async function upsertMeeting(
       row.updated_at
     )
     .run();
+  if (input.calendar_uid) {
+    const saved = await db.prepare("SELECT * FROM meetings WHERE calendar_uid = ?").bind(input.calendar_uid).first<MeetingRow>();
+    if (saved) return saved;
+  }
   return row;
 }
 

@@ -1,5 +1,5 @@
 import { AttendeeClient } from "@minutesbot/attendee-client";
-import { createAuditLog, getMeeting, getSettings, updateTranscriptStatus, upsertArtifact } from "@minutesbot/db";
+import { createAuditLog, getMeeting, getSettings, listArtifacts, updateTranscriptStatus, upsertArtifact, type ArtifactRow } from "@minutesbot/db";
 import { createOpenRouterTranscriptionProvider } from "@minutesbot/summary-engine";
 import { AppError, recordingR2Key, resolveAttendeeBaseUrl } from "@minutesbot/shared";
 import { WorkflowEntrypoint } from "cloudflare:workers";
@@ -17,6 +17,11 @@ type TranscriptResult = {
   model: string;
   text: string;
   usage?: unknown;
+};
+
+type RecordingSource = {
+  key: string;
+  object: R2ObjectBody | null;
 };
 
 export class TranscriptWorkflow extends WorkflowEntrypoint<WorkflowEnv, Params> {
@@ -38,20 +43,21 @@ export async function generateAndStoreTranscript(
   const attendeeBotId = botId ?? meeting.attendee_bot_id;
   const recordingKey = recordingR2Key(meetingId);
   try {
-    const recordingObject = await runStep("load R2 recording", () => env.ARTIFACTS.get(recordingKey));
+    const recordingSource = await loadRecordingSource(env, meetingId, recordingKey, runStep);
+    const recordingObject = recordingSource.object;
     if (recordingObject) {
-      const recordingType = recordingContentType(recordingObject, recordingKey);
+      const recordingType = recordingContentType(recordingObject, recordingSource.key);
       if (recordingType) {
-        await recordRecordingArtifact(env, meetingId, recordingKey, recordingType, recordingObject.size, runStep);
+        await recordRecordingArtifact(env, meetingId, recordingSource.key, recordingType, recordingObject.size, runStep);
       }
     }
 
     if (!recordingObject) {
-      await handleMissingRecording(env, meetingId, attendeeBotId ?? undefined, recordingKey, options.attempt ?? 0);
+      await handleMissingRecording(env, meetingId, attendeeBotId ?? undefined, recordingSource.key, options.attempt ?? 0);
       return;
     }
 
-    const contentType = recordingContentType(recordingObject, recordingKey);
+    const contentType = recordingContentType(recordingObject, recordingSource.key);
     if (recordingObject.size > maxRecordingBytes) {
       throw new AppError("RECORDING_TOO_LARGE", "Recording artifact is too large to transcribe automatically.", 413);
     }
@@ -61,7 +67,7 @@ export async function generateAndStoreTranscript(
         eventType: "transcript.unavailable",
         resourceType: "meeting",
         resourceId: meetingId,
-        metadata: { reason: `R2 recording media is unavailable; received ${recordingObject.httpMetadata?.contentType ?? "unknown"}`, recordingKey }
+        metadata: { reason: `R2 recording media is unavailable; received ${recordingObject.httpMetadata?.contentType ?? "unknown"}`, recordingKey: recordingSource.key }
       });
       return;
     }
@@ -87,6 +93,30 @@ export async function generateAndStoreTranscript(
     });
     throw error;
   }
+}
+
+async function loadRecordingSource(
+  env: WorkflowEnv,
+  meetingId: string,
+  canonicalRecordingKey: string,
+  runStep: <T>(name: string, callback: () => Promise<T>) => Promise<T>
+): Promise<RecordingSource> {
+  const canonicalObject = await runStep("load R2 recording", () => env.ARTIFACTS.get(canonicalRecordingKey));
+  if (canonicalObject) return { key: canonicalRecordingKey, object: canonicalObject };
+
+  const visibleArtifact = await runStep("find visible recording artifact", async () => latestActiveRecordingArtifact(await listArtifacts(env.DB, meetingId)));
+  if (!visibleArtifact) return { key: canonicalRecordingKey, object: null };
+
+  return {
+    key: visibleArtifact.r2_key,
+    object: await runStep("load visible R2 recording", () => env.ARTIFACTS.get(visibleArtifact.r2_key))
+  };
+}
+
+function latestActiveRecordingArtifact(artifacts: ArtifactRow[]): ArtifactRow | undefined {
+  return artifacts
+    .filter((artifact) => artifact.type === "recording" && !artifact.deleted_at)
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
 }
 
 async function handleMissingRecording(env: WorkflowEnv, meetingId: string, attendeeBotId: string | undefined, recordingKey: string, attempt: number): Promise<void> {
@@ -190,7 +220,12 @@ function recordingContentType(recordingObject: R2ObjectBody, recordingKey: strin
 }
 
 function inferContentType(key: string): string | null {
-  if (key.toLowerCase().endsWith(".mp3")) return "audio/mpeg";
+  const normalized = key.toLowerCase();
+  if (normalized.endsWith(".mp3")) return "audio/mpeg";
+  if (normalized.endsWith(".m4a")) return "audio/mp4";
+  if (normalized.endsWith(".wav")) return "audio/wav";
+  if (normalized.endsWith(".webm")) return "audio/webm";
+  if (normalized.endsWith(".mp4")) return "video/mp4";
   return null;
 }
 

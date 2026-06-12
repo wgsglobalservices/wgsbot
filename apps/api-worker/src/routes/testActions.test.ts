@@ -49,7 +49,7 @@ class MemoryD1 {
         if (sql.startsWith("INSERT OR REPLACE INTO settings")) {
           db.rows.set(this.values[0] as string, this.values[1] as string);
         }
-        if (sql.includes("INSERT OR REPLACE INTO meetings")) {
+        if (sql.includes("INSERT INTO meetings")) {
           const meeting = {
             id: this.values[0],
             calendar_uid: this.values[1],

@@ -9,11 +9,25 @@ export function createEmailProvider(input: {
   smtpEndpoint?: string;
   smtpPassword?: string;
 }): EmailProvider {
-  if (input.provider === "cloudflare-email-service" && input.sendEmailBinding) {
+  if (input.provider === "cloudflare-email-service") {
+    if (!input.sendEmailBinding) return createUnconfiguredProvider("cloudflare-email-service provider selected but no SEND_EMAIL binding is configured");
     return createCloudflareEmailServiceProvider(input.sendEmailBinding);
   }
-  if (input.provider === "smtp" && input.smtpEndpoint) {
+  if (input.provider === "smtp") {
+    if (!input.smtpEndpoint) return createUnconfiguredProvider("smtp provider selected but no SMTP endpoint is configured");
     return createSmtpProvider({ endpoint: input.smtpEndpoint, password: input.smtpPassword });
   }
   return createMockEmailProvider();
+}
+
+/**
+ * A misconfigured provider must fail loudly: silently falling back to the
+ * mock would record deliveries as "sent" while no email left the system.
+ */
+function createUnconfiguredProvider(reason: string): EmailProvider {
+  return {
+    async send() {
+      return { status: "failed", failureReason: reason };
+    }
+  };
 }

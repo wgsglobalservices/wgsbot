@@ -6,7 +6,10 @@ export type OpenRouterTranscriptionOptions = {
   model: string;
   language?: string;
   fetcher?: typeof fetch;
+  timeoutMs?: number;
 };
+
+const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
 export function createOpenRouterTranscriptionProvider(options: OpenRouterTranscriptionOptions): TranscriptionProvider {
   const fetcher = options.fetcher ?? fetch;
@@ -27,11 +30,14 @@ export function createOpenRouterTranscriptionProvider(options: OpenRouterTranscr
           "content-type": "application/json",
           authorization: `Bearer ${options.apiKey}`
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
       });
       if (!response.ok) throw new Error(`OpenRouter transcription failed with ${response.status}`);
       const payload = (await response.json()) as TranscriptionResult;
-      if (!payload.text) throw new Error("OpenRouter transcription returned no text");
+      // An empty string is a legitimate transcription of a silent recording;
+      // only a missing field is a provider contract failure.
+      if (typeof payload.text !== "string") throw new Error("OpenRouter transcription returned no text");
       return payload;
     }
   };
@@ -48,10 +54,13 @@ function audioFormat(contentType: string): string {
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  // Chunked conversion: per-byte string concatenation on a multi-megabyte
+  // recording is quadratic and blows Worker CPU/memory limits.
   const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+  const parts: string[] = [];
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    parts.push(String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)));
   }
-  return btoa(binary);
+  return btoa(parts.join(""));
 }
