@@ -2,6 +2,7 @@ import { ATTENDEE_WEBHOOK_TRIGGERS, AttendeeClient, AttendeeClientError, type At
 import { claimMeetingBotCreation, createAuditLog, getMeeting, getSettings, listMeetingsDueForBotCreation, updateMeetingBotState, updateMeetingStatus } from "@minutesbot/db";
 import { AppError, attendeeWebhookUrl, recordingR2Key, resolveAttendeeBaseUrl, shouldCreateBotNow } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
+import { extendRecurringMeetingSchedules } from "./recurringSchedule";
 
 const MAX_QUEUE_DELAY_SECONDS = 24 * 60 * 60;
 
@@ -86,6 +87,7 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
 }
 
 export async function queueDueBotCreations(env: WorkflowEnv, now: Date = new Date()): Promise<number> {
+  await extendRecurringMeetingSchedules(env, { now });
   const cutoffIso = now.toISOString();
   const meetings = await listMeetingsDueForBotCreation(env.DB, cutoffIso);
   for (const meeting of meetings) {

@@ -1,5 +1,5 @@
 import { createId, nowIso, type MeetingStatus, type SummaryStatus, type TranscriptStatus } from "@minutesbot/shared";
-import type { AttendeeRow, MeetingRow, TranscriptSegmentRow, WebhookEventRow } from "./schema";
+import type { AttendeeRow, MeetingRow, MeetingSeriesRow, TranscriptSegmentRow, WebhookEventRow } from "./schema";
 
 export type MeetingListRow = MeetingRow & { eligible_recipient_count: number };
 
@@ -27,6 +27,7 @@ export async function upsertMeeting(
     teams_join_url: input.teams_join_url ?? existing?.teams_join_url ?? null,
     start_time: input.start_time ?? existing?.start_time ?? null,
     end_time: input.end_time ?? existing?.end_time ?? null,
+    time_zone: input.time_zone ?? existing?.time_zone ?? null,
     status,
     attendee_bot_id: input.attendee_bot_id ?? existing?.attendee_bot_id ?? null,
     attendee_bot_state: input.attendee_bot_state ?? existing?.attendee_bot_state ?? null,
@@ -38,6 +39,9 @@ export async function upsertMeeting(
     latest_error: input.latest_error ?? existing?.latest_error ?? null,
     meeting_type: input.meeting_type ?? existing?.meeting_type ?? "general",
     source_recipient: input.source_recipient ?? existing?.source_recipient ?? null,
+    series_uid: input.series_uid ?? existing?.series_uid ?? null,
+    occurrence_index: input.occurrence_index ?? existing?.occurrence_index ?? null,
+    recurring: input.recurring ?? existing?.recurring ?? 0,
     created_at: existing?.created_at ?? now,
     updated_at: now
   };
@@ -46,8 +50,8 @@ export async function upsertMeeting(
       `INSERT INTO meetings (
         id, calendar_uid, subject, organizer_email, organizer_name, teams_join_url, start_time, end_time, status,
         attendee_bot_id, attendee_bot_state, attendee_transcription_state, attendee_recording_state, attendee_last_event_at,
-        transcript_status, summary_status, latest_error, meeting_type, source_recipient, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        transcript_status, summary_status, latest_error, meeting_type, source_recipient, time_zone, series_uid, occurrence_index, recurring, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(calendar_uid) WHERE calendar_uid IS NOT NULL DO UPDATE SET
         subject = excluded.subject,
         organizer_email = excluded.organizer_email,
@@ -55,6 +59,7 @@ export async function upsertMeeting(
         teams_join_url = excluded.teams_join_url,
         start_time = excluded.start_time,
         end_time = excluded.end_time,
+        time_zone = excluded.time_zone,
         status = excluded.status,
         attendee_bot_id = excluded.attendee_bot_id,
         attendee_bot_state = excluded.attendee_bot_state,
@@ -66,6 +71,9 @@ export async function upsertMeeting(
         latest_error = excluded.latest_error,
         meeting_type = excluded.meeting_type,
         source_recipient = excluded.source_recipient,
+        series_uid = excluded.series_uid,
+        occurrence_index = excluded.occurrence_index,
+        recurring = excluded.recurring,
         updated_at = excluded.updated_at`
     )
     .bind(
@@ -88,6 +96,10 @@ export async function upsertMeeting(
       row.latest_error,
       row.meeting_type,
       row.source_recipient,
+      row.time_zone,
+      row.series_uid,
+      row.occurrence_index,
+      row.recurring,
       row.created_at,
       row.updated_at
     )
@@ -96,6 +108,74 @@ export async function upsertMeeting(
     const saved = await db.prepare("SELECT * FROM meetings WHERE calendar_uid = ?").bind(input.calendar_uid).first<MeetingRow>();
     if (saved) return saved;
   }
+  return row;
+}
+
+export async function upsertMeetingSeries(
+  db: D1Database,
+  input: Omit<MeetingSeriesRow, "created_at" | "updated_at" | "status"> & { status?: MeetingSeriesRow["status"] }
+): Promise<MeetingSeriesRow> {
+  const now = nowIso();
+  const row: MeetingSeriesRow = {
+    ...input,
+    organizer_name: input.organizer_name ?? null,
+    teams_join_url: input.teams_join_url ?? null,
+    time_zone: input.time_zone ?? null,
+    meeting_type: input.meeting_type ?? "general",
+    source_recipient: input.source_recipient ?? null,
+    raw_invite_r2_key: input.raw_invite_r2_key ?? null,
+    raw_invite_size_bytes: input.raw_invite_size_bytes ?? null,
+    status: input.status ?? "ACTIVE",
+    expanded_until: input.expanded_until ?? null,
+    created_at: now,
+    updated_at: now
+  };
+  await db
+    .prepare(
+      `INSERT INTO meeting_series (
+        series_uid, subject, organizer_email, organizer_name, teams_join_url, first_start_time, first_end_time, time_zone,
+        recurrence_json, attendees_json, meeting_type, source_recipient, raw_invite_r2_key, raw_invite_size_bytes,
+        status, expanded_until, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(series_uid) DO UPDATE SET
+        subject = excluded.subject,
+        organizer_email = excluded.organizer_email,
+        organizer_name = excluded.organizer_name,
+        teams_join_url = excluded.teams_join_url,
+        first_start_time = excluded.first_start_time,
+        first_end_time = excluded.first_end_time,
+        time_zone = excluded.time_zone,
+        recurrence_json = excluded.recurrence_json,
+        attendees_json = excluded.attendees_json,
+        meeting_type = excluded.meeting_type,
+        source_recipient = excluded.source_recipient,
+        raw_invite_r2_key = excluded.raw_invite_r2_key,
+        raw_invite_size_bytes = excluded.raw_invite_size_bytes,
+        status = excluded.status,
+        expanded_until = excluded.expanded_until,
+        updated_at = excluded.updated_at`
+    )
+    .bind(
+      row.series_uid,
+      row.subject,
+      row.organizer_email,
+      row.organizer_name,
+      row.teams_join_url,
+      row.first_start_time,
+      row.first_end_time,
+      row.time_zone,
+      row.recurrence_json,
+      row.attendees_json,
+      row.meeting_type,
+      row.source_recipient,
+      row.raw_invite_r2_key,
+      row.raw_invite_size_bytes,
+      row.status,
+      row.expanded_until,
+      row.created_at,
+      row.updated_at
+    )
+    .run();
   return row;
 }
 
@@ -162,6 +242,44 @@ export async function markStaleRecurringOccurrencesCancelled(
     )
     .bind("CANCELLED", null, input.nowIso, `${input.seriesUid}:%`, ...input.keepCalendarUids, input.nowIso)
     .run();
+}
+
+export async function cancelMeetingSeries(db: D1Database, seriesUid: string, canceledAtIso: string): Promise<void> {
+  await db.prepare("UPDATE meeting_series SET status = ?, updated_at = ? WHERE series_uid = ?").bind("CANCELLED", canceledAtIso, seriesUid).run();
+}
+
+export async function cancelFutureSeriesOccurrences(
+  db: D1Database,
+  input: { seriesUid: string; nowIso: string }
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE meetings
+       SET status = ?, latest_error = ?, updated_at = ?
+       WHERE (calendar_uid = ? OR calendar_uid LIKE ?)
+         AND attendee_bot_id IS NULL
+         AND (start_time IS NULL OR start_time >= ?)
+         AND status IN ('SCHEDULED', 'WAITING_TO_CREATE_BOT', 'BOT_CREATE_QUEUED', 'FAILED')`
+    )
+    .bind("CANCELLED", null, input.nowIso, input.seriesUid, `${input.seriesUid}:%`, input.nowIso)
+    .run();
+}
+
+export async function listActiveMeetingSeries(db: D1Database): Promise<MeetingSeriesRow[]> {
+  const result = await db.prepare("SELECT * FROM meeting_series WHERE status = ? ORDER BY updated_at ASC").bind("ACTIVE").all<MeetingSeriesRow>();
+  return result.results ?? [];
+}
+
+export async function listMeetingCalendarUidsForSeries(db: D1Database, seriesUid: string): Promise<string[]> {
+  const result = await db
+    .prepare("SELECT calendar_uid FROM meetings WHERE calendar_uid = ? OR calendar_uid LIKE ?")
+    .bind(seriesUid, `${seriesUid}:%`)
+    .all<Pick<MeetingRow, "calendar_uid">>();
+  return (result.results ?? []).map((row) => row.calendar_uid).filter((calendarUid): calendarUid is string => Boolean(calendarUid));
+}
+
+export async function updateMeetingSeriesExpandedUntil(db: D1Database, seriesUid: string, expandedUntilIso: string): Promise<void> {
+  await db.prepare("UPDATE meeting_series SET expanded_until = ?, updated_at = ? WHERE series_uid = ?").bind(expandedUntilIso, nowIso(), seriesUid).run();
 }
 
 export async function claimMeetingBotCreation(db: D1Database, id: string): Promise<boolean> {

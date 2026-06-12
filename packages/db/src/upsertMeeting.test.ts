@@ -22,6 +22,10 @@ const insertColumns = [
   "latest_error",
   "meeting_type",
   "source_recipient",
+  "time_zone",
+  "series_uid",
+  "occurrence_index",
+  "recurring",
   "created_at",
   "updated_at"
 ] as const;

@@ -20,13 +20,14 @@ export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
 
   const calendar = parseIcsCalendar(calendarText);
   const teamsJoinUrl = extractTeamsJoinUrl(`${calendar.description ?? ""}\n${calendar.location ?? ""}\n${body}`);
-  if (!teamsJoinUrl) {
+  if (!teamsJoinUrl && calendar.kind !== "cancel") {
     throw new AppError("REJECTED_NO_TEAMS_LINK", "Meeting invite does not contain a Microsoft Teams join URL", 400);
   }
 
   return {
     ...calendar,
     attendees: mergeAttendees(calendar.attendees, headerAttendees(headers)),
+    calendarAttendees: calendar.calendarAttendees,
     teamsJoinUrl,
     rawRecipient: rawRecipient.toLowerCase(),
     rawSender: rawSender.toLowerCase()
@@ -46,6 +47,7 @@ function parseLinkOnlyInvite(input: { headers: Map<string, string>; body: string
   return {
     kind: "request",
     calendarUid: `teams-link-${stableHash(teamsJoinUrl)}`,
+    seriesUid: `teams-link-${stableHash(teamsJoinUrl)}`,
     subject,
     organizer: { email: input.rawSender.toLowerCase() },
     attendees: headerAttendees(input.headers),

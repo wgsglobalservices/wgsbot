@@ -8,6 +8,8 @@ class FakeD1 {
   auditEvents: unknown[][] = [];
   statusUpdates: Array<{ status: string; latestError: string | null; meetingId: string }> = [];
   seriesCancellations: Array<{ prefix: string; keepCalendarUids: string[] }> = [];
+  cancelledSeries: Array<{ seriesUid: string; prefix: string }> = [];
+  meetingSeries: unknown[][] = [];
   settingValue: string | null;
 
   constructor(settingValue: string | null = null) {
@@ -35,6 +37,10 @@ class FakeD1 {
         if (sql.includes("calendar_uid LIKE") && sql.includes("calendar_uid NOT IN")) {
           db.seriesCancellations.push({ prefix: this.values[3] as string, keepCalendarUids: this.values.slice(4, -1) as string[] });
         }
+        if (sql.includes("calendar_uid = ? OR calendar_uid LIKE ?")) {
+          db.cancelledSeries.push({ seriesUid: this.values[3] as string, prefix: this.values[4] as string });
+        }
+        if (sql.includes("INSERT INTO meeting_series")) db.meetingSeries.push(this.values);
         if (sql.startsWith("UPDATE meetings SET status")) {
           db.statusUpdates.push({ status: this.values[0] as string, latestError: this.values[1] as string | null, meetingId: this.values[3] as string });
         }
@@ -325,6 +331,99 @@ END:VCALENDAR`
       prefix: "test-recurring-update:%",
       keepCalendarUids: ["test-recurring-update:20260601T160000Z", "test-recurring-update:20260608T160000Z"]
     });
+  });
+
+  it("cancels generated recurring occurrence rows when a series cancellation omits the Teams link", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1(
+      JSON.stringify({
+        ...defaultSettings,
+        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+      })
+    );
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:CANCEL
+BEGIN:VEVENT
+UID:test-recurring-cancel
+SUMMARY:Recurring Test Cancelled
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=minutesbot;ROLE=REQ-PARTICIPANT:mailto:notetaker@wgs.bot
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(queueInvite).not.toHaveBeenCalled();
+    expect(db.cancelledSeries).toEqual([{ seriesUid: "test-recurring-cancel", prefix: "test-recurring-cancel:%" }]);
+  });
+
+  it("stores recurring series metadata so the scheduler can extend future occurrences", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
+    const setReject = vi.fn();
+    const queueInvite = vi.fn(async () => undefined);
+    const db = new FakeD1(
+      JSON.stringify({
+        ...defaultSettings,
+        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
+      })
+    );
+    const env = {
+      DB: db as unknown as D1Database,
+      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
+      INVITE_QUEUE: { send: queueInvite }
+    };
+
+    await handleInvite(
+      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
+      env,
+      `From: Alice <alice@wgs.bot>
+To: notetaker@wgs.bot
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:test-recurring-series
+SUMMARY:Recurring Series
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO
+ORGANIZER;CN=Alice:mailto:alice@wgs.bot
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3aseries%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`
+    );
+
+    expect(setReject).not.toHaveBeenCalled();
+    expect(db.meetingSeries).toHaveLength(1);
+    expect(db.meetingSeries[0][0]).toBe("test-recurring-series");
+    expect(db.meetingSeries[0][1]).toBe("Recurring Series");
+    expect(db.meetingSeries[0][2]).toBe("alice@wgs.bot");
+    expect(db.meetingSeries[0][3]).toBe("Alice");
+    expect(db.meetingSeries[0][4]).toContain("teams.microsoft.com/l/meetup-join");
+    expect(db.meetingSeries[0][5]).toBe("2026-06-01T15:00:00.000Z");
+    expect(db.meetingSeries[0][6]).toBe("2026-06-01T15:30:00.000Z");
+    expect(db.meetingSeries[0][8]).toBe(JSON.stringify({ frequency: "weekly", interval: 1, byDay: ["MO"] }));
+    expect(db.meetingSeries[0][14]).toBe("ACTIVE");
   });
 
   it("rejects wrong recorder recipient", async () => {

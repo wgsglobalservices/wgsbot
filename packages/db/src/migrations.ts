@@ -5,5 +5,7 @@ export const migrationFiles = [
   "0004_artifacts_email_audit.sql",
   "0005_retention.sql",
   "0006_summaries.sql",
-  "0007_meeting_type_source_recipient.sql"
+  "0007_meeting_type_source_recipient.sql",
+  "0008_meeting_indexes.sql",
+  "0009_calendar_scheduling.sql"
 ];

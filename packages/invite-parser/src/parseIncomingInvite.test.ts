@@ -136,6 +136,57 @@ END:VCALENDAR`);
     ]);
   });
 
+  it("preserves timezone-local recurring times across daylight saving changes", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: Eastern recurring project sync
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:abc-eastern-recurring
+SUMMARY:Eastern recurring project sync
+DTSTART;TZID=Eastern Standard Time:20261026T103000
+DTEND;TZID=Eastern Standard Time:20261026T110000
+RRULE:FREQ=WEEKLY;COUNT=2;INTERVAL=1;BYDAY=MO
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3aeastern%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR`);
+
+    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-10-20T12:00:00.000Z"), horizonDays: 30 });
+
+    expect(invite.timeZone).toBe("America/New_York");
+    expect(invite.startTime).toBe("2026-10-26T14:30:00.000Z");
+    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.timeZone])).toEqual([
+      ["abc-eastern-recurring:20261026T143000Z", "2026-10-26T14:30:00.000Z", "America/New_York"],
+      ["abc-eastern-recurring:20261102T153000Z", "2026-11-02T15:30:00.000Z", "America/New_York"]
+    ]);
+  });
+
+  it("parses calendar cancellations even when the cancel payload omits the Teams join URL", () => {
+    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
+To: notetaker@meet.company.com
+Subject: Canceled project sync
+
+BEGIN:VCALENDAR
+METHOD:CANCEL
+BEGIN:VEVENT
+UID:abc-cancel-without-link
+SUMMARY:Canceled project sync
+DTSTART:20260601T150000Z
+DTEND:20260601T153000Z
+ORGANIZER;CN=Alice:mailto:alice@company.com
+ATTENDEE;CN=minutesbot;ROLE=REQ-PARTICIPANT:mailto:notetaker@meet.company.com
+END:VEVENT
+END:VCALENDAR`);
+
+    expect(invite.kind).toBe("cancel");
+    expect(invite.calendarUid).toBe("abc-cancel-without-link");
+    expect(invite.teamsJoinUrl).toBeNull();
+  });
+
   it("uses the VEVENT recurrence when Outlook timezone components also contain RRULE values", () => {
     const invite = parseIncomingInvite(`From: Alice <alice@company.com>
 To: notetaker@meet.company.com

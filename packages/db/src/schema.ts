@@ -11,6 +11,7 @@ export type MeetingRow = {
   teams_join_url?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  time_zone?: string | null;
   status: MeetingStatus;
   attendee_bot_id?: string | null;
   attendee_bot_state?: string | null;
@@ -22,6 +23,30 @@ export type MeetingRow = {
   latest_error?: string | null;
   meeting_type?: string | null;
   source_recipient?: string | null;
+  series_uid?: string | null;
+  occurrence_index?: number | null;
+  recurring?: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MeetingSeriesRow = {
+  series_uid: string;
+  subject: string;
+  organizer_email: string;
+  organizer_name?: string | null;
+  teams_join_url?: string | null;
+  first_start_time: string;
+  first_end_time: string;
+  time_zone?: string | null;
+  recurrence_json: string;
+  attendees_json: string;
+  meeting_type?: string | null;
+  source_recipient?: string | null;
+  raw_invite_r2_key?: string | null;
+  raw_invite_size_bytes?: number | null;
+  status: "ACTIVE" | "CANCELLED";
+  expanded_until?: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -1,4 +1,5 @@
 import type { MeetingOccurrence, ParsedMeetingInvite, ParsedRecurrence } from "./types";
+import { getZonedParts, zonedDateTimeToUtcDate, type LocalDateTimeParts } from "./timeZones";
 
 const DEFAULT_HORIZON_DAYS = 180;
 const DEFAULT_MAX_OCCURRENCES = 60;
@@ -42,9 +43,10 @@ export function expandInviteOccurrences(
     return [
       {
         calendarUid: invite.calendarUid,
-        seriesUid: invite.calendarUid,
+        seriesUid: invite.seriesUid,
         startTime: invite.startTime,
         endTime: invite.endTime,
+        ...(invite.timeZone ? { timeZone: invite.timeZone } : {}),
         occurrenceIndex: 0,
         recurring: false
       }
@@ -63,12 +65,13 @@ export function expandInviteOccurrences(
   const occurrences: MeetingOccurrence[] = [];
 
   if (invite.recurrence.frequency === "weekly" && invite.recurrence.byDay && invite.recurrence.byDay.length > 0) {
-    return expandWeeklyByDayOccurrences(invite, { start, durationMs, windowStart, horizonEnd, untilMs, maxOccurrences });
+    return expandWeeklyByDayOccurrences(invite, { start, durationMs, windowStart, horizonEnd, untilMs, maxOccurrences, timeZone: invite.timeZone });
   }
 
+  const zonedStart = invite.timeZone ? getZonedParts(start, invite.timeZone) : null;
   for (let index = 0; index < MAX_EXPANSION_STEPS && occurrences.length < maxOccurrences; index += 1) {
     if (invite.recurrence.count && index >= invite.recurrence.count) break;
-    const occurrenceStart = advanceDate(start, invite.recurrence, index);
+    const occurrenceStart = zonedStart && invite.timeZone ? advanceZonedDate(zonedStart, invite.recurrence, index, invite.timeZone) : advanceDate(start, invite.recurrence, index);
     const startMs = occurrenceStart.getTime();
     if (untilMs !== null && startMs > untilMs) break;
     if (startMs > horizonEnd) break;
@@ -78,9 +81,10 @@ export function expandInviteOccurrences(
       const startTime = occurrenceStart.toISOString();
       occurrences.push({
         calendarUid: `${invite.calendarUid}:${compactIso(startTime)}`,
-        seriesUid: invite.calendarUid,
+        seriesUid: invite.seriesUid,
         startTime,
         endTime: occurrenceEnd.toISOString(),
+        ...(invite.timeZone ? { timeZone: invite.timeZone } : {}),
         occurrenceIndex: index,
         recurring: true
       });
@@ -92,7 +96,7 @@ export function expandInviteOccurrences(
 
 function expandWeeklyByDayOccurrences(
   invite: ParsedMeetingInvite,
-  input: { start: Date; durationMs: number; windowStart: number; horizonEnd: number; untilMs: number | null; maxOccurrences: number }
+  input: { start: Date; durationMs: number; windowStart: number; horizonEnd: number; untilMs: number | null; maxOccurrences: number; timeZone?: string }
 ): MeetingOccurrence[] {
   if (!invite.recurrence) return [];
   const days = [...new Set(invite.recurrence.byDay?.map(dayToIndex).filter((day): day is number => day !== null) ?? [])].sort((left, right) => left - right);
@@ -100,14 +104,17 @@ function expandWeeklyByDayOccurrences(
 
   const occurrences: MeetingOccurrence[] = [];
   const startMs = input.start.getTime();
-  const startWeek = startOfUtcWeek(input.start);
+  const zonedStart = input.timeZone ? getZonedParts(input.start, input.timeZone) : null;
+  const startWeek = zonedStart ? startOfCalendarWeek(zonedStart) : startOfUtcWeek(input.start);
   let occurrenceIndex = 0;
 
   for (let weekIndex = 0; weekIndex < MAX_EXPANSION_STEPS && occurrences.length < input.maxOccurrences; weekIndex += 1) {
     const weekStart = new Date(startWeek.getTime() + weekIndex * invite.recurrence.interval * 7 * DAY_MS);
     for (const day of days) {
       if (invite.recurrence.count && occurrenceIndex >= invite.recurrence.count) return occurrences;
-      const occurrenceStart = withUtcTime(new Date(weekStart.getTime() + day * DAY_MS), input.start);
+      const occurrenceStart = zonedStart && input.timeZone
+        ? zonedDateTimeToUtcDate(withLocalTime(new Date(weekStart.getTime() + day * DAY_MS), zonedStart), input.timeZone)
+        : withUtcTime(new Date(weekStart.getTime() + day * DAY_MS), input.start);
       const startTimeMs = occurrenceStart.getTime();
       if (startTimeMs < startMs) continue;
       if (input.untilMs !== null && startTimeMs > input.untilMs) return occurrences;
@@ -118,9 +125,10 @@ function expandWeeklyByDayOccurrences(
         const startTime = occurrenceStart.toISOString();
         occurrences.push({
           calendarUid: `${invite.calendarUid}:${compactIso(startTime)}`,
-          seriesUid: invite.calendarUid,
+          seriesUid: invite.seriesUid,
           startTime,
           endTime: occurrenceEnd.toISOString(),
+          ...(input.timeZone ? { timeZone: input.timeZone } : {}),
           occurrenceIndex,
           recurring: true
         });
@@ -171,6 +179,23 @@ function startOfUtcWeek(value: Date): Date {
   return new Date(start - value.getUTCDay() * DAY_MS);
 }
 
+function startOfCalendarWeek(value: Pick<LocalDateTimeParts, "year" | "month" | "day">): Date {
+  const start = Date.UTC(value.year, value.month - 1, value.day);
+  return new Date(start - new Date(start).getUTCDay() * DAY_MS);
+}
+
+function withLocalTime(day: Date, time: LocalDateTimeParts): LocalDateTimeParts {
+  return {
+    year: day.getUTCFullYear(),
+    month: day.getUTCMonth() + 1,
+    day: day.getUTCDate(),
+    hour: time.hour,
+    minute: time.minute,
+    second: time.second,
+    millisecond: time.millisecond
+  };
+}
+
 function withUtcTime(day: Date, time: Date): Date {
   return new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), time.getUTCHours(), time.getUTCMinutes(), time.getUTCSeconds(), time.getUTCMilliseconds()));
 }
@@ -187,6 +212,33 @@ function advanceDate(start: Date, recurrence: ParsedRecurrence, index: number): 
     case "yearly":
       return addUtcMonths(start, interval * 12);
   }
+}
+
+function advanceZonedDate(start: LocalDateTimeParts, recurrence: ParsedRecurrence, index: number, timeZone: string): Date {
+  const interval = index * recurrence.interval;
+  const localDay = new Date(Date.UTC(start.year, start.month - 1, start.day));
+  switch (recurrence.frequency) {
+    case "daily":
+      localDay.setUTCDate(localDay.getUTCDate() + interval);
+      break;
+    case "weekly":
+      localDay.setUTCDate(localDay.getUTCDate() + interval * 7);
+      break;
+    case "monthly":
+      addLocalMonths(localDay, interval);
+      break;
+    case "yearly":
+      addLocalMonths(localDay, interval * 12);
+      break;
+  }
+  return zonedDateTimeToUtcDate(withLocalTime(localDay, start), timeZone);
+}
+
+function addLocalMonths(day: Date, months: number): void {
+  const date = day.getUTCDate();
+  day.setUTCDate(1);
+  day.setUTCMonth(day.getUTCMonth() + months);
+  day.setUTCDate(Math.min(date, daysInUtcMonth(day.getUTCFullYear(), day.getUTCMonth())));
 }
 
 function addUtcMonths(start: Date, months: number): Date {
