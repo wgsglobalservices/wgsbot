@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterSummaryRecipients, getEmailDomain, isAllowedDomain, normalizeDomain } from "./index";
+import { buildSummaryRecipients, filterSummaryRecipients, getEmailDomain, isAllowedDomain, normalizeDomain } from "./index";
 
 describe("recipient policy", () => {
   it("normalizes domains and extracts email domains", () => {
@@ -32,5 +32,23 @@ describe("recipient policy", () => {
       { email: "person@eng.acme.com", domain: "eng.acme.com", reason: "excluded_external_domain" },
       { email: "invalid-email", reason: "excluded_invalid_email" }
     ]);
+  });
+
+  it("includes organizer and dedupes recipients across primary and allowed domains", () => {
+    const result = buildSummaryRecipients({
+      organizer: { email: "Owner@Primary.COM", name: "Owner" },
+      attendees: [
+        { email: "alex@team.primary.com", name: "Alex" },
+        { email: "owner@primary.com", name: "Duplicate Owner" },
+        { email: "casey@partner.com", name: "Casey" },
+        { email: "vendor@example.net", name: "Vendor" }
+      ],
+      primaryDomain: "primary.com",
+      allowedDomains: ["partner.com"],
+      allowSubdomains: true
+    });
+
+    expect(result.included.map((recipient) => recipient.email)).toEqual(["owner@primary.com", "alex@team.primary.com", "casey@partner.com"]);
+    expect(result.excluded).toEqual([{ email: "vendor@example.net", name: "Vendor", domain: "example.net", reason: "excluded_external_domain" }]);
   });
 });

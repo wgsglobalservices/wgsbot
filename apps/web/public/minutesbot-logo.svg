@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">minutes.bot logo</title>
+  <desc id="desc">A smiling robot face with a clock hand.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="42%" r="68%">
+      <stop offset="0%" stop-color="#404040"/>
+      <stop offset="58%" stop-color="#2b2f36"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </radialGradient>
+    <linearGradient id="line" x1="246" x2="778" y1="226" y2="786" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <filter id="softInset" x="-6%" y="-6%" width="112%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.25" flood-color="#ffffff" flood-opacity=".18"/>
+      <feDropShadow dx="0" dy="-1" stdDeviation=".85" flood-color="#000000" flood-opacity=".45"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <g fill="none" stroke="url(#line)" stroke-linecap="round" stroke-linejoin="round" filter="url(#softInset)">
+    <path stroke-width="40" d="M512 343c-132 0-240 82-240 183s108 183 240 183 240-82 240-183-108-183-240-183Z"/>
+    <path stroke-width="40" d="M262 523c-29 0-50 22-50 51s21 50 50 50"/>
+    <path stroke-width="40" d="M762 523c29 0 50 22 50 51s-21 50-50 50"/>
+    <path stroke-width="32" d="M496 343v-58"/>
+    <circle cx="512" cy="253" r="40" stroke-width="18"/>
+    <circle cx="512" cy="541" r="34" stroke-width="18"/>
+    <circle cx="405" cy="528" r="34" stroke-width="18"/>
+    <circle cx="619" cy="528" r="34" stroke-width="18"/>
+    <circle cx="417" cy="513" r="11" stroke-width="10"/>
+    <circle cx="631" cy="513" r="11" stroke-width="10"/>
+    <path stroke-width="30" d="M544 522l58-100"/>
+    <path stroke-width="22" d="M464 609c29 30 67 30 96 0"/>
+    <path stroke-width="22" d="M335 543h16"/>
+    <path stroke-width="22" d="M673 543h16"/>
+    <circle cx="512" cy="395" r="14" stroke-width="14"/>
+  </g>
+</svg>

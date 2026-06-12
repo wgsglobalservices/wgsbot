@@ -4,15 +4,15 @@
 
 D1 stores settings, allowed domains, meeting metadata, attendees and eligibility flags, webhook event metadata/payloads, transcript segments, summary metadata, email delivery metadata, and audit logs. Transcript artifacts and raw invites are stored in R2, not D1.
 
-Attendee stores meeting data separately in the company's self-hosted Attendee instance.
+The meeting bot runtime stores active runtime state in its container process and uploads recordings to R2. Transcript artifacts and raw invites remain outside D1.
 
 ## Secrets
 
-Store `ATTENDEE_API_KEY`, `ATTENDEE_WEBHOOK_SECRET`, `AI_API_KEY`, `EMAIL_API_KEY`, `SMTP_PASSWORD`, and `SESSION_SECRET` with `wrangler secret put`. D1 stores only configured status or secret references.
+Store `AI_API_KEY`, `EMAIL_API_KEY`, `SMTP_PASSWORD`, and `SESSION_SECRET` with `wrangler secret put`. D1 stores only configured status or secret references. The one-shot deploy flow generates and pushes the internal meeting bot token automatically.
 
 ## Webhooks
 
-Attendee webhooks are verified with HMAC-SHA256 using canonicalized JSON and `X-Webhook-Signature`. Events are deduplicated by `idempotency_key`.
+Meeting bot webhooks are verified with managed internal bearer authorization. Events are deduplicated by `idempotency_key`.
 
 ## Recipients
 

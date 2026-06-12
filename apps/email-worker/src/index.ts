@@ -1,12 +1,12 @@
-import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, updateMeetingStatus, upsertMeeting } from "@minutesbot/db";
+import { createArtifact, createAuditLog, getSettings, replaceMeetingAttendees, upsertMeeting } from "@minutesbot/db";
 import { parseIncomingInvite } from "@minutesbot/invite-parser";
-import { filterSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
-import { createId, nowIso, type MeetingStatus } from "@minutesbot/shared";
+import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
+import { createId, readStreamTextWithLimit, type MeetingStatus } from "@minutesbot/shared";
 
 type Env = {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
-  MEETING_WORKFLOW: { create(options: { id?: string; params?: unknown }): Promise<unknown> };
+  INVITE_QUEUE: { send(message: unknown): Promise<void> };
 };
 
 type EmailMessage = {
@@ -16,9 +16,11 @@ type EmailMessage = {
   setReject(reason: string): void;
 };
 
+const MAX_RAW_EMAIL_BYTES = 10 * 1024 * 1024;
+
 export default {
   async email(message: EmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
-    const rawEmail = await new Response(message.raw).text();
+    const rawEmail = await readStreamTextWithLimit(message.raw, MAX_RAW_EMAIL_BYTES, "RAW_INVITE_TOO_LARGE");
     ctx.waitUntil(handleInvite(message, env, rawEmail));
   }
 };
@@ -33,11 +35,11 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
   try {
     parsed = parseIncomingInvite(rawEmail);
   } catch (error) {
-    await rejectInvite(env, message, "REJECTED_PARSE_ERROR", error instanceof Error ? error.message : "Parse error");
+    await ignoreInvite(env, message, "REJECTED_PARSE_ERROR", error instanceof Error ? error.message : "Parse error");
     return;
   }
 
-  if (parsed.rawRecipient.toLowerCase() !== settings.recorderEmail.toLowerCase()) {
+  if (!isRecorderRecipient(message.to, settings.recorderEmail, settings.recorderAliasEmails)) {
     await rejectInvite(env, message, "REJECTED_INVALID_RECIPIENT", "Inbound recipient does not match configured recorder email");
     return;
   }
@@ -50,16 +52,19 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
   const organizerDomain = getEmailDomain(parsed.organizer.email);
   if (
     settings.policy.rejectExternalOrganizers &&
-    (!organizerDomain || !isAllowedDomain(organizerDomain, settings.allowedDomains, settings.policy.allowSubdomains))
+    (!organizerDomain || !isAllowedDomain(organizerDomain, [settings.primaryDomain, ...settings.allowedDomains], settings.policy.allowSubdomains))
   ) {
     await rejectInvite(env, message, "REJECTED_EXTERNAL_ORGANIZER", "Organizer domain is not allowed");
     return;
   }
 
-  const filtered = filterSummaryRecipients(parsed.attendees, {
+  const meetingInvitees = parsed.attendees.filter((attendee) => !isRecorderRecipient(attendee.email, settings.recorderEmail, settings.recorderAliasEmails));
+  const filtered = buildSummaryRecipients({
+    organizer: parsed.organizer,
+    attendees: meetingInvitees,
+    primaryDomain: settings.primaryDomain,
     allowedDomains: settings.allowedDomains,
-    allowSubdomains: settings.policy.allowSubdomains,
-    sendToExternalAttendees: false
+    allowSubdomains: settings.policy.allowSubdomains
   });
 
   if (settings.policy.requireAtLeastOneEligibleRecipient && filtered.included.length === 0) {
@@ -111,18 +116,50 @@ export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "
   );
 
   if (parsed.kind === "cancel") {
+    if (meeting.attendee_bot_id && shouldCancelBot(meeting.attendee_bot_state, meeting.status)) {
+      await env.INVITE_QUEUE.send({
+        type: "cancel_bot",
+        meetingId: meeting.id,
+        botId: meeting.attendee_bot_id,
+        reason: "calendar_cancel"
+      });
+    }
     await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.cancelled", resourceType: "meeting", resourceId: meeting.id });
     return;
   }
 
-  await env.MEETING_WORKFLOW.create({ id: `meeting-${meeting.id}`, params: { meetingId: meeting.id } });
+  await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
   await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.scheduled", resourceType: "meeting", resourceId: meeting.id });
+}
+
+function isRecorderRecipient(recipient: string, recorderEmail: string, aliases: string[] = []): boolean {
+  const normalizedRecipient = recipient.trim().toLowerCase();
+  return [recorderEmail, ...aliases].some((email) => email.trim().toLowerCase() === normalizedRecipient);
+}
+
+function shouldCancelBot(botState: string | null | undefined, status: MeetingStatus): boolean {
+  if (["BOT_ENDED", "SUMMARY_SENT", "FAILED", "BOT_FATAL_ERROR"].includes(status)) return false;
+  return !botState || !["ended", "failed", "cancelled"].includes(botState);
 }
 
 async function rejectInvite(env: Env, message: Pick<EmailMessage, "from" | "setReject">, status: MeetingStatus, reason: string): Promise<void> {
   message.setReject(reason);
+  await recordRejectedInvite(env, message.from, status, reason);
+}
+
+async function ignoreInvite(env: Env, message: Pick<EmailMessage, "from">, status: MeetingStatus, reason: string): Promise<void> {
   await createAuditLog(env.DB, {
     actorEmail: message.from,
+    eventType: "invite.ignored",
+    resourceType: "invite",
+    resourceId: createId("ign"),
+    metadata: { status: "IGNORED_NON_CALENDAR_EMAIL", originalStatus: status, reason }
+  });
+}
+
+async function recordRejectedInvite(env: Env, actorEmail: string, status: MeetingStatus, reason: string): Promise<void> {
+  await createAuditLog(env.DB, {
+    actorEmail,
     eventType: "invite.rejected",
     resourceType: "invite",
     resourceId: createId("rej"),

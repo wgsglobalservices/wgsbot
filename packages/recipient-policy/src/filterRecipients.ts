@@ -1,6 +1,23 @@
 import { getEmailDomain, isAllowedDomain } from "./allowedDomains";
 import type { ExcludedRecipient, Recipient, RecipientPolicy } from "./types";
 
+export type SummaryRecipientInput = {
+  organizer?: Recipient | null;
+  attendees: Recipient[];
+  primaryDomain: string;
+  allowedDomains: string[];
+  allowSubdomains: boolean;
+};
+
+export function buildSummaryRecipients(input: SummaryRecipientInput): { included: Recipient[]; excluded: ExcludedRecipient[] } {
+  const recipients = dedupeRecipients([...(input.organizer ? [input.organizer] : []), ...input.attendees]);
+  return filterSummaryRecipients(recipients, {
+    allowedDomains: Array.from(new Set([input.primaryDomain, ...input.allowedDomains].map((domain) => domain.trim().toLowerCase()).filter(Boolean))),
+    allowSubdomains: input.allowSubdomains,
+    sendToExternalAttendees: false
+  });
+}
+
 export function filterSummaryRecipients(
   attendees: Recipient[],
   policy: RecipientPolicy
@@ -23,4 +40,16 @@ export function filterSummaryRecipients(
   }
 
   return { included, excluded };
+}
+
+function dedupeRecipients(recipients: Recipient[]): Recipient[] {
+  const seen = new Set<string>();
+  const deduped: Recipient[] = [];
+  for (const recipient of recipients) {
+    const email = recipient.email.trim().toLowerCase();
+    if (seen.has(email)) continue;
+    seen.add(email);
+    deduped.push({ ...recipient, email });
+  }
+  return deduped;
 }

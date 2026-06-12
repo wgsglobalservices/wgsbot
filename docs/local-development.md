@@ -9,7 +9,7 @@ pnpm dev
 
 The admin UI runs with Vite. Workers can be run with Wrangler locally using the root `wrangler.jsonc`.
 
-For local Attendee work, use a mocked fetch client in tests or point settings at a development Attendee deployment. Do not vendor Attendee into this repo.
+For local meeting bot runtime work, use the mocked recorder in tests or run `apps/bot-runtime` with a fixture recording path. The repository does not use the upstream Attendee repo.
 
 Invite parser fixtures live in `packages/invite-parser/src/fixtures`.
 

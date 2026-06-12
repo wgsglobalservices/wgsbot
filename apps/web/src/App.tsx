@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
-import { AttendeeStatus } from "./routes/AttendeeStatus";
+import { BotStatus } from "./routes/BotStatus";
 import { Logs } from "./routes/Logs";
 import { MeetingDetail } from "./routes/MeetingDetail";
 import { Meetings } from "./routes/Meetings";
-import { Settings } from "./routes/Settings";
+import { Recap } from "./routes/Recap";
 import { Setup } from "./routes/Setup";
 
-export type RouteName = "setup" | "settings" | "attendee" | "meetings" | "meeting" | "logs";
+export type RouteName = "setup" | "recap" | "bot" | "meetings" | "meeting" | "logs";
 
 export function App() {
   const [route, setRoute] = useState(() => parseHash());
@@ -20,8 +20,8 @@ export function App() {
   return (
     <Layout route={route.name}>
       {route.name === "setup" && <Setup />}
-      {route.name === "settings" && <Settings />}
-      {route.name === "attendee" && <AttendeeStatus />}
+      {route.name === "recap" && <Recap />}
+      {route.name === "bot" && <BotStatus />}
       {route.name === "meetings" && <Meetings />}
       {route.name === "meeting" && <MeetingDetail id={route.id ?? ""} />}
       {route.name === "logs" && <Logs />}
@@ -29,10 +29,12 @@ export function App() {
   );
 }
 
-function parseHash(): { name: RouteName; id?: string } {
-  const hash = window.location.hash.replace(/^#\/?/, "");
+export function parseHash(hashValue = window.location.hash): { name: RouteName; id?: string } {
+  const hash = hashValue.replace(/^#\/?/, "");
   const [name, id] = hash.split("/");
-  if (name === "settings" || name === "attendee" || name === "meetings" || name === "logs" || name === "setup") return { name };
+  if (name === "settings") return { name: "setup" };
+  if (name === "attendee") return { name: "bot" };
+  if (name === "bot" || name === "meetings" || name === "logs" || name === "setup" || name === "recap") return { name };
   if (name === "meeting") return { name: "meeting", id };
   return { name: "setup" };
 }

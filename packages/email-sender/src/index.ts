@@ -1,3 +1,4 @@
+export * from "./address";
 export * from "./cloudflareEmailService";
 export * from "./mock";
 export * from "./provider";

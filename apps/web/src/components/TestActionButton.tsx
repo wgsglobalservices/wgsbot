@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { apiPost } from "../lib/api";
 
-export function TestActionButton({ path, label }: { path: string; label: string }) {
+export function TestActionButton({ label, path, variant = "secondary" }: { label: string; path: string; variant?: "secondary" | "tertiary" }) {
   const [result, setResult] = useState<string>("");
   const [busy, setBusy] = useState(false);
   return (
     <div className="testAction">
       <button
+        className={variant === "tertiary" ? "tertiaryButton" : "secondaryButton"}
         type="button"
         disabled={busy}
         onClick={async () => {

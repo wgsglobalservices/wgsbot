@@ -3,11 +3,15 @@ import { daysAgoIso } from "@minutesbot/shared";
 import type { WorkflowEnv } from "./env";
 import { fetchAndStoreTranscript } from "./transcriptWorkflow";
 import { generateAndSendSummary } from "./summaryWorkflow";
+import { cancelMeetingBot, handleCreateBotQueueMessage, monitorBotJoin } from "./botCreation";
 
 export async function handleQueueBatch(batch: MessageBatch<unknown>, env: WorkflowEnv): Promise<void> {
   for (const message of batch.messages) {
-    const body = message.body as { type?: string; meetingId?: string; botId?: string };
-    if (body.type === "fetch_transcript" && body.meetingId) await fetchAndStoreTranscript(env, body.meetingId, body.botId);
+    const body = message.body as { type?: string; meetingId?: string; botId?: string; attempt?: number; reason?: string };
+    if (body.type === "create_bot" && body.meetingId) await handleCreateBotQueueMessage(env, body.meetingId);
+    if (body.type === "monitor_bot_join" && body.meetingId && body.botId) await monitorBotJoin(env, body.meetingId, body.botId, body.attempt);
+    if (body.type === "cancel_bot" && body.meetingId && body.botId) await cancelMeetingBot(env, body.meetingId, body.botId, typeof body.reason === "string" ? body.reason : "calendar_cancel");
+    if (body.type === "fetch_transcript" && body.meetingId) await fetchAndStoreTranscript(env, body.meetingId, body.botId, undefined, { attempt: body.attempt });
     if (body.type === "summarize" && body.meetingId) await generateAndSendSummary(env, body.meetingId);
     message.ack();
   }
@@ -17,6 +21,7 @@ export async function cleanupOldArtifacts(env: WorkflowEnv): Promise<void> {
   const settings = await getSettings(env.DB);
   const thresholds = {
     raw_invite: daysAgoIso(settings.retention.rawInviteDays),
+    recording: daysAgoIso(settings.retention.transcriptDays),
     transcript_text: daysAgoIso(settings.retention.transcriptDays),
     transcript_json: daysAgoIso(settings.retention.transcriptDays),
     summary: daysAgoIso(settings.retention.summaryDays)

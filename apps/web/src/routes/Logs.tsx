@@ -1,18 +1,23 @@
 import { useEffect, useState } from "react";
+import { defaultSettings } from "@minutesbot/shared";
 import { AuditLogTable } from "../components/AuditLogTable";
-import { apiGet } from "../lib/api";
+import { apiGet, getSettings } from "../lib/api";
 
 export function Logs() {
   const [eventType, setEventType] = useState("");
   const [resourceId, setResourceId] = useState("");
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [timeZone, setTimeZone] = useState(defaultSettings.timeZone);
   const load = () => {
     const params = new URLSearchParams();
     if (eventType) params.set("eventType", eventType);
     if (resourceId) params.set("resourceId", resourceId);
     apiGet<{ auditLogs: Array<Record<string, unknown>> }>(`/api/admin/audit-logs?${params}`).then((data) => setLogs(data.auditLogs));
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    getSettings().then((settings) => setTimeZone(settings.timeZone)).catch(() => {});
+  }, []);
   return (
     <div className="page">
       <header><h1>Audit logs</h1><p>Critical invite, bot, transcript, summary, email, artifact, and cleanup events.</p></header>
@@ -21,7 +26,7 @@ export function Logs() {
         <input placeholder="Resource ID" value={resourceId} onChange={(event) => setResourceId(event.target.value)} />
         <button onClick={load}>Filter</button>
       </div>
-      <AuditLogTable logs={logs} />
+      <AuditLogTable logs={logs} timeZone={timeZone} />
     </div>
   );
 }

@@ -13,3 +13,8 @@ export async function createSummary(db: D1Database, input: Omit<SummaryRow, "id"
 export async function getLatestSummary(db: D1Database, meetingId: string): Promise<SummaryRow | null> {
   return db.prepare("SELECT * FROM summaries WHERE meeting_id = ? ORDER BY created_at DESC LIMIT 1").bind(meetingId).first<SummaryRow>();
 }
+
+export async function listSummaryR2Keys(db: D1Database, meetingId: string): Promise<string[]> {
+  const result = await db.prepare("SELECT r2_key FROM summaries WHERE meeting_id = ? AND r2_key IS NOT NULL").bind(meetingId).all<{ r2_key: string }>();
+  return (result.results ?? []).map((row) => row.r2_key).filter(Boolean);
+}

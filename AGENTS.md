@@ -12,11 +12,12 @@ Architecture constraints:
 - Use Cloudflare R2 for raw invites, transcripts, summaries, and artifacts.
 - Use Cloudflare Email Workers for inbound meeting invites.
 - Use Cloudflare Queues and Workflows for scheduling and async processing.
-- Use Attendee as a separate external meeting-bot backend.
+- Use the built-in first-party meeting bot runtime in this repo.
+- Do not use a separate Attendee API.
 - Do not fork Attendee.
 - Do not vendor Attendee into this repo.
-- Implement packages/attendee-client to wrap the Attendee REST API.
-- Store ATTENDEE_API_KEY and ATTENDEE_WEBHOOK_SECRET as Cloudflare secrets.
+- Implement packages/bot-client to wrap the built-in meeting bot runtime API.
+- Do not require user-managed bot API or webhook keys; deployment manages internal bot auth automatically.
 - Store only secret status or secret references in D1.
 - External attendees must never receive summaries by default.
 - Transcript content should be stored in R2, not D1.
