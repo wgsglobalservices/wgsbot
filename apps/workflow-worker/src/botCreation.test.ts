@@ -7,7 +7,7 @@ class BotCreationD1 {
   meeting = {
     id: "mtg_1",
     calendar_uid: "teams-link-1",
-    teams_join_url: "https://teams.microsoft.com/l/meetup-join/abc",
+    teams_join_url: "https://teams.microsoft.com/l/meetup-join/abc" as string | null,
     start_time: "2026-05-18T15:00:00.000Z",
     status: "SCHEDULED",
     attendee_bot_id: null as string | null
@@ -166,6 +166,37 @@ describe("createMeetingBot failure handling", () => {
     });
   });
 
+  it("passes configured Attendee payload overrides without replacing core join fields", async () => {
+    const db = new BotCreationD1();
+    db.settings = {
+      ...defaultSettings,
+      attendee: {
+        ...defaultSettings.attendee,
+        botPayloadOverridesJson: JSON.stringify({
+          meeting_url: "https://teams.microsoft.com/l/meetup-join/override",
+          teams_settings: { use_login: true }
+        })
+      }
+    };
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(url), init });
+        if (String(url).endsWith("/_ops/health")) return Response.json({ ok: true, runtime: "cloudflare-containers", missing: [] });
+        return Response.json({ id: "bot_1", meeting_url: "https://teams.microsoft.com/l/meetup-join/abc", state: "joining" }, { status: 201 });
+      })
+    );
+
+    await createMeetingBot(env({}, db), "mtg_1");
+
+    const createRequest = requests.find((request) => request.url.endsWith("/api/v1/bots"));
+    expect(JSON.parse(createRequest?.init?.body as string)).toMatchObject({
+      meeting_url: "https://teams.microsoft.com/l/meetup-join/abc",
+      teams_settings: { use_login: true }
+    });
+  });
+
   it("stores a visible failure when ATTENDEE_API_KEY is missing", async () => {
     const db = new BotCreationD1();
 
@@ -178,6 +209,46 @@ describe("createMeetingBot failure handling", () => {
       latestError: "ATTENDEE_API_KEY_MISSING: ATTENDEE_API_KEY secret is not configured"
     });
     expect(db.auditLogs.at(-1)).toMatchObject({ eventType: "bot.fatal_error" });
+  });
+
+  it("stores a visible failure without calling Attendee when the Teams join URL is missing", async () => {
+    const db = new BotCreationD1();
+    db.meeting.teams_join_url = null;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(createMeetingBot(env({}, db), "mtg_1")).rejects.toMatchObject({
+      code: "MEETING_JOIN_URL_MISSING"
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(db.statusUpdates.at(-1)).toEqual({
+      status: "FAILED",
+      latestError: "MEETING_JOIN_URL_MISSING: Meeting is missing a Teams join URL"
+    });
+  });
+
+  it("stores a visible failure without calling Attendee when payload overrides are invalid", async () => {
+    const db = new BotCreationD1();
+    db.settings = {
+      ...defaultSettings,
+      attendee: {
+        ...defaultSettings.attendee,
+        botPayloadOverridesJson: "{bad-json"
+      }
+    };
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(createMeetingBot(env({}, db), "mtg_1")).rejects.toMatchObject({
+      code: "ATTENDEE_BOT_PAYLOAD_OVERRIDES_INVALID"
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(db.statusUpdates.at(-1)).toEqual({
+      status: "FAILED",
+      latestError: "ATTENDEE_BOT_PAYLOAD_OVERRIDES_INVALID: Attendee bot payload overrides must be valid JSON"
+    });
   });
 
   it("stores a visible failure when Attendee cannot be reached", async () => {

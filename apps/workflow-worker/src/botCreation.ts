@@ -39,10 +39,13 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
     if (!env.ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME) {
       throw new AppError("ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME_MISSING", "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME is not configured", 500);
     }
+    const meetingUrl = meeting.teams_join_url?.trim();
+    if (!meetingUrl) throw new AppError("MEETING_JOIN_URL_MISSING", "Meeting is missing a Teams join URL", 400);
+    const rawOverrides = parseBotPayloadOverrides(settings.attendee.botPayloadOverridesJson);
     const client = new AttendeeClient({ baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL), apiKey: env.ATTENDEE_API_KEY });
     await client.checkHealth();
     bot = await client.createBot({
-      meetingUrl: meeting.teams_join_url ?? "",
+      meetingUrl,
       botName: settings.attendee.botName,
       botImage: await loadBotImage(env, settings.attendee.botImage),
       botChatMessage: botJoinChatMessage(settings.attendee.botName),
@@ -57,7 +60,8 @@ export async function createMeetingBot(env: WorkflowEnv, meetingId: string): Pro
           triggers: [...ATTENDEE_WEBHOOK_TRIGGERS]
         }
       ],
-      metadata: { minutesbot_meeting_id: meeting.id, calendar_uid: meeting.calendar_uid }
+      metadata: { minutesbot_meeting_id: meeting.id, calendar_uid: meeting.calendar_uid },
+      rawOverrides
     });
   } catch (error) {
     const failure = botCreationFailure(error);
@@ -115,6 +119,21 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 function secondsUntil(iso: string): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+}
+
+function parseBotPayloadOverrides(value: string | undefined): Record<string, unknown> | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new AppError("ATTENDEE_BOT_PAYLOAD_OVERRIDES_INVALID", "Attendee bot payload overrides must be valid JSON", 400);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new AppError("ATTENDEE_BOT_PAYLOAD_OVERRIDES_INVALID", "Attendee bot payload overrides must be a JSON object", 400);
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function botCreationFailure(error: unknown): { latestError: string; auditMetadata: Record<string, unknown> } {
