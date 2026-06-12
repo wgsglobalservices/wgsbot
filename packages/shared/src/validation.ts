@@ -4,12 +4,24 @@ const legacySelfHostedBotBaseUrls = new Set<string>(["https://app.attendee.dev",
 const defaultTimeZone = "UTC";
 const defaultEmailSenderName = "minutesbot";
 
+// Requires at least two dot-separated labels: a bare TLD entry such as "com"
+// combined with allowSubdomains would otherwise make every .com address an
+// eligible recap recipient.
 const domainSchema = z
   .string()
   .trim()
   .min(1)
-  .regex(/^(?!-)[a-z0-9.-]+(?<!-)$/i, "Invalid domain")
+  .max(253)
+  .regex(/^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i, "Invalid domain")
   .transform((value) => value.toLowerCase());
+
+const headerSafeString = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .regex(/^[^\r\n]*$/, "Must not contain line breaks");
 
 const timeZoneSchema = z
   .string()
@@ -124,7 +136,7 @@ export const appSettingsSchema = z.object({
   }),
   email: z.object({
     provider: z.enum(["cloudflare-email-service", "smtp", "mock"]),
-    senderName: z.string().trim().min(1).max(120).default(defaultEmailSenderName),
+    senderName: headerSafeString(120).default(defaultEmailSenderName),
     senderEmail: z.string().trim().email().transform((value) => value.toLowerCase()),
     testRecipient: z.string().trim().email().optional().or(z.literal(""))
   }),
@@ -133,7 +145,10 @@ export const appSettingsSchema = z.object({
     allowSubdomains: z.boolean(),
     sendToExternalAttendees: z.literal(false),
     rejectExternalOrganizers: z.boolean(),
-    requireAtLeastOneEligibleRecipient: z.boolean()
+    requireAtLeastOneEligibleRecipient: z.boolean(),
+    // Reject inbound invites whose From domain fails SPF/DKIM/DMARC
+    // verification (checked via the receiving MTA's Authentication-Results).
+    requireAuthenticatedSender: z.boolean().optional().default(true)
   }),
   retention: z.object({
     rawInviteDays: z.number().int().min(1).max(3650),
@@ -147,7 +162,7 @@ export const appSettingsSchema = z.object({
       transcriptionModel: z.string().trim().min(1),
       language: z.string().trim().max(12).optional().or(z.literal("")),
       prompt: z.string().trim().min(20).max(8000),
-      subjectPrefix: z.string().trim().min(1).max(80),
+      subjectPrefix: headerSafeString(80),
       introText: z.string().trim().max(1000).optional().or(z.literal("")),
       classificationEnabled: z.boolean().optional().default(defaultRecapConfig.classificationEnabled),
       defaultTemplate: z.enum(defaultRecapTemplateKeys).optional().default(defaultRecapConfig.defaultTemplate),
@@ -209,7 +224,8 @@ export const defaultSettings: AppSettings = {
     allowSubdomains: false,
     sendToExternalAttendees: false,
     rejectExternalOrganizers: true,
-    requireAtLeastOneEligibleRecipient: true
+    requireAtLeastOneEligibleRecipient: true,
+    requireAuthenticatedSender: true
   },
   retention: {
     rawInviteDays: 30,
@@ -268,7 +284,8 @@ function isValidTimeZone(value: string): boolean {
 
 function normalizeRecapSettings(recap: AppSettings["recap"]): AppSettings["recap"] {
   const provided = new Map(recap.sections.map((section) => [section.key, section]));
-  const ordered = recap.sections.map((section) => section.key);
+  // Set-based so duplicate keys in the input cannot render a section twice.
+  const ordered = [...new Set(recap.sections.map((section) => section.key))];
   for (const key of recapSectionKeys) {
     if (!ordered.includes(key)) ordered.push(key);
   }

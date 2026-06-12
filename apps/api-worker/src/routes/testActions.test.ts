@@ -4,6 +4,12 @@ import { app } from "../index";
 import type { Env } from "../env";
 
 class MemoryD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   rows = new Map<string, string>();
 
   prepare(sql: string) {

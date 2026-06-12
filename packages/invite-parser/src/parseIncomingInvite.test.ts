@@ -64,7 +64,7 @@ END:VCALENDAR`);
 
   it("rejects non-Teams calendar invites and malformed calendars cleanly", () => {
     expect(() => parseIncomingInvite(readFixture("non-teams-calendar.eml"))).toThrow("Microsoft Teams");
-    expect(() => parseIncomingInvite(readFixture("malformed-calendar.eml"))).toThrow("missing required");
+    expect(() => parseIncomingInvite(readFixture("malformed-calendar.eml"))).toThrow("missing a UID");
   });
 
   it("decodes escaped Teams URLs", () => {

@@ -5,6 +5,12 @@ import type { Env } from "./env";
 import { createTranscriptDownloadToken } from "@minutesbot/shared";
 
 class FakeD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   prepare() {
     return {
       bind() {
@@ -24,6 +30,12 @@ class FakeD1 {
 }
 
 class MeetingDetailD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   prepare(sql: string) {
     return {
       bind() {
@@ -73,6 +85,12 @@ class MeetingDetailD1 {
 }
 
 class RetriedMeetingDetailD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   prepare(sql: string) {
     return {
       bind() {
@@ -134,6 +152,12 @@ class RetriedMeetingDetailD1 {
 }
 
 class ActiveBotMeetingD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   updates: unknown[][] = [];
   audits: Array<{ eventType: string; metadata: string | null }> = [];
 
@@ -180,6 +204,12 @@ class ActiveBotMeetingD1 {
 }
 
 class DeleteMeetingD1 {
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
+
   deletedTables: string[] = [];
 
   prepare(sql: string) {

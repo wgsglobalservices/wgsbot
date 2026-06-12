@@ -1,4 +1,4 @@
-export type InviteKind = "request" | "cancel";
+export type InviteKind = "request" | "cancel" | "other";
 
 export type ParsedMeetingInvite = {
   kind: InviteKind;
@@ -15,7 +15,8 @@ export type ParsedMeetingInvite = {
   }>;
   startTime: string;
   endTime: string;
-  teamsJoinUrl: string;
+  /** Null only for cancellations, which are matched by calendar UID instead. */
+  teamsJoinUrl: string | null;
   rawRecipient: string;
   rawSender: string;
 };

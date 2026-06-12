@@ -29,7 +29,7 @@ class FakeD1 {
         return null;
       },
       async run() {
-        if (sql.includes("INSERT OR REPLACE INTO meetings")) db.meetings.push(this.values);
+        if (sql.includes("INSERT INTO meetings")) db.meetings.push(this.values);
         if (sql.includes("INSERT INTO attendees")) db.attendees.push(this.values);
         if (sql.includes("INSERT INTO audit_logs")) db.auditEvents.push(this.values);
         return { success: true };
@@ -38,6 +38,10 @@ class FakeD1 {
         return { results: [] };
       }
     };
+  }
+
+  async batch(statements: Array<{ run(): Promise<unknown> }>) {
+    return Promise.all(statements.map((statement) => statement.run()));
   }
 }
 

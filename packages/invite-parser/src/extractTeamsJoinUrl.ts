@@ -2,7 +2,9 @@ import { normalizeTeamsJoinUrl } from "./normalizeTeamsJoinUrl";
 
 const teamsUrlPattern = /https?:\/\/(?:teams\.microsoft\.com|teams\.live\.com|teams\.cloud\.microsoft)\/[^\s<>"')]+/gi;
 
-function decodeIcsText(input: string): string {
+// Defensive cleanup for URLs embedded in text that escaped earlier decoding:
+// ICS escapes, HTML entities, and stray quoted-printable artifacts.
+function decodeUrlArtifacts(input: string): string {
   return input
     .replace(/\\n/gi, "\n")
     .replace(/\\,/g, ",")
@@ -13,7 +15,7 @@ function decodeIcsText(input: string): string {
 }
 
 export function extractTeamsJoinUrl(input: string): string | null {
-  const decoded = decodeIcsText(input);
+  const decoded = decodeUrlArtifacts(input);
   const matches = decoded.matchAll(teamsUrlPattern);
   for (const match of matches) {
     const normalized = normalizeTeamsJoinUrl(match[0]);

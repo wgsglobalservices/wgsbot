@@ -1,15 +1,17 @@
 import { AppError } from "@minutesbot/shared";
 import { extractTeamsJoinUrl } from "./extractTeamsJoinUrl";
+import { decodeMimeWords, extractCalendarText, extractTextBody, parseHeaderBlock, splitMessage } from "./mime";
 import { normalizeAttendees } from "./normalizeAttendees";
 import { parseIcsCalendar } from "./parseIcs";
 import type { NormalizedAttendee, ParsedMeetingInvite, RawIcsAttendee } from "./types";
 
 export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
-  const headers = parseHeaders(rawEmail);
+  const { headerText } = splitMessage(rawEmail);
+  const headers = parseHeaderBlock(headerText);
   const rawRecipient = firstAddress(headers.get("to") ?? headers.get("delivered-to") ?? "");
   const rawSender = firstAddress(headers.get("from") ?? headers.get("sender") ?? "");
-  const body = rawEmail.slice(rawEmail.indexOf("\n\n") + 2);
-  const calendarText = extractCalendarPart(rawEmail);
+  const body = extractTextBody(rawEmail);
+  const calendarText = extractCalendarText(rawEmail);
 
   if (!rawRecipient || !rawSender) {
     throw new AppError("INVITE_PARSE_ERROR", "Inbound email is missing sender or recipient", 400);
@@ -20,7 +22,10 @@ export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
 
   const calendar = parseIcsCalendar(calendarText);
   const teamsJoinUrl = extractTeamsJoinUrl(`${calendar.description ?? ""}\n${calendar.location ?? ""}\n${body}`);
-  if (!teamsJoinUrl) {
+  // Cancellations are matched to the stored meeting by UID, so a missing
+  // join URL must not reject them — otherwise the bot attends cancelled
+  // meetings whose CANCEL payload omitted the link.
+  if (!teamsJoinUrl && calendar.kind === "request") {
     throw new AppError("REJECTED_NO_TEAMS_LINK", "Meeting invite does not contain a Microsoft Teams join URL", 400);
   }
 
@@ -100,18 +105,6 @@ function mergeAttendees(primary: NormalizedAttendee[], fallback: NormalizedAtten
   return merged;
 }
 
-function parseHeaders(rawEmail: string): Map<string, string> {
-  const headerText = rawEmail.split(/\r?\n\r?\n/, 1)[0] ?? "";
-  const unfolded = headerText.replace(/\r?\n[ \t]+/g, " ");
-  const headers = new Map<string, string>();
-  for (const line of unfolded.split(/\r?\n/)) {
-    const index = line.indexOf(":");
-    if (index === -1) continue;
-    headers.set(line.slice(0, index).trim().toLowerCase(), line.slice(index + 1).trim());
-  }
-  return headers;
-}
-
 function firstAddress(value: string): string {
   const angle = value.match(/<([^>]+)>/);
   const candidate = angle?.[1] ?? value.split(",")[0] ?? "";
@@ -125,17 +118,4 @@ function stableHash(value: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function decodeMimeWords(value: string): string {
-  return value.replace(/=\?utf-8\?q\?([^?]+)\?=/gi, (_match, encoded: string) =>
-    encoded.replace(/_/g, " ").replace(/=([0-9a-f]{2})/gi, (_hexMatch, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
-  );
-}
-
-function extractCalendarPart(rawEmail: string): string | null {
-  const begin = rawEmail.indexOf("BEGIN:VCALENDAR");
-  const end = rawEmail.indexOf("END:VCALENDAR");
-  if (begin === -1 || end === -1) return null;
-  return rawEmail.slice(begin, end + "END:VCALENDAR".length);
 }
