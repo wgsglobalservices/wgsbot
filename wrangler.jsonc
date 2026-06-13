@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "wgsbot",
+  "name": "wgsbot-notetaker",
   "account_id": "5e4d29b3db4faa691c672e24b0009999",
   "main": "apps/api-worker/src/index.ts",
   "assets": {
@@ -129,7 +129,7 @@
       ]
     },
     "production": {
-      "name": "wgsbot",
+      "name": "wgsbot-notetaker",
       "routes": [
         {
           "pattern": "minutesbot-admin.wgsglobal.app",
