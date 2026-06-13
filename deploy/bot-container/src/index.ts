@@ -17,18 +17,14 @@ type BotContainerEnv = {
 
 const MAX_RECORDING_UPLOAD_BYTES = 200 * 1024 * 1024;
 const BOT_RUNTIME_PORT = 8787;
+const BOT_RUNTIME_ENTRYPOINT = ["node", "--import", "tsx", "src/server.ts"];
 
 export class MeetingBotContainer extends Container {
   defaultPort = BOT_RUNTIME_PORT;
+  requiredPorts = [BOT_RUNTIME_PORT];
   sleepAfter = getGlobal("BOT_CONTAINER_SLEEP_AFTER") || "24h";
-  envVars = {
-    ...stringEnv(workerEnv as BotContainerEnv),
-    BOT_STORAGE_UPLOAD_URL: `${(workerEnv as BotContainerEnv).BOT_API_BASE_URL ?? ""}/internal/recordings`,
-    // Restrict runtime webhook targets to the configured control-plane
-    // origin so a createBot caller cannot exfiltrate the bearer token to an
-    // arbitrary URL.
-    ...webhookAllowedOrigins(workerEnv as BotContainerEnv)
-  };
+  entrypoint = BOT_RUNTIME_ENTRYPOINT;
+  envVars = runtimeEnvVars(workerEnv as BotContainerEnv);
 }
 
 export default {
@@ -38,7 +34,11 @@ export default {
       return storeRecording(request, env);
     }
     const container = getContainer(env.MEETING_BOT, env.BOT_CONTAINER_INSTANCE_ID || "primary");
-    await container.startAndWaitForPorts(BOT_RUNTIME_PORT, { instanceGetTimeoutMS: 30_000, portReadyTimeoutMS: 60_000 });
+    await container.startAndWaitForPorts({
+      ports: BOT_RUNTIME_PORT,
+      cancellationOptions: { instanceGetTimeoutMS: 30_000, portReadyTimeoutMS: 60_000 },
+      startOptions: runtimeStartOptions(env)
+    });
     return container.containerFetch(request, BOT_RUNTIME_PORT);
   }
 };
@@ -100,6 +100,24 @@ function stringEnv(env: BotContainerEnv): Record<string, string> {
       .map((key) => [key, env[key as keyof BotContainerEnv]])
       .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
   );
+}
+
+function runtimeStartOptions(env: BotContainerEnv): { entrypoint: string[]; envVars: Record<string, string> } {
+  return {
+    entrypoint: BOT_RUNTIME_ENTRYPOINT,
+    envVars: runtimeEnvVars(env)
+  };
+}
+
+function runtimeEnvVars(env: BotContainerEnv): Record<string, string> {
+  return {
+    ...stringEnv(env),
+    BOT_STORAGE_UPLOAD_URL: `${env.BOT_API_BASE_URL ?? ""}/internal/recordings`,
+    // Restrict runtime webhook targets to the configured control-plane
+    // origin so a createBot caller cannot exfiltrate the bearer token to an
+    // arbitrary URL.
+    ...webhookAllowedOrigins(env)
+  };
 }
 
 function webhookAllowedOrigins(env: BotContainerEnv): Record<string, string> {
