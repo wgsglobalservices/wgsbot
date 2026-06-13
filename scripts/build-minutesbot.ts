@@ -24,7 +24,6 @@ type BuildMinutesbotOptions = {
 };
 
 const ROOT_CONFIG = "wrangler.jsonc";
-const DEFAULT_WORKERS_BUILD_DOMAIN = "minutes.bot";
 
 export async function buildMinutesbot(options: BuildMinutesbotOptions = {}): Promise<void> {
   const env = options.env ?? process.env;
@@ -87,26 +86,36 @@ function workersBuildAnswersFromEnv(
   const meetingDomain = hostnameOf(value(["BOT_WEBHOOK_BASE_URL"]));
   const meetingApiDomain = hostnameOf(value(["BOT_API_BASE_URL"]));
   const recorderEmail = value(["RECORDER_EMAIL", "DEFAULT_RECORDER_EMAIL"]);
-  const defaultDomain = hostnameOf(value(["MINUTESBOT_DOMAIN"])) ?? DEFAULT_WORKERS_BUILD_DOMAIN;
+  // Intentionally no hardcoded fallback domain. When neither an explicit *_BASE_URL nor
+  // MINUTESBOT_DOMAIN is provided, the example.com placeholders are left in place so
+  // assertNoWorkersBuildExampleDomains fails the build loudly. Silently defaulting to a
+  // domain the operator does not control ships a worker whose APP_BASE_URL never matches
+  // its custom domain, so it 404s ("Not Found") on its own admin UI.
+  const baseDomain = hostnameOf(value(["MINUTESBOT_DOMAIN"]));
 
   return {
     provided,
     answers: {
-      appDomain: appDomain ?? defaultHostname(current.appDomain, "app", defaultDomain),
-      apiDomain: apiDomain ?? defaultHostname(current.apiDomain, "api", defaultDomain),
-      meetingDomain: meetingDomain ?? defaultHostname(current.meetingDomain, "meeting", defaultDomain),
-      meetingApiDomain: meetingApiDomain ?? defaultHostname(current.meetingApiDomain, "meeting-api", defaultDomain),
-      recorderEmail: recorderEmail ?? defaultRecorderEmail(current.recorderEmail, defaultDomain)
+      appDomain: appDomain ?? defaultHostname(current.appDomain, "app", baseDomain),
+      apiDomain: apiDomain ?? defaultHostname(current.apiDomain, "api", baseDomain),
+      meetingDomain: meetingDomain ?? defaultHostname(current.meetingDomain, "meeting", baseDomain),
+      meetingApiDomain: meetingApiDomain ?? defaultHostname(current.meetingApiDomain, "meeting-api", baseDomain),
+      recorderEmail: recorderEmail ?? defaultRecorderEmail(current.recorderEmail, baseDomain)
     }
   };
 }
 
-function defaultHostname(current: string, subdomain: string, domain: string): string {
-  return current.endsWith(".example.com") ? `${subdomain}.${domain}` : current;
+// `domain` is undefined when the operator supplied no MINUTESBOT_DOMAIN; in that case keep
+// the checked-in placeholder so the example.com guard rejects the build instead of
+// synthesizing a hostname (e.g. app.minutes.bot, or worse "app.undefined").
+function defaultHostname(current: string, subdomain: string, domain: string | undefined): string {
+  if (!domain || !current.endsWith(".example.com")) return current;
+  return `${subdomain}.${domain}`;
 }
 
-function defaultRecorderEmail(current: string, domain: string): string {
-  return current.endsWith("@example.com") ? `notetaker@${domain}` : current;
+function defaultRecorderEmail(current: string, domain: string | undefined): string {
+  if (!domain || !current.endsWith("@example.com")) return current;
+  return `notetaker@${domain}`;
 }
 
 function assertNoWorkersBuildExampleDomains(configText: string, provided: Set<string>): void {
@@ -114,7 +123,7 @@ function assertNoWorkersBuildExampleDomains(configText: string, provided: Set<st
   if (remaining.length === 0) return;
 
   const required = [
-    `MINUTESBOT_DOMAIN=${DEFAULT_WORKERS_BUILD_DOMAIN}`,
+    "MINUTESBOT_DOMAIN=your-zone.com",
     "APP_BASE_URL=https://app.your-zone.com",
     "API_BASE_URL=https://api.your-zone.com",
     "BOT_WEBHOOK_BASE_URL=https://meeting.your-zone.com",
