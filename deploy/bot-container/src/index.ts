@@ -16,9 +16,10 @@ type BotContainerEnv = {
 };
 
 const MAX_RECORDING_UPLOAD_BYTES = 200 * 1024 * 1024;
+const BOT_RUNTIME_PORT = 8787;
 
 export class MeetingBotContainer extends Container {
-  defaultPort = 8787;
+  defaultPort = BOT_RUNTIME_PORT;
   sleepAfter = getGlobal("BOT_CONTAINER_SLEEP_AFTER") || "24h";
   envVars = {
     ...stringEnv(workerEnv as BotContainerEnv),
@@ -37,6 +38,7 @@ export default {
       return storeRecording(request, env);
     }
     const container = getContainer(env.MEETING_BOT, env.BOT_CONTAINER_INSTANCE_ID || "primary");
+    await container.startAndWaitForPorts(BOT_RUNTIME_PORT, { instanceGetTimeoutMS: 30_000, portReadyTimeoutMS: 60_000 });
     return container.fetch(request);
   }
 };
