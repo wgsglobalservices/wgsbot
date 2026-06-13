@@ -135,33 +135,60 @@ describe("buildMinutesbot", () => {
     });
 
     expect(events).toEqual(["ensure:production", "pnpm run build:workspace"]);
-    expect(messages).toContain("Patched wrangler.jsonc from Cloudflare Workers Builds environment variables.");
+    expect(messages).toContain("Patched wrangler.jsonc for Cloudflare Workers Builds deployment.");
     expect(config.configText()).toContain("app.minutes.bot");
     expect(config.configText()).toContain("notetaker@minutes.bot");
     expect(config.configText()).not.toContain("example.com");
   });
 
-  it("fails Workers Builds before provisioning when placeholder domains have no environment values", async () => {
+  it("defaults Workers Builds placeholder domains to minutes.bot", async () => {
     const events: string[] = [];
+    const messages: string[] = [];
     const config = createConfigHarness(placeholderConfig);
 
-    await expect(
-      buildMinutesbot({
-        env: { WORKERS_CI: "1" },
-        ensureResources: async ({ environment }) => {
-          events.push(`ensure:${environment}`);
-        },
-        runBuildCommand: async (command, args) => {
-          events.push(`${command} ${args.join(" ")}`);
-        },
-        readConfig: config.readConfig,
-        writeConfig: config.writeConfig,
-        log: () => undefined,
-        error: () => undefined
-      })
-    ).rejects.toThrow("Cloudflare Workers Builds cannot deploy the checked-in example.com routes");
+    await buildMinutesbot({
+      env: { WORKERS_CI: "1" },
+      ensureResources: async ({ environment }) => {
+        events.push(`ensure:${environment}`);
+      },
+      runBuildCommand: async (command, args) => {
+        events.push(`${command} ${args.join(" ")}`);
+      },
+      readConfig: config.readConfig,
+      writeConfig: config.writeConfig,
+      log: (message) => messages.push(message),
+      error: () => undefined
+    });
 
-    expect(events).toEqual([]);
+    expect(events).toEqual(["ensure:production", "pnpm run build:workspace"]);
+    expect(messages).toContain("Patched wrangler.jsonc for Cloudflare Workers Builds deployment.");
+    expect(config.configText()).toContain("app.minutes.bot");
+    expect(config.configText()).toContain("api.minutes.bot");
+    expect(config.configText()).toContain("meeting.minutes.bot");
+    expect(config.configText()).toContain("meeting-api.minutes.bot");
+    expect(config.configText()).toContain("notetaker@minutes.bot");
+    expect(config.configText()).not.toContain("example.com");
+  });
+
+  it("can derive Workers Builds hostnames from a custom MINUTESBOT_DOMAIN", async () => {
+    const config = createConfigHarness(placeholderConfig);
+
+    await buildMinutesbot({
+      env: { WORKERS_CI: "1", MINUTESBOT_DOMAIN: "acme.com" },
+      ensureResources: async () => undefined,
+      runBuildCommand: async () => undefined,
+      readConfig: config.readConfig,
+      writeConfig: config.writeConfig,
+      log: () => undefined,
+      error: () => undefined
+    });
+
+    expect(config.configText()).toContain("app.acme.com");
+    expect(config.configText()).toContain("api.acme.com");
+    expect(config.configText()).toContain("meeting.acme.com");
+    expect(config.configText()).toContain("meeting-api.acme.com");
+    expect(config.configText()).toContain("notetaker@acme.com");
+    expect(config.configText()).not.toContain("example.com");
   });
 
   it("fails invalid deploy environments before provisioning or building", async () => {

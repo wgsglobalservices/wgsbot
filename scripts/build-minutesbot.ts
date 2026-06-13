@@ -24,6 +24,7 @@ type BuildMinutesbotOptions = {
 };
 
 const ROOT_CONFIG = "wrangler.jsonc";
+const DEFAULT_WORKERS_BUILD_DOMAIN = "minutes.bot";
 
 export async function buildMinutesbot(options: BuildMinutesbotOptions = {}): Promise<void> {
   const env = options.env ?? process.env;
@@ -61,7 +62,7 @@ export async function prepareWorkersBuildConfig(options: {
 
   if (nextConfigText !== configText) {
     await options.writeConfig(ROOT_CONFIG, nextConfigText);
-    options.log(`Patched ${ROOT_CONFIG} from Cloudflare Workers Builds environment variables.`);
+    options.log(`Patched ${ROOT_CONFIG} for Cloudflare Workers Builds deployment.`);
   }
 }
 
@@ -86,17 +87,26 @@ function workersBuildAnswersFromEnv(
   const meetingDomain = hostnameOf(value(["BOT_WEBHOOK_BASE_URL"]));
   const meetingApiDomain = hostnameOf(value(["BOT_API_BASE_URL"]));
   const recorderEmail = value(["RECORDER_EMAIL", "DEFAULT_RECORDER_EMAIL"]);
+  const defaultDomain = hostnameOf(value(["MINUTESBOT_DOMAIN"])) ?? DEFAULT_WORKERS_BUILD_DOMAIN;
 
   return {
     provided,
     answers: {
-      appDomain: appDomain ?? current.appDomain,
-      apiDomain: apiDomain ?? current.apiDomain,
-      meetingDomain: meetingDomain ?? current.meetingDomain,
-      meetingApiDomain: meetingApiDomain ?? current.meetingApiDomain,
-      recorderEmail: recorderEmail ?? current.recorderEmail
+      appDomain: appDomain ?? defaultHostname(current.appDomain, "app", defaultDomain),
+      apiDomain: apiDomain ?? defaultHostname(current.apiDomain, "api", defaultDomain),
+      meetingDomain: meetingDomain ?? defaultHostname(current.meetingDomain, "meeting", defaultDomain),
+      meetingApiDomain: meetingApiDomain ?? defaultHostname(current.meetingApiDomain, "meeting-api", defaultDomain),
+      recorderEmail: recorderEmail ?? defaultRecorderEmail(current.recorderEmail, defaultDomain)
     }
   };
+}
+
+function defaultHostname(current: string, subdomain: string, domain: string): string {
+  return current.endsWith(".example.com") ? `${subdomain}.${domain}` : current;
+}
+
+function defaultRecorderEmail(current: string, domain: string): string {
+  return current.endsWith("@example.com") ? `notetaker@${domain}` : current;
 }
 
 function assertNoWorkersBuildExampleDomains(configText: string, provided: Set<string>): void {
@@ -104,6 +114,7 @@ function assertNoWorkersBuildExampleDomains(configText: string, provided: Set<st
   if (remaining.length === 0) return;
 
   const required = [
+    `MINUTESBOT_DOMAIN=${DEFAULT_WORKERS_BUILD_DOMAIN}`,
     "APP_BASE_URL=https://app.your-zone.com",
     "API_BASE_URL=https://api.your-zone.com",
     "BOT_WEBHOOK_BASE_URL=https://meeting.your-zone.com",

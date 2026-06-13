@@ -88,7 +88,15 @@ as the build command and:
 npx wrangler deploy
 ```
 
-as the deploy command. Add these Cloudflare build environment variables so the build can patch the checked-in placeholder domains before Wrangler deploys:
+as the deploy command. This repository defaults Workers Builds to the `minutes.bot` zone when no domain variables are provided:
+
+- `APP_BASE_URL=https://app.minutes.bot`
+- `API_BASE_URL=https://api.minutes.bot`
+- `BOT_WEBHOOK_BASE_URL=https://meeting.minutes.bot`
+- `BOT_API_BASE_URL=https://meeting-api.minutes.bot`
+- `RECORDER_EMAIL=notetaker@minutes.bot`
+
+For a different zone, set `MINUTESBOT_DOMAIN=yourcompany.com` or provide the explicit Cloudflare build environment variables below so the build can patch the checked-in placeholder domains before Wrangler deploys:
 
 - `APP_BASE_URL=https://app.yourcompany.com`
 - `API_BASE_URL=https://api.yourcompany.com`
@@ -96,7 +104,7 @@ as the deploy command. Add these Cloudflare build environment variables so the b
 - `BOT_API_BASE_URL=https://meeting-api.yourcompany.com`
 - `RECORDER_EMAIL=notetaker@yourcompany.com` (or `DEFAULT_RECORDER_EMAIL`)
 
-Without those values, the build fails before provisioning/deploy instead of letting Wrangler try to attach `example.com` routes.
+Without a default or those values, the build fails before provisioning/deploy instead of letting Wrangler try to attach `example.com` routes.
 
 ## 6. Deploy the bot container
 
