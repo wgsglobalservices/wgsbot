@@ -65,8 +65,10 @@ describe("root wrangler config", () => {
     expect(text).not.toMatch(/\b[0-9a-f]{32}\b/);
   });
 
-  it("keeps the bot runtime out of the main worker (separate container deploy)", () => {
-    expect(config.services ?? []).not.toEqual(expect.arrayContaining([expect.objectContaining({ binding: "BOT_RUNTIME" })]));
+  it("binds the separate bot runtime worker as a service", () => {
+    expect(config.services).toEqual([expect.objectContaining({ binding: "BOT_RUNTIME", service: "minutesbot-meeting-bot" })]);
+    // The runtime is still deployed separately; the main worker only receives
+    // a service binding to call it without traversing the public custom domain.
     expect(config.workflows).toBeUndefined();
     expect(config.durable_objects).toBeUndefined();
     expect(config.containers).toBeUndefined();
