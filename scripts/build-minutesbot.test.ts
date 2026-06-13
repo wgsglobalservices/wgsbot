@@ -141,33 +141,31 @@ describe("buildMinutesbot", () => {
     expect(config.configText()).not.toContain("example.com");
   });
 
-  it("defaults Workers Builds placeholder domains to minutes.bot", async () => {
+  it("fails the Workers Builds deploy when no domain configuration is provided", async () => {
     const events: string[] = [];
-    const messages: string[] = [];
     const config = createConfigHarness(placeholderConfig);
 
-    await buildMinutesbot({
-      env: { WORKERS_CI: "1" },
-      ensureResources: async ({ environment }) => {
-        events.push(`ensure:${environment}`);
-      },
-      runBuildCommand: async (command, args) => {
-        events.push(`${command} ${args.join(" ")}`);
-      },
-      readConfig: config.readConfig,
-      writeConfig: config.writeConfig,
-      log: (message) => messages.push(message),
-      error: () => undefined
-    });
+    // No APP_BASE_URL / MINUTESBOT_DOMAIN: the build must not silently ship the worker
+    // on a guessed domain (the previous app.minutes.bot fallback), it must fail loudly.
+    await expect(
+      buildMinutesbot({
+        env: { WORKERS_CI: "1" },
+        ensureResources: async ({ environment }) => {
+          events.push(`ensure:${environment}`);
+        },
+        runBuildCommand: async (command, args) => {
+          events.push(`${command} ${args.join(" ")}`);
+        },
+        readConfig: config.readConfig,
+        writeConfig: config.writeConfig,
+        log: () => undefined,
+        error: () => undefined
+      })
+    ).rejects.toThrow(/cannot deploy the checked-in example\.com routes/);
 
-    expect(events).toEqual(["ensure:production", "pnpm run build:workspace"]);
-    expect(messages).toContain("Patched wrangler.jsonc for Cloudflare Workers Builds deployment.");
-    expect(config.configText()).toContain("app.minutes.bot");
-    expect(config.configText()).toContain("api.minutes.bot");
-    expect(config.configText()).toContain("meeting.minutes.bot");
-    expect(config.configText()).toContain("meeting-api.minutes.bot");
-    expect(config.configText()).toContain("notetaker@minutes.bot");
-    expect(config.configText()).not.toContain("example.com");
+    // Nothing is provisioned or built, and the placeholder config is left untouched.
+    expect(events).toEqual([]);
+    expect(config.configText()).toBe(placeholderConfig);
   });
 
   it("can derive Workers Builds hostnames from a custom MINUTESBOT_DOMAIN", async () => {
