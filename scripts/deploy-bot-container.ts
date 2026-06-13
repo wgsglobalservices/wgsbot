@@ -48,6 +48,9 @@ export async function deployBotContainer(options: DeployBotContainerOptions = {}
   const sourceText = await readTextFile(SOURCE_CONFIG);
   assertNoPlaceholders(sourceText);
 
+  await assertWranglerAuthenticated(runCommand);
+  await assertDockerAvailable(runCommand);
+
   const config = JSON.parse(stripJsonComments(sourceText)) as BotContainerConfig;
   const generated = buildGeneratedConfig(config, {
     instanceId: generateBotContainerInstanceId(environment),
@@ -56,7 +59,6 @@ export async function deployBotContainer(options: DeployBotContainerOptions = {}
   await writeGeneratedConfig(GENERATED_CONFIG, generated, options);
   log(`Generated ${GENERATED_CONFIG} with fresh BOT_CONTAINER_INSTANCE_ID=${generated.vars?.BOT_CONTAINER_INSTANCE_ID}`);
 
-  await assertDockerAvailable(runCommand);
   await runCommand("wrangler", ["deploy", "--config", GENERATED_CONFIG]);
 
   await ensureInternalToken({ runCommand, rotateToken: options.rotateToken ?? false, generateToken: options.generateToken, log });
@@ -132,6 +134,16 @@ async function assertDockerAvailable(runCommand: RunCommand): Promise<void> {
   } catch (cause) {
     throw new Error(
       `Docker is required to build the bot container image (Dockerfile.bot) but does not appear to be running.\n${errorMessage(cause)}`
+    );
+  }
+}
+
+async function assertWranglerAuthenticated(runCommand: RunCommand): Promise<void> {
+  try {
+    await runCommand("wrangler", ["whoami"]);
+  } catch (cause) {
+    throw new Error(
+      `Wrangler must be logged in before deploying the bot container. Run \`wrangler login\` or set a scoped CLOUDFLARE_API_TOKEN with Workers, Containers, and secrets access, then rerun \`pnpm bot:deploy\`.\n${errorMessage(cause)}`
     );
   }
 }

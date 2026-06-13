@@ -126,4 +126,24 @@ describe("deployBotContainer", () => {
       })
     ).rejects.toThrow("Docker is required");
   });
+
+  it("preflights Wrangler auth before starting the container deploy", async () => {
+    const harness = createHarness();
+    const commands: string[] = [];
+
+    await expect(
+      harness.deploy({
+        runCommand: async (command, args) => {
+          commands.push(`${command} ${args.join(" ")}`);
+          if (command === "git") return "fresh-sha";
+          if (command === "docker") return "";
+          if (command === "wrangler" && args[0] === "whoami") throw new Error("Not logged in.");
+          return "";
+        }
+      })
+    ).rejects.toThrow("Wrangler must be logged in");
+
+    expect(commands).toContain("wrangler whoami");
+    expect(commands).not.toContain("wrangler deploy --config .wrangler/bot-container.jsonc");
+  });
 });
