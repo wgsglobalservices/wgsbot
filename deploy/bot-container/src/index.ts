@@ -39,7 +39,7 @@ export default {
     }
     const container = getContainer(env.MEETING_BOT, env.BOT_CONTAINER_INSTANCE_ID || "primary");
     await container.startAndWaitForPorts(BOT_RUNTIME_PORT, { instanceGetTimeoutMS: 30_000, portReadyTimeoutMS: 60_000 });
-    return container.fetch(request);
+    return container.containerFetch(request, BOT_RUNTIME_PORT);
   }
 };
 

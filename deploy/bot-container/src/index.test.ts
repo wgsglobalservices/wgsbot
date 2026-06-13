@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   container: {
     startAndWaitForPorts: vi.fn(),
+    containerFetch: vi.fn(),
     fetch: vi.fn()
   },
   getContainer: vi.fn()
@@ -22,11 +23,12 @@ const { default: botContainerWorker } = await import("./index");
 describe("bot container worker", () => {
   beforeEach(() => {
     mocks.container.startAndWaitForPorts.mockReset().mockResolvedValue(undefined);
+    mocks.container.containerFetch.mockReset().mockResolvedValue(Response.json({ ok: true }));
     mocks.container.fetch.mockReset().mockResolvedValue(Response.json({ ok: true }));
     mocks.getContainer.mockReset().mockReturnValue(mocks.container);
   });
 
-  it("starts the container port before proxying runtime requests", async () => {
+  it("uses the container RPC fetch path for runtime API requests", async () => {
     const env = {
       MEETING_BOT: {},
       BOT_CONTAINER_INSTANCE_ID: "runtime-1"
@@ -38,6 +40,7 @@ describe("bot container worker", () => {
     expect(response.status).toBe(200);
     expect(mocks.getContainer).toHaveBeenCalledWith(env.MEETING_BOT, "runtime-1");
     expect(mocks.container.startAndWaitForPorts).toHaveBeenCalledWith(8787, expect.objectContaining({ portReadyTimeoutMS: 60_000 }));
-    expect(mocks.container.fetch).toHaveBeenCalledWith(request);
+    expect(mocks.container.containerFetch).toHaveBeenCalledWith(request, 8787);
+    expect(mocks.container.fetch).not.toHaveBeenCalled();
   });
 });
