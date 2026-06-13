@@ -146,6 +146,21 @@ describe("BotClient", () => {
     }
   });
 
+  it("explains Cloudflare 530 as a bot runtime domain or deploy problem", async () => {
+    const fetcher = vi.fn(async () => new Response("<html>error 530</html>", { status: 530 }));
+    const client = new BotClient({ baseUrl: "https://minutesbot-meeting-api.wgsglobal.app", internalToken: "managed-token", fetcher });
+
+    await expect(client.checkHealth()).rejects.toMatchObject({
+      status: 530,
+      retryable: true,
+      code: "BOT_RUNTIME_DOMAIN_UNAVAILABLE",
+      message: expect.stringContaining("minutesbot-meeting-api.wgsglobal.app")
+    });
+    await expect(client.checkHealth()).rejects.toMatchObject({
+      message: expect.stringContaining("pnpm bot:deploy")
+    });
+  });
+
   it("normalizes network failures into retryable typed errors", async () => {
     const fetcher = vi.fn(async () => {
       throw new TypeError("fetch failed");

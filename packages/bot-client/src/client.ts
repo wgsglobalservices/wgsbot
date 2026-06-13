@@ -87,7 +87,7 @@ export class BotClient {
     if (!response.ok && !options.allowStatuses?.includes(response.status)) {
       const detail = await readDetail(response);
       throw new BotClientError(
-        `Meeting bot request failed with ${response.status}${detail ? `: ${detail}` : ""}`,
+        requestFailureMessage(response.status, this.baseUrl, detail),
         response.status,
         retryableStatus(response.status),
         mapStatus(response.status)
@@ -119,6 +119,15 @@ function mapStatus(status: number): string {
   if (status === 409) return "BOT_CONFLICT";
   if (status === 422) return "BOT_INVALID_MEETING_URL";
   if (status === 429) return "BOT_RATE_LIMITED";
+  if (status === 530) return "BOT_RUNTIME_DOMAIN_UNAVAILABLE";
   if (status >= 500) return "BOT_UPSTREAM_ERROR";
   return "BOT_REQUEST_FAILED";
+}
+
+function requestFailureMessage(status: number, baseUrl: string, detail: string | null): string {
+  if (status === 530) {
+    const hostname = new URL(baseUrl).hostname;
+    return `Meeting bot runtime domain ${hostname} is unavailable through Cloudflare (530). Deploy the bot container with pnpm bot:deploy and verify the custom domain/DNS routes to the bot runtime.`;
+  }
+  return `Meeting bot request failed with ${status}${detail ? `: ${detail}` : ""}`;
 }
