@@ -23,4 +23,6 @@ EXPOSE 8787
 
 USER pwuser
 
-CMD ["pnpm", "--filter", "@minutesbot/bot-runtime", "exec", "tsx", "src/server.ts"]
+WORKDIR /app/apps/bot-runtime
+
+CMD ["node", "--import", "tsx", "src/server.ts"]
