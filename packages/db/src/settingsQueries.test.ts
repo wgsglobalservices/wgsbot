@@ -63,4 +63,98 @@ describe("settings queries", () => {
       recap: { transcriptDownloadExpirationHours: 24 }
     });
   });
+
+  it("loads the legacy setup settings shape saved before attendee and ai settings were split", async () => {
+    const db = new MemoryD1();
+    db.rows.set(
+      "app",
+      JSON.stringify({
+        companyName: "WGS Global Services",
+        timeZone: "America/Detroit",
+        recorderEmail: "notetaker@wgs.bot",
+        recorderAliasEmails: ["note@wgs.bot"],
+        allowedDomains: ["wgsglobalservices.com"],
+        bot: {
+          displayName: "Notetaker (wgsbot)",
+          joinLeadMinutes: 5,
+          maxWaitingRoomMinutes: 15,
+          maxMeetingDurationMinutes: 240,
+          maxJoinAttempts: 2
+        },
+        transcription: {
+          provider: "openai-whisper",
+          model: "whisper-1",
+          apiKeyConfigured: false
+        },
+        recap: {
+          provider: "openai-compatible",
+          model: "gpt-5.5",
+          subjectPrefix: "Meeting recap",
+          introText: "",
+          apiKeyConfigured: false
+        },
+        email: {
+          provider: "cloudflare-email-service",
+          senderName: "Notetaker (wgsbot)",
+          senderEmail: "notetaker@wgs.bot"
+        },
+        policy: {
+          sendToAllowedDomainsOnly: true,
+          sendToExternalAttendees: false,
+          allowSubdomains: false,
+          distribution: "all_eligible",
+          rejectExternalOrganizers: true,
+          requireAtLeastOneEligibleRecipient: true,
+          requireAuthenticatedSender: true
+        },
+        scheduling: {
+          recurrenceExpansionDays: 180,
+          staleSessionMinutes: 10
+        },
+        retention: {
+          rawInviteDays: 30,
+          recordingDays: 30,
+          transcriptDays: 30,
+          summaryDays: 365,
+          auditLogDays: 365,
+          diagnosticsDays: 30
+        }
+      })
+    );
+
+    await expect(getSettings(db as unknown as D1Database)).resolves.toMatchObject({
+      companyName: "WGS Global Services",
+      primaryDomain: "wgsglobalservices.com",
+      allowedDomains: ["wgsglobalservices.com"],
+      recorderEmail: "notetaker@wgs.bot",
+      attendee: {
+        baseUrl: defaultSettings.attendee.baseUrl,
+        botName: "Notetaker (wgsbot)",
+        createBotMinutesBeforeStart: 5,
+        maxWaitingRoomMinutes: 15
+      },
+      ai: {
+        provider: "openai-compatible",
+        model: "gpt-5.5",
+        apiKeyConfigured: false
+      },
+      email: {
+        provider: "cloudflare-email-service",
+        senderEmail: "notetaker@wgs.bot",
+        sendMeetingRecapsAutomatically: false
+      },
+      recap: {
+        transcriptionModel: "whisper-1",
+        subjectPrefix: "Meeting recap",
+        introText: ""
+      },
+      retention: {
+        rawInviteDays: 30,
+        transcriptDays: 30,
+        summaryDays: 365,
+        auditLogDays: 365,
+        attendeeDeleteDataAfterDays: 0
+      }
+    });
+  });
 });
