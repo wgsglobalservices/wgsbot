@@ -45,4 +45,22 @@ describe("settings queries", () => {
     expect(saved.primaryDomain).toBe("acme.com");
     await expect(getSettings(db)).resolves.toMatchObject({ primaryDomain: "acme.com" });
   });
+
+  it("loads legacy settings rows with long transcript download expirations", async () => {
+    const db = new MemoryD1();
+    db.rows.set(
+      "app",
+      JSON.stringify({
+        ...defaultSettings,
+        recap: {
+          ...defaultSettings.recap,
+          transcriptDownloadExpirationHours: 168
+        }
+      })
+    );
+
+    await expect(getSettings(db as unknown as D1Database)).resolves.toMatchObject({
+      recap: { transcriptDownloadExpirationHours: 24 }
+    });
+  });
 });
