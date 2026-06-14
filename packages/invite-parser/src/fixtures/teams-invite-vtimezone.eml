@@ -1,0 +1,30 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Eastern sync
+Content-Type: text/calendar; method=REQUEST
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T020000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:vtz-123
+SUMMARY:Eastern sync
+DTSTART;TZID=Eastern Standard Time:20260615T100000
+DTEND;TZID=Eastern Standard Time:20260615T103000
+ORGANIZER;CN="Smith: Alice":mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3avtz%40thread.v2/0?context=%7b%7d
+END:VEVENT
+END:VCALENDAR

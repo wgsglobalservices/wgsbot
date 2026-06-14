@@ -1,753 +1,243 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultSettings } from "@minutesbot/shared";
-import { handleInvite } from "./index";
+import {
+  getCalendarEventByUid,
+  listAuditLogs,
+  listInboundMessages,
+  listJobs,
+  listOccurrencesForEvent,
+  saveSettings
+} from "@minutesbot/db";
+import { createMigratedD1 } from "../../../tests/d1Sqlite";
+import { handleInbound } from "./index";
 
-class FakeD1 {
-  meetings: unknown[][] = [];
-  attendees: unknown[][] = [];
-  auditEvents: unknown[][] = [];
-  statusUpdates: Array<{ status: string; latestError: string | null; meetingId: string }> = [];
-  seriesCancellations: Array<{ prefix: string; keepCalendarUids: string[] }> = [];
-  cancelledSeries: Array<{ seriesUid: string; prefix: string }> = [];
-  meetingSeries: unknown[][] = [];
-  settingValue: string | null;
+const recorder = "notetaker@minutes.bot";
 
-  constructor(settingValue: string | null = null) {
-    this.settingValue = settingValue;
-  }
-
-  prepare(sql: string) {
-    const db = this;
-    return {
-      values: [] as unknown[],
-      bind() {
-        this.values = Array.from(arguments);
-        return this;
-      },
-      async first() {
-        if (sql.includes("FROM settings") && db.settingValue) {
-          return { key: "app", value: db.settingValue, updated_at: new Date().toISOString() };
-        }
-        return null;
-      },
-      async run() {
-        if (sql.includes("INSERT INTO meetings")) db.meetings.push(this.values);
-        if (sql.includes("INSERT INTO attendees")) db.attendees.push(this.values);
-        if (sql.includes("INSERT INTO audit_logs")) db.auditEvents.push(this.values);
-        if (sql.includes("calendar_uid LIKE") && sql.includes("calendar_uid NOT IN")) {
-          db.seriesCancellations.push({ prefix: this.values[3] as string, keepCalendarUids: this.values.slice(4, -1) as string[] });
-        }
-        if (sql.includes("calendar_uid = ? OR calendar_uid LIKE ?")) {
-          db.cancelledSeries.push({ seriesUid: this.values[3] as string, prefix: this.values[4] as string });
-        }
-        if (sql.includes("INSERT INTO meeting_series")) db.meetingSeries.push(this.values);
-        if (sql.startsWith("UPDATE meetings SET status")) {
-          db.statusUpdates.push({ status: this.values[0] as string, latestError: this.values[1] as string | null, meetingId: this.values[3] as string });
-        }
-        return { success: true };
-      },
-      async all() {
-        return { results: [] };
-      }
-    };
-  }
+async function makeEnv() {
+  const db = createMigratedD1();
+  await saveSettings(db, {
+    ...defaultSettings,
+    recorderEmail: recorder,
+    allowedDomains: ["company.com"],
+    email: { ...defaultSettings.email, senderEmail: recorder }
+  });
+  const r2Objects = new Map<string, string>();
+  const queueMessages: unknown[] = [];
+  const env = {
+    DB: db,
+    ARTIFACTS: {
+      put: vi.fn(async (key: string, value: string) => {
+        r2Objects.set(key, value);
+      })
+    } as unknown as R2Bucket,
+    JOBS_QUEUE: {
+      send: vi.fn(async (message: unknown) => {
+        queueMessages.push(message);
+      })
+    }
+  };
+  return { db, env, r2Objects, queueMessages };
 }
 
-describe("email worker invite handling", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+function futureDate(daysAhead: number, time = "140000"): string {
+  const date = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+  return `${date.toISOString().slice(0, 10).replaceAll("-", "")}T${time}Z`;
+}
+
+type EmlOptions = {
+  uid?: string;
+  method?: "REQUEST" | "CANCEL" | "REPLY";
+  sequence?: number;
+  dtstart?: string;
+  dtend?: string;
+  rrule?: string;
+  recurrenceId?: string;
+  teamsUrl?: string | null;
+  organizer?: string;
+  to?: string;
+  messageId?: string;
+};
+
+function buildInvite(options: EmlOptions = {}): string {
+  const {
+    uid = "uid-email-test",
+    method = "REQUEST",
+    sequence = 0,
+    dtstart = futureDate(5),
+    dtend = futureDate(5, "150000"),
+    rrule,
+    recurrenceId,
+    teamsUrl = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_test/0?context=%7b%22Tid%22%3a%22t%22%7d",
+    organizer = "alice@company.com",
+    to = recorder,
+    messageId = `msg-${Math.random().toString(36).slice(2)}`
+  } = options;
+  const description = teamsUrl ? `Join here: ${teamsUrl}` : "No link";
+  const ics = [
+    "BEGIN:VCALENDAR",
+    `METHOD:${method}`,
+    "PRODID:-//Microsoft//Outlook//EN",
+    "VERSION:2.0",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `SEQUENCE:${sequence}`,
+    `DTSTART:${dtstart}`,
+    `DTEND:${dtend}`,
+    ...(rrule ? [`RRULE:${rrule}`] : []),
+    ...(recurrenceId ? [`RECURRENCE-ID:${recurrenceId}`] : []),
+    "SUMMARY:Project sync",
+    `ORGANIZER;CN=Alice:mailto:${organizer}`,
+    "ATTENDEE;CN=Bob;ROLE=REQ-PARTICIPANT:mailto:bob@company.com",
+    "ATTENDEE;CN=Vendor;ROLE=OPT-PARTICIPANT:mailto:vendor@external.org",
+    ...(teamsUrl ? [`DESCRIPTION:${description}`] : []),
+    "END:VEVENT",
+    "END:VCALENDAR"
+  ].join("\r\n");
+  return [
+    `From: Alice Organizer <${organizer}>`,
+    `To: minutesbot <${to}>`,
+    `Message-ID: <${messageId}@example.com>`,
+    "Subject: Project sync",
+    "MIME-Version: 1.0",
+    `Content-Type: text/calendar; method=${method}; charset="UTF-8"`,
+    "",
+    ics
+  ].join("\r\n");
+}
+
+function makeMessage(overrides: { from?: string; to?: string } = {}) {
+  return {
+    from: overrides.from ?? "alice@company.com",
+    to: overrides.to ?? recorder,
+    setReject: vi.fn()
+  };
+}
+
+describe("email worker ingestion", () => {
+  it("accepts a one-off invite: records message, raw artifact, event, occurrence, and join job", async () => {
+    const { db, env, r2Objects, queueMessages } = await makeEnv();
+    const message = makeMessage();
+    await handleInbound(message, env, buildInvite());
+
+    expect(message.setReject).not.toHaveBeenCalled();
+    const messages = await listInboundMessages(db);
+    expect(messages.length).toBe(1);
+    expect(messages[0].parse_status).toBe("parsed");
+    expect(messages[0].ics_uid).toBe("uid-email-test");
+    expect(r2Objects.size).toBe(1);
+
+    const event = await getCalendarEventByUid(db, "uid-email-test");
+    expect(event).not.toBeNull();
+    const occurrences = await listOccurrencesForEvent(db, event!.id);
+    expect(occurrences.length).toBe(1);
+    expect(occurrences[0].status).toBe("scheduled");
+    expect((await listJobs(db, { type: "schedule_join", status: "pending" })).length).toBe(1);
+    expect(queueMessages).toContainEqual({ type: "sweep_due_jobs" });
   });
 
-  it("accepts non-calendar test emails without an SMTP rejection", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "p.gustafson@wgsglobalservices.com", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
-Subject: TEST
-
-hello`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).not.toHaveBeenCalled();
-    expect(db.auditEvents.some((values) => values[2] === "invite.ignored")).toBe(true);
+  it("deduplicates identical raw messages", async () => {
+    const { db, env } = await makeEnv();
+    const raw = buildInvite();
+    await handleInbound(makeMessage(), env, raw);
+    await handleInbound(makeMessage(), env, raw);
+    expect((await listInboundMessages(db)).length).toBe(1);
+    const audit = await listAuditLogs(db, { eventType: "invite.ignored" });
+    expect(audit.length).toBe(1);
   });
 
-  it("schedules link-only Teams emails immediately with the sender as recipient", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "p.gustafson@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Peter <p.gustafson@wgs.bot>
-To: notetaker@wgs.bot
-Subject: Join Teams meeting in progress
-
-https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?context=%7b%7d`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
-    expect(db.meetings[0][2]).toBe("Join Teams meeting in progress");
-    expect(db.meetings[0][3]).toBe("p.gustafson@wgs.bot");
-    expect(db.attendees[0][2]).toBe("p.gustafson@wgs.bot");
-    expect(db.attendees[0][6]).toBe(1);
+  it("expands a recurring invite into occurrences", async () => {
+    const { db, env } = await makeEnv();
+    await handleInbound(makeMessage(), env, buildInvite({ rrule: "FREQ=DAILY;COUNT=5" }));
+    const event = await getCalendarEventByUid(db, "uid-email-test");
+    expect(event?.is_recurring).toBe(1);
+    expect((await listOccurrencesForEvent(db, event!.id)).length).toBe(5);
   });
 
-  it("marks future meetings as waiting for the configured early-join time", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-18T14:30:00.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-future-waiting
-SUMMARY:Future Test
-DTSTART:20260518T150000Z
-DTEND:20260518T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).not.toHaveBeenCalled();
-    expect(db.statusUpdates.at(-1)).toMatchObject({ status: "WAITING_TO_CREATE_BOT" });
+  it("rejects invites sent to the wrong recipient", async () => {
+    const { db, env } = await makeEnv();
+    const message = makeMessage({ to: "someoneelse@minutes.bot" });
+    await handleInbound(message, env, buildInvite({ to: "someoneelse@minutes.bot" }));
+    expect(message.setReject).toHaveBeenCalled();
+    expect((await listInboundMessages(db))[0].parse_status).toBe("rejected");
+    expect((await listInboundMessages(db))[0].rejection_reason).toContain("REJECTED_INVALID_RECIPIENT");
   });
 
-  it("waits when a calendar invite arrives before the actual meeting start", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-18T14:56:00.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-start-time-waiting
-SUMMARY:Start Time Test
-DTSTART:20260518T150000Z
-DTEND:20260518T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3astart%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).not.toHaveBeenCalled();
-    expect(db.statusUpdates.at(-1)).toMatchObject({ status: "WAITING_TO_CREATE_BOT" });
+  it("rejects request invites without a Teams URL", async () => {
+    const { db, env } = await makeEnv();
+    const message = makeMessage();
+    await handleInbound(message, env, buildInvite({ teamsUrl: null }));
+    expect(message.setReject).toHaveBeenCalled();
+    expect((await listInboundMessages(db))[0].rejection_reason).toContain("REJECTED_NO_TEAMS_LINK");
   });
 
-  it("creates visible future meeting rows for each recurring invite occurrence", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-recurring
-SUMMARY:Recurring Test
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-RRULE:FREQ=WEEKLY;COUNT=3;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).not.toHaveBeenCalled();
-    expect(db.meetings.map((values) => [values[1], values[6]])).toEqual([
-      ["test-recurring:20260601T150000Z", "2026-06-01T15:00:00.000Z"],
-      ["test-recurring:20260608T150000Z", "2026-06-08T15:00:00.000Z"],
-      ["test-recurring:20260615T150000Z", "2026-06-15T15:00:00.000Z"]
-    ]);
-    expect(db.statusUpdates).toHaveLength(3);
-    expect(db.statusUpdates.every((update) => update.status === "WAITING_TO_CREATE_BOT")).toBe(true);
+  it("rejects external organizers when policy demands it", async () => {
+    const { db, env } = await makeEnv();
+    const message = makeMessage({ from: "stranger@elsewhere.com" });
+    await handleInbound(message, env, buildInvite({ organizer: "stranger@elsewhere.com" }));
+    expect(message.setReject).toHaveBeenCalled();
+    expect((await listInboundMessages(db))[0].rejection_reason).toContain("REJECTED_EXTERNAL_ORGANIZER");
   });
 
-  it("creates future rows from weekly Outlook forwarded link-only meeting emails", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-01T14:23:24.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        allowedDomains: ["wgsglobalservices.com"],
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "p.gustafson@wgsglobalservices.com", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
-Date: Mon, 1 Jun 2026 10:23:24 -0400
-Subject: FW: Weekly Sales Meeting
-
-When: Monday, June 1, 2026 10:30 AM-11:15 AM.
-Where: Microsoft Teams Meeting
-
-https://teams.microsoft.com/l/meetup-join/19%3aweekly%40thread.v2/0?context=%7b%7d`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).not.toHaveBeenCalled();
-    const storedMeetings = db.meetings.map((values) => [values[1], values[2], values[6], values[7]]);
-    expect(storedMeetings.slice(0, 3)).toEqual([
-      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260601T143000Z$/), "Weekly Sales Meeting", "2026-06-01T14:30:00.000Z", "2026-06-01T15:15:00.000Z"],
-      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260608T143000Z$/), "Weekly Sales Meeting", "2026-06-08T14:30:00.000Z", "2026-06-08T15:15:00.000Z"],
-      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260615T143000Z$/), "Weekly Sales Meeting", "2026-06-15T14:30:00.000Z", "2026-06-15T15:15:00.000Z"]
-    ]);
-    expect(storedMeetings.length).toBeGreaterThan(3);
-  });
-
-  it("cancels stale future occurrence rows when a recurring series time changes", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-recurring-update
-SUMMARY:Recurring Test Updated
-DTSTART:20260601T160000Z
-DTEND:20260601T163000Z
-RRULE:FREQ=WEEKLY;COUNT=2;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring-update%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(db.seriesCancellations).toHaveLength(1);
-    expect(db.seriesCancellations[0]).toMatchObject({
-      prefix: "test-recurring-update:%",
-      keepCalendarUids: ["test-recurring-update:20260601T160000Z", "test-recurring-update:20260608T160000Z"]
+  it("rejects invites with no eligible recipients", async () => {
+    const { db, env } = await makeEnv();
+    await saveSettings(db, {
+      ...defaultSettings,
+      recorderEmail: recorder,
+      allowedDomains: ["nobodyhere.com"],
+      email: { ...defaultSettings.email, senderEmail: recorder },
+      policy: { ...defaultSettings.policy, rejectExternalOrganizers: false }
     });
+    const message = makeMessage();
+    await handleInbound(message, env, buildInvite());
+    expect(message.setReject).toHaveBeenCalled();
+    expect((await listInboundMessages(db))[0].rejection_reason).toContain("REJECTED_NO_ELIGIBLE_RECIPIENTS");
   });
 
-  it("cancels generated recurring occurrence rows when a series cancellation omits the Teams link", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:CANCEL
-BEGIN:VEVENT
-UID:test-recurring-cancel
-SUMMARY:Recurring Test Cancelled
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=minutesbot;ROLE=REQ-PARTICIPANT:mailto:notetaker@wgs.bot
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).not.toHaveBeenCalled();
-    expect(db.cancelledSeries).toEqual([{ seriesUid: "test-recurring-cancel", prefix: "test-recurring-cancel:%" }]);
+  it("ignores attendee replies without bouncing", async () => {
+    const { db, env } = await makeEnv();
+    const message = makeMessage();
+    await handleInbound(message, env, buildInvite({ method: "REPLY" }));
+    expect(message.setReject).not.toHaveBeenCalled();
+    expect((await listInboundMessages(db))[0].parse_status).toBe("ignored");
   });
 
-  it("stores recurring series metadata so the scheduler can extend future occurrences", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"));
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        attendee: { ...defaultSettings.attendee, createBotMinutesBeforeStart: 5 }
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
+  it("cancels a series via METHOD:CANCEL", async () => {
+    const { db, env, queueMessages } = await makeEnv();
+    await handleInbound(makeMessage(), env, buildInvite({ rrule: "FREQ=DAILY;COUNT=3" }));
+    await handleInbound(makeMessage(), env, buildInvite({ method: "CANCEL", sequence: 1, teamsUrl: null }));
 
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-recurring-series
-SUMMARY:Recurring Series
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3aseries%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(db.meetingSeries).toHaveLength(1);
-    expect(db.meetingSeries[0][0]).toBe("test-recurring-series");
-    expect(db.meetingSeries[0][1]).toBe("Recurring Series");
-    expect(db.meetingSeries[0][2]).toBe("alice@wgs.bot");
-    expect(db.meetingSeries[0][3]).toBe("Alice");
-    expect(db.meetingSeries[0][4]).toContain("teams.microsoft.com/l/meetup-join");
-    expect(db.meetingSeries[0][5]).toBe("2026-06-01T15:00:00.000Z");
-    expect(db.meetingSeries[0][6]).toBe("2026-06-01T15:30:00.000Z");
-    expect(db.meetingSeries[0][8]).toBe(JSON.stringify({ frequency: "weekly", interval: 1, byDay: ["MO"] }));
-    expect(db.meetingSeries[0][14]).toBe("ACTIVE");
+    const event = await getCalendarEventByUid(db, "uid-email-test");
+    expect(event?.status).toBe("canceled");
+    const occurrences = await listOccurrencesForEvent(db, event!.id);
+    expect(occurrences.every((row) => row.status === "canceled")).toBe(true);
+    expect(queueMessages.filter((m) => (m as { type: string }).type === "sweep_due_jobs").length).toBe(1);
   });
 
-  it("rejects wrong recorder recipient", async () => {
-    const setReject = vi.fn();
-    const env = {
-      DB: new FakeD1() as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: vi.fn(async () => undefined) }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "wrong@wgs.bot", setReject },
+  it("cancels a single occurrence of a recurring series", async () => {
+    const { db, env } = await makeEnv();
+    const start = futureDate(5);
+    await handleInbound(makeMessage(), env, buildInvite({ dtstart: start, dtend: futureDate(5, "150000"), rrule: "FREQ=DAILY;COUNT=3" }));
+    const secondStart = futureDate(6);
+    await handleInbound(
+      makeMessage(),
       env,
-      `From: Alice <alice@wgs.bot>
-To: wrong@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test
-SUMMARY:Test
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
+      buildInvite({ method: "CANCEL", sequence: 1, recurrenceId: secondStart, dtstart: secondStart, dtend: futureDate(6, "150000"), teamsUrl: null })
     );
 
-    expect(setReject).toHaveBeenCalledWith("Inbound recipient does not match configured recorder email");
+    const event = await getCalendarEventByUid(db, "uid-email-test");
+    expect(event?.status).toBe("active");
+    const occurrences = await listOccurrencesForEvent(db, event!.id);
+    const canceled = occurrences.filter((row) => row.status === "canceled");
+    expect(canceled.length).toBe(1);
+    expect(occurrences.filter((row) => row.status === "scheduled").length).toBe(2);
   });
 
-  it("accepts configured notetaker alias recipients", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1(
-      JSON.stringify({
-        ...defaultSettings,
-        recorderAliasEmails: ["sales-notes@wgs.bot", "plant-notes@wgs.bot"]
-      })
-    );
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "sales-notes@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: sales-notes@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-alias
-SUMMARY:Alias Test
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
-  });
-
-  it("stamps direct sales recap mailbox invites as weekly sales recaps", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "sales-recap@wgs.services", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: sales-recap@wgs.services
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-sales-direct
-SUMMARY:Weekly Sales
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-ATTENDEE;CN=Sales Recap;ROLE=REQ-PARTICIPANT:mailto:sales-recap@wgs.services
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3asales%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
-    expect(db.meetings[0][17]).toBe("weekly_sales");
-    expect(db.meetings[0][18]).toBe("sales-recap@wgs.services");
-    expect(db.attendees.map((values) => values[2])).not.toContain("sales-recap@wgs.services");
-  });
-
-  it("stamps Microsoft 365 redirected sales recap invites from original-recipient headers", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-X-Original-To: sales-recap@wgs.services
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-sales-redirect
-SUMMARY:Weekly Sales Redirect
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-ATTENDEE;CN=Sales Recap;ROLE=REQ-PARTICIPANT:mailto:sales-recap@wgs.services
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3asalesredirect%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
-    expect(db.meetings[0][17]).toBe("weekly_sales");
-    expect(db.meetings[0][18]).toBe("sales-recap@wgs.services");
-    expect(db.attendees.map((values) => values[2])).not.toContain("sales-recap@wgs.services");
-  });
-
-  it("uses the envelope recipient for forwarded Teams invites", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const env = {
-      DB: new FakeD1() as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: Alice <alice@wgs.bot>
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-forward
-SUMMARY:Forwarded Test
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
-  });
-
-  it("stores domain-eligible To and Cc invitees while excluding the notetaker mailbox", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite }
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: Alex <alex@wgs.bot>, notetaker@wgs.bot
-Cc: Casey <casey@wgs.bot>, Vendor <vendor@example.net>
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-header-recipients
-SUMMARY:Header Recipients
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(db.attendees.map((values) => [values[2], values[6], values[7]])).toEqual([
-      ["alice@wgs.bot", 1, null],
-      ["alex@wgs.bot", 1, null],
-      ["casey@wgs.bot", 1, null],
-      ["vendor@example.net", 0, "excluded_external_domain"]
-    ]);
-  });
-
-  it("rejects unauthenticated production invites before queueing bots", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite },
-      ENVIRONMENT: "production"
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-unauthenticated
-SUMMARY:Forged Test
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).toHaveBeenCalledWith("Inbound sender authentication did not pass or does not align with the organizer");
-    expect(queueInvite).not.toHaveBeenCalled();
-    expect(db.meetings).toHaveLength(0);
-  });
-
-  it("accepts production invites with aligned DMARC authentication", async () => {
-    const setReject = vi.fn();
-    const queueInvite = vi.fn(async () => undefined);
-    const db = new FakeD1();
-    const env = {
-      DB: db as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: queueInvite },
-      ENVIRONMENT: "production"
-    };
-
-    await handleInvite(
-      { from: "alice@wgs.bot", to: "notetaker@wgs.bot", setReject },
-      env,
-      `Authentication-Results: mx.cloudflare.net; dmarc=pass header.from=wgs.bot; spf=pass smtp.mailfrom=wgs.bot; dkim=pass header.d=wgs.bot
-From: Alice <alice@wgs.bot>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-authenticated
-SUMMARY:Authenticated Test
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).not.toHaveBeenCalled();
-    expect(queueInvite).toHaveBeenCalledWith(expect.objectContaining({ type: "create_bot", meetingId: expect.stringMatching(/^mtg_/) }));
-  });
-
-  it("rejects production invites when the authenticated sender and organizer domains differ", async () => {
-    const setReject = vi.fn();
-    const env = {
-      DB: new FakeD1() as unknown as D1Database,
-      ARTIFACTS: { put: vi.fn(async () => undefined) } as unknown as R2Bucket,
-      INVITE_QUEUE: { send: vi.fn(async () => undefined) },
-      ENVIRONMENT: "production"
-    };
-
-    await handleInvite(
-      { from: "attacker@example.net", to: "notetaker@wgs.bot", setReject },
-      env,
-      `Authentication-Results: mx.cloudflare.net; dmarc=pass header.from=example.net
-From: Mallory <attacker@example.net>
-To: notetaker@wgs.bot
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:test-auth-mismatch
-SUMMARY:Mismatch Test
-DTSTART:20260504T150000Z
-DTEND:20260504T153000Z
-ORGANIZER;CN=Alice:mailto:alice@wgs.bot
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@wgs.bot
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3atest%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`
-    );
-
-    expect(setReject).toHaveBeenCalledWith("Inbound sender authentication did not pass or does not align with the organizer");
+  it("records parse failures as ignored with a reason", async () => {
+    const { db, env } = await makeEnv();
+    const message = makeMessage();
+    const broken = ["From: a@company.com", `To: ${recorder}`, "Subject: x", "Content-Type: text/calendar", "", "BEGIN:VCALENDAR\nGARBAGE"].join("\r\n");
+    await handleInbound(message, env, broken);
+    const rows = await listInboundMessages(db);
+    expect(rows[0].parse_status).toBe("ignored");
   });
 });

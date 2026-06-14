@@ -22,7 +22,9 @@
       "@minutesbot/db": ["packages/db/src/index.ts"],
       "@minutesbot/recipient-policy": ["packages/recipient-policy/src/index.ts"],
       "@minutesbot/invite-parser": ["packages/invite-parser/src/index.ts"],
-      "@minutesbot/attendee-client": ["packages/attendee-client/src/index.ts"],
+      "@minutesbot/recurrence": ["packages/recurrence/src/index.ts"],
+      "@minutesbot/scheduler": ["packages/scheduler/src/index.ts"],
+      "@minutesbot/transcription": ["packages/transcription/src/index.ts"],
       "@minutesbot/summary-engine": ["packages/summary-engine/src/index.ts"],
       "@minutesbot/email-renderer": ["packages/email-renderer/src/index.ts"],
       "@minutesbot/email-sender": ["packages/email-sender/src/index.ts"]

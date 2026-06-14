@@ -1,3 +1,3 @@
 export * from "./renderFailureEmail";
-export * from "./renderSummaryEmail";
+export * from "./renderRecapEmail";
 export * from "./types";

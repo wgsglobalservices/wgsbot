@@ -1,0 +1,18 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Canceled: Weekly project sync
+Content-Type: text/calendar; method=CANCEL
+
+BEGIN:VCALENDAR
+METHOD:CANCEL
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VEVENT
+UID:recurring-123
+SUMMARY:Canceled: Weekly project sync
+DTSTART:20260616T140000Z
+DTEND:20260616T143000Z
+SEQUENCE:3
+ORGANIZER;CN=Alice Organizer:mailto:alice@company.com
+END:VEVENT
+END:VCALENDAR

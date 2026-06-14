@@ -1,0 +1,33 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Canceled: Weekly project sync
+Content-Type: text/calendar; method=CANCEL
+
+BEGIN:VCALENDAR
+METHOD:CANCEL
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T020000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:recurring-123
+RECURRENCE-ID;TZID=Eastern Standard Time:20260630T100000
+SUMMARY:Canceled: Weekly project sync
+DTSTART;TZID=Eastern Standard Time:20260630T100000
+DTEND;TZID=Eastern Standard Time:20260630T103000
+SEQUENCE:2
+ORGANIZER;CN=Alice Organizer:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+END:VEVENT
+END:VCALENDAR

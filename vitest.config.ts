@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "scripts/**/*.test.ts", "api/**/*.test.ts", "deploy/**/*.test.ts"],
+    include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "apps/**/*.test.tsx", "scripts/**/*.test.ts", "deploy/**/*.test.ts"],
     coverage: {
       reporter: ["text", "lcov"]
     }
@@ -15,7 +15,9 @@ export default defineConfig({
       "@minutesbot/db": new URL("./packages/db/src/index.ts", import.meta.url).pathname,
       "@minutesbot/recipient-policy": new URL("./packages/recipient-policy/src/index.ts", import.meta.url).pathname,
       "@minutesbot/invite-parser": new URL("./packages/invite-parser/src/index.ts", import.meta.url).pathname,
-      "@minutesbot/attendee-client": new URL("./packages/attendee-client/src/index.ts", import.meta.url).pathname,
+      "@minutesbot/recurrence": new URL("./packages/recurrence/src/index.ts", import.meta.url).pathname,
+      "@minutesbot/scheduler": new URL("./packages/scheduler/src/index.ts", import.meta.url).pathname,
+      "@minutesbot/transcription": new URL("./packages/transcription/src/index.ts", import.meta.url).pathname,
       "@minutesbot/summary-engine": new URL("./packages/summary-engine/src/index.ts", import.meta.url).pathname,
       "@minutesbot/email-renderer": new URL("./packages/email-renderer/src/index.ts", import.meta.url).pathname,
       "@minutesbot/email-sender": new URL("./packages/email-sender/src/index.ts", import.meta.url).pathname,

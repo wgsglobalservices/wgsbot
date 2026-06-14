@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "wgsbot-notetaker",
-  "account_id": "5e4d29b3db4faa691c672e24b0009999",
+  // Self-hosting: replace every <PLACEHOLDER> below (or run `pnpm setup:cloudflare`,
+  // which creates the resources and patches the ids/domains in place).
+  // The Cloudflare account is selected via the CLOUDFLARE_ACCOUNT_ID env var
+  // or `wrangler login`; account ids are intentionally not checked in.
+  "name": "wgsbot",
   "main": "apps/api-worker/src/index.ts",
   "assets": {
     "directory": "./apps/web/dist",
@@ -9,6 +12,7 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true
   },
+  "workers_dev": false,
   "routes": [
     {
       "pattern": "minutesbot-admin.wgsglobal.app",
@@ -24,30 +28,28 @@
     }
   ],
   "compatibility_date": "2026-05-04",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
   },
-  "triggers": {
-    "crons": ["* * * * *", "17 3 * * *"]
-  },
   "vars": {
     "APP_BASE_URL": "https://minutesbot-admin.wgsglobal.app",
     "API_BASE_URL": "https://minutesbot-api.wgsglobal.app",
-    "ATTENDEE_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
-    "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
-    "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
-    "SALES_AGENDA_IMPORT_URL": "https://sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
+    "BOT_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
+    "BOT_API_BASE_URL": "https://minutesbot-meeting-api.wgsglobal.app",
     "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
     "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "ALLOW_ADMIN_TOKEN_AUTH": "true"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "minutesbot",
-      "database_id": "7ab56d3f-c56d-4530-aa57-555a317511d3"
+      "database_id": "<D1_DATABASE_ID>"
     }
   ],
   "r2_buckets": [
@@ -56,139 +58,43 @@
       "bucket_name": "minutesbot-artifacts"
     }
   ],
+  "services": [
+    {
+      "binding": "BOT_RUNTIME",
+      "service": "minutesbot-meeting-bot"
+    }
+  ],
   "queues": {
     "producers": [
-      { "binding": "INVITE_QUEUE", "queue": "minutesbot-invites" },
-      { "binding": "SUMMARY_QUEUE", "queue": "minutesbot-summaries" },
-      { "binding": "EMAIL_QUEUE", "queue": "minutesbot-email" }
+      {
+        "binding": "JOBS_QUEUE",
+        "queue": "minutesbot-jobs"
+      }
     ],
     "consumers": [
-      { "queue": "minutesbot-invites", "max_batch_size": 10 },
-      { "queue": "minutesbot-summaries", "max_batch_size": 10 },
-      { "queue": "minutesbot-email", "max_batch_size": 10 }
+      {
+        "queue": "minutesbot-jobs",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "minutesbot-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    // Per-minute: durable job sweep + stale bot session recovery.
+    // Daily 03:00 UTC: recurrence window expansion + retention cleanup.
+    "crons": [
+      "* * * * *",
+      "0 3 * * *"
     ]
   },
   "send_email": [
     {
       "name": "SEND_EMAIL",
-      "allowed_sender_addresses": ["notetaker@wgs.bot"]
-    }
-  ],
-  "env": {
-    "staging": {
-      "name": "wgsbot-staging",
-      "routes": [
-        {
-          "pattern": "staging.wgs.bot",
-          "custom_domain": true
-        }
-      ],
-      "vars": {
-        "APP_BASE_URL": "https://staging.wgs.bot",
-        "API_BASE_URL": "https://staging.wgs.bot",
-        "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
-        "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-staging-artifacts",
-        "SALES_AGENDA_IMPORT_URL": "https://beta.sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
-        "DEFAULT_RECORDER_EMAIL": "notetaker-staging@wgs.bot",
-        "DEFAULT_SENDER_EMAIL": "notetaker-staging@wgs.bot",
-        "ENVIRONMENT": "staging"
-      },
-      "triggers": {
-        "crons": ["* * * * *", "17 3 * * *"]
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "minutesbot-staging",
-          "database_id": "replace-with-staging-d1-database-id"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "ARTIFACTS",
-          "bucket_name": "minutesbot-staging-artifacts"
-        }
-      ],
-      "queues": {
-        "producers": [
-          { "binding": "INVITE_QUEUE", "queue": "minutesbot-staging-invites" },
-          { "binding": "SUMMARY_QUEUE", "queue": "minutesbot-staging-summaries" },
-          { "binding": "EMAIL_QUEUE", "queue": "minutesbot-staging-email" }
-        ],
-        "consumers": [
-          { "queue": "minutesbot-staging-invites", "max_batch_size": 10 },
-          { "queue": "minutesbot-staging-summaries", "max_batch_size": 10 },
-          { "queue": "minutesbot-staging-email", "max_batch_size": 10 }
-        ]
-      },
-      "send_email": [
-        {
-          "name": "SEND_EMAIL",
-          "allowed_sender_addresses": ["notetaker-staging@wgs.bot"]
-        }
-      ]
-    },
-    "production": {
-      "name": "wgsbot-notetaker",
-      "routes": [
-        {
-          "pattern": "minutesbot-admin.wgsglobal.app",
-          "custom_domain": true
-        },
-        {
-          "pattern": "minutesbot-api.wgsglobal.app",
-          "custom_domain": true
-        },
-        {
-          "pattern": "minutesbot-webhook.wgsglobal.app",
-          "custom_domain": true
-        }
-      ],
-      "vars": {
-        "APP_BASE_URL": "https://minutesbot-admin.wgsglobal.app",
-        "API_BASE_URL": "https://minutesbot-api.wgsglobal.app",
-        "ATTENDEE_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app",
-        "ATTENDEE_API_BASE_URL": "https://app.attendee.dev",
-        "ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME": "minutesbot-artifacts",
-        "SALES_AGENDA_IMPORT_URL": "https://sales.wgsglobal.app/.netlify/functions/sales-agenda-wgsbot-import",
-        "DEFAULT_RECORDER_EMAIL": "notetaker@wgs.bot",
-        "DEFAULT_SENDER_EMAIL": "notetaker@wgs.bot",
-        "ENVIRONMENT": "production"
-      },
-      "triggers": {
-        "crons": ["* * * * *", "17 3 * * *"]
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "minutesbot",
-          "database_id": "7ab56d3f-c56d-4530-aa57-555a317511d3"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "ARTIFACTS",
-          "bucket_name": "minutesbot-artifacts"
-        }
-      ],
-      "queues": {
-        "producers": [
-          { "binding": "INVITE_QUEUE", "queue": "minutesbot-invites" },
-          { "binding": "SUMMARY_QUEUE", "queue": "minutesbot-summaries" },
-          { "binding": "EMAIL_QUEUE", "queue": "minutesbot-email" }
-        ],
-        "consumers": [
-          { "queue": "minutesbot-invites", "max_batch_size": 10 },
-          { "queue": "minutesbot-summaries", "max_batch_size": 10 },
-          { "queue": "minutesbot-email", "max_batch_size": 10 }
-        ]
-      },
-      "send_email": [
-        {
-          "name": "SEND_EMAIL",
-          "allowed_sender_addresses": ["notetaker@wgs.bot"]
-        }
+      "allowed_sender_addresses": [
+        "notetaker@wgs.bot"
       ]
     }
-  }
+  ]
 }

@@ -1,20 +1,24 @@
+export type QueueProducer = { send(message: unknown, options?: { delaySeconds?: number }): Promise<void> };
+
 export type WorkflowEnv = {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
-  INVITE_QUEUE: { send(message: unknown, options?: { delaySeconds?: number }): Promise<void> };
-  SUMMARY_QUEUE: { send(message: unknown, options?: { delaySeconds?: number }): Promise<void> };
-  EMAIL_QUEUE: { send(message: unknown): Promise<void> };
-  ATTENDEE_API_KEY?: string;
-  ATTENDEE_API_BASE_URL: string;
-  ATTENDEE_EXTERNAL_MEDIA_BUCKET_NAME?: string;
-  ATTENDEE_WEBHOOK_SECRET?: string;
-  ATTENDEE_WEBHOOK_BASE_URL?: string;
+  JOBS_QUEUE: QueueProducer;
+  /** Optional service binding to the bot container worker; falls back to BOT_API_BASE_URL fetch. */
+  BOT_RUNTIME?: Fetcher;
+  BOT_API_BASE_URL: string;
+  BOT_INTERNAL_TOKEN?: string;
+  BOT_WEBHOOK_BASE_URL?: string;
   API_BASE_URL: string;
+  APP_BASE_URL?: string;
   AI_API_KEY?: string;
-  SALES_AGENDA_IMPORT_URL?: string;
-  SALES_AGENDA_IMPORT_KEY?: string;
+  /** Separate transcription key; falls back to AI_API_KEY. */
+  TRANSCRIPTION_API_KEY?: string;
   SESSION_SECRET?: string;
-  TRANSCRIPT_LINK_SECRET?: string;
   SEND_EMAIL?: { send: (message: unknown) => Promise<unknown> };
-  ATTENDEE_FETCHER?: typeof fetch;
 };
+
+export type QueueMessageBody =
+  | { type: "run_job"; jobId: string }
+  | { type: "sweep_due_jobs" }
+  | { type: "enqueue_cancel_bot"; occurrenceId: string; reason?: string };

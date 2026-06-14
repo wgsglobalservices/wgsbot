@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { expandInviteOccurrences, extractTeamsJoinUrl, parseIncomingInvite } from "./index";
+import { extractTeamsJoinUrl, normalizeTeamsJoinUrl, parseIncomingInvite } from "./index";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const readFixture = (name: string) => readFileSync(join(fixtures, name), "utf8");
@@ -15,18 +15,18 @@ describe("invite parser", () => {
     expect(invite.kind).toBe("request");
     expect(invite.subject).toBe("Project sync");
     expect(invite.organizer.email).toBe("alice@company.com");
-    expect(invite.rawRecipient).toBe("notetaker@meet.company.com");
+    expect(invite.rawRecipient).toBe("notetaker@minutes.bot");
     expect(invite.attendees).toEqual([
       { email: "alex@company.com", name: "Alex", role: "required" },
       { email: "vendor@example.net", name: "Vendor", role: "optional" },
-      { email: "notetaker@meet.company.com", name: "minutesbot", role: undefined }
+      { email: "notetaker@minutes.bot", name: "minutesbot", role: undefined }
     ]);
     expect(invite.teamsJoinUrl).toContain("teams.microsoft.com/l/meetup-join");
   });
 
   it("adds To and Cc recipients when the calendar attendee list is incomplete", () => {
     const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: Alex <alex@company.com>, notetaker@meet.company.com
+To: Alex <alex@company.com>, notetaker@minutes.bot
 Cc: Casey <casey@company.com>, Vendor <vendor@example.net>
 Subject: Project sync
 
@@ -45,31 +45,10 @@ END:VCALENDAR`);
 
     expect(invite.attendees).toEqual([
       { email: "alex@company.com", name: "Alex", role: "required" },
-      { email: "notetaker@meet.company.com" },
+      { email: "notetaker@minutes.bot" },
       { email: "casey@company.com", name: "Casey" },
       { email: "vendor@example.net", name: "Vendor" }
     ]);
-  });
-
-  it("strips forwarded and reply prefixes from calendar meeting summaries", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: FW: RE: Weekly Sales Meeting
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:abc-forwarded-summary
-SUMMARY:FW: RE: Weekly Sales Meeting
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3asummary%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`);
-
-    expect(invite.subject).toBe("Weekly Sales Meeting");
   });
 
   it("maps updates to the same calendar UID", () => {
@@ -78,185 +57,14 @@ END:VCALENDAR`);
     expect(invite.subject).toBe("Project sync updated");
   });
 
-  it("maps recurring occurrence updates to the original occurrence calendar UID", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: Recurring project sync moved
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:abc-recurring
-RECURRENCE-ID:20260608T150000Z
-SUMMARY:Recurring project sync moved
-DTSTART:20260608T160000Z
-DTEND:20260608T163000Z
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`);
-
-    expect(invite.calendarUid).toBe("abc-recurring:20260608T150000Z");
-    expect(invite.startTime).toBe("2026-06-08T16:00:00.000Z");
-  });
-
   it("parses cancellations", () => {
     const invite = parseIncomingInvite(readFixture("teams-invite-cancel.eml"));
     expect(invite.kind).toBe("cancel");
   });
 
-  it("expands recurring Teams invites into upcoming occurrences", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: Recurring project sync
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:abc-recurring
-SUMMARY:Recurring project sync
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-RRULE:FREQ=WEEKLY;COUNT=4;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`);
-
-    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-05-30T12:00:00.000Z"), horizonDays: 60 });
-
-    expect(invite.recurrence).toEqual({ frequency: "weekly", interval: 1, count: 4, byDay: ["MO"] });
-    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.endTime])).toEqual([
-      ["abc-recurring:20260601T150000Z", "2026-06-01T15:00:00.000Z", "2026-06-01T15:30:00.000Z"],
-      ["abc-recurring:20260608T150000Z", "2026-06-08T15:00:00.000Z", "2026-06-08T15:30:00.000Z"],
-      ["abc-recurring:20260615T150000Z", "2026-06-15T15:00:00.000Z", "2026-06-15T15:30:00.000Z"],
-      ["abc-recurring:20260622T150000Z", "2026-06-22T15:00:00.000Z", "2026-06-22T15:30:00.000Z"]
-    ]);
-  });
-
-  it("preserves timezone-local recurring times across daylight saving changes", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: Eastern recurring project sync
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:abc-eastern-recurring
-SUMMARY:Eastern recurring project sync
-DTSTART;TZID=Eastern Standard Time:20261026T103000
-DTEND;TZID=Eastern Standard Time:20261026T110000
-RRULE:FREQ=WEEKLY;COUNT=2;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3aeastern%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`);
-
-    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-10-20T12:00:00.000Z"), horizonDays: 30 });
-
-    expect(invite.timeZone).toBe("America/New_York");
-    expect(invite.startTime).toBe("2026-10-26T14:30:00.000Z");
-    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.timeZone])).toEqual([
-      ["abc-eastern-recurring:20261026T143000Z", "2026-10-26T14:30:00.000Z", "America/New_York"],
-      ["abc-eastern-recurring:20261102T153000Z", "2026-11-02T15:30:00.000Z", "America/New_York"]
-    ]);
-  });
-
-  it("parses calendar cancellations even when the cancel payload omits the Teams join URL", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: Canceled project sync
-
-BEGIN:VCALENDAR
-METHOD:CANCEL
-BEGIN:VEVENT
-UID:abc-cancel-without-link
-SUMMARY:Canceled project sync
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=minutesbot;ROLE=REQ-PARTICIPANT:mailto:notetaker@meet.company.com
-END:VEVENT
-END:VCALENDAR`);
-
-    expect(invite.kind).toBe("cancel");
-    expect(invite.calendarUid).toBe("abc-cancel-without-link");
-    expect(invite.teamsJoinUrl).toBeNull();
-  });
-
-  it("uses the VEVENT recurrence when Outlook timezone components also contain RRULE values", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: Recurring project sync
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VTIMEZONE
-TZID:Eastern Standard Time
-BEGIN:STANDARD
-DTSTART:19701101T020000
-RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11
-TZOFFSETFROM:-0400
-TZOFFSETTO:-0500
-END:STANDARD
-END:VTIMEZONE
-BEGIN:VEVENT
-UID:abc-outlook-recurring
-SUMMARY:Recurring project sync
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-RRULE:FREQ=WEEKLY;COUNT=3;INTERVAL=1;BYDAY=MO
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3arecurring%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`);
-
-    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-05-30T12:00:00.000Z"), horizonDays: 14 });
-
-    expect(invite.recurrence).toEqual({ frequency: "weekly", interval: 1, count: 3, byDay: ["MO"] });
-    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime])).toEqual([
-      ["abc-outlook-recurring:20260601T150000Z", "2026-06-01T15:00:00.000Z"],
-      ["abc-outlook-recurring:20260608T150000Z", "2026-06-08T15:00:00.000Z"]
-    ]);
-  });
-
-  it("expands every BYDAY occurrence in recurring Teams invites", () => {
-    const invite = parseIncomingInvite(`From: Alice <alice@company.com>
-To: notetaker@meet.company.com
-Subject: Recurring standup
-
-BEGIN:VCALENDAR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:abc-weekdays
-SUMMARY:Recurring standup
-DTSTART:20260601T150000Z
-DTEND:20260601T153000Z
-RRULE:FREQ=WEEKLY;COUNT=5;INTERVAL=1;BYDAY=MO,WE,FR
-ORGANIZER;CN=Alice:mailto:alice@company.com
-ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
-DESCRIPTION:https://teams.microsoft.com/l/meetup-join/19%3aweekdays%40thread.v2/0?context=%7b%7d
-END:VEVENT
-END:VCALENDAR`);
-
-    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-05-30T12:00:00.000Z"), horizonDays: 14 });
-
-    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.endTime])).toEqual([
-      ["abc-weekdays:20260601T150000Z", "2026-06-01T15:00:00.000Z", "2026-06-01T15:30:00.000Z"],
-      ["abc-weekdays:20260603T150000Z", "2026-06-03T15:00:00.000Z", "2026-06-03T15:30:00.000Z"],
-      ["abc-weekdays:20260605T150000Z", "2026-06-05T15:00:00.000Z", "2026-06-05T15:30:00.000Z"],
-      ["abc-weekdays:20260608T150000Z", "2026-06-08T15:00:00.000Z", "2026-06-08T15:30:00.000Z"],
-      ["abc-weekdays:20260610T150000Z", "2026-06-10T15:00:00.000Z", "2026-06-10T15:30:00.000Z"]
-    ]);
-  });
-
   it("rejects non-Teams calendar invites and malformed calendars cleanly", () => {
     expect(() => parseIncomingInvite(readFixture("non-teams-calendar.eml"))).toThrow("Microsoft Teams");
-    expect(() => parseIncomingInvite(readFixture("malformed-calendar.eml"))).toThrow("missing required");
+    expect(() => parseIncomingInvite(readFixture("malformed-calendar.eml"))).toThrow("missing a UID");
   });
 
   it("decodes escaped Teams URLs", () => {
@@ -265,9 +73,61 @@ END:VCALENDAR`);
     );
   });
 
+  it("normalizes direct Teams meetup links across supported Teams hosts", () => {
+    expect(normalizeTeamsJoinUrl("https://teams.microsoft.com/l/meetup-join/19%3ameeting%40thread.v2/0?context=%7b%7d;")).toBe(
+      "https://teams.microsoft.com/l/meetup-join/19%3ameeting%40thread.v2/0?context=%7b%7d"
+    );
+    expect(normalizeTeamsJoinUrl("https://teams.live.com/l/meetup-join/19%3alive%40thread.v2/0?context=%7b%7d")).toBe(
+      "https://teams.live.com/l/meetup-join/19%3alive%40thread.v2/0?context=%7b%7d"
+    );
+  });
+
+  it("normalizes Teams v2 fragment and launcher links to canonical meetup links", () => {
+    expect(
+      extractTeamsJoinUrl(
+        "Join https://teams.microsoft.com/v2/?meetingjoin=true#/l/meetup-join/19%3ameeting%40thread.v2/0?context=%7b%22Tid%22%3a%22tenant%22%7d&anon=true"
+      )
+    ).toBe("https://teams.microsoft.com/l/meetup-join/19%3ameeting%40thread.v2/0?context=%7b%22Tid%22%3a%22tenant%22%7d&anon=true");
+
+    expect(
+      extractTeamsJoinUrl(
+        "Join https://teams.microsoft.com/dl/launcher/launcher.html?url=/_#/l/meetup-join/19%3alauncher%40thread.v2/0?context=%7b%7d"
+      )
+    ).toBe("https://teams.microsoft.com/l/meetup-join/19%3alauncher%40thread.v2/0?context=%7b%7d");
+  });
+
+  it("normalizes light-meetings coords links into canonical meetup links", () => {
+    const coords = btoa(
+      JSON.stringify({
+        conversationId: "19:meeting_abc@thread.v2",
+        tenantId: "tenant-id",
+        organizerId: "organizer-id",
+        messageId: "0"
+      })
+    );
+
+    expect(extractTeamsJoinUrl(`https://teams.microsoft.com/light-meetings/launch?agent=web&coords=${encodeURIComponent(coords)}`)).toBe(
+      'https://teams.microsoft.com/l/meetup-join/19%3Ameeting_abc%40thread.v2/0?context=%7B%22Tid%22%3A%22tenant-id%22%2C%22Oid%22%3A%22organizer-id%22%7D'
+    );
+  });
+
+  it("keeps short Teams meet links with passcodes as cleaned absolute URLs", () => {
+    expect(extractTeamsJoinUrl("https://teams.microsoft.com/meet/2680357125718?p=XE7jU7Jh,")).toBe(
+      "https://teams.microsoft.com/meet/2680357125718?p=XE7jU7Jh"
+    );
+  });
+
+  it("continues scanning when a light-meetings coords link is malformed", () => {
+    expect(
+      extractTeamsJoinUrl(
+        "Broken https://teams.microsoft.com/light-meetings/launch?coords=not-base64 then https://teams.microsoft.com/l/meetup-join/19%3afallback%40thread.v2/0?context=%7b%7d"
+      )
+    ).toBe("https://teams.microsoft.com/l/meetup-join/19%3afallback%40thread.v2/0?context=%7b%7d");
+  });
+
   it("parses plain forwarded Teams links as immediate meetings", () => {
-    const raw = `From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
+    const raw = `From: Peter <p.gustafson@company.com>
+To: notetaker@minutes.bot
 Subject: Join Teams meeting in progress
 
 Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?context=%7b%7d`;
@@ -277,40 +137,34 @@ Please join https://teams.microsoft.com/l/meetup-join/19%3alink%40thread.v2/0?co
 
     expect(first.kind).toBe("request");
     expect(first.subject).toBe("Join Teams meeting in progress");
-    expect(first.organizer.email).toBe("p.gustafson@wgsglobalservices.com");
-    expect(first.attendees).toEqual([{ email: "notetaker@wgs.bot", name: undefined, role: undefined }]);
+    expect(first.organizer.email).toBe("p.gustafson@company.com");
+    expect(first.attendees).toEqual([{ email: "notetaker@minutes.bot", name: undefined, role: undefined }]);
     expect(first.teamsJoinUrl).toContain("teams.microsoft.com/l/meetup-join");
     expect(first.calendarUid).toBe(second.calendarUid);
     expect(new Date(first.endTime).getTime() - new Date(first.startTime).getTime()).toBe(60 * 60 * 1000);
   });
 
-  it("recovers weekly Outlook forwarded event details from link-only emails", () => {
-    const invite = parseIncomingInvite(`From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
-Date: Mon, 1 Jun 2026 10:23:24 -0400
-Subject: FW: Weekly Sales Meeting
+  it("parses link-only Teams light-meetings invites into teamsJoinUrl", () => {
+    const coords = btoa(
+      JSON.stringify({
+        conversationId: "19:meeting_link_only@thread.v2",
+        tenantId: "tenant-id",
+        organizerId: "organizer-id"
+      })
+    );
+    const invite = parseIncomingInvite(`From: Peter <p.gustafson@company.com>
+To: notetaker@minutes.bot
+Subject: Join Teams meeting
 
-When: Monday, June 1, 2026 10:30 AM-11:15 AM.
-Where: Microsoft Teams Meeting
+Please join https://teams.microsoft.com/light-meetings/launch?agent=web&coords=${encodeURIComponent(coords)}`);
 
-https://teams.microsoft.com/l/meetup-join/19%3aweekly%40thread.v2/0?context=%7b%7d`);
-
-    const occurrences = expandInviteOccurrences(invite, { now: new Date("2026-06-01T14:23:24.000Z"), horizonDays: 14 });
-
-    expect(invite.subject).toBe("Weekly Sales Meeting");
-    expect(invite.startTime).toBe("2026-06-01T14:30:00.000Z");
-    expect(invite.endTime).toBe("2026-06-01T15:15:00.000Z");
-    expect(invite.recurrence).toEqual({ frequency: "weekly", interval: 1, byDay: ["MO"] });
-    expect(occurrences.map((occurrence) => [occurrence.calendarUid, occurrence.startTime, occurrence.endTime])).toEqual([
-      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260601T143000Z$/), "2026-06-01T14:30:00.000Z", "2026-06-01T15:15:00.000Z"],
-      [expect.stringMatching(/^teams-link-[a-f0-9]+:20260608T143000Z$/), "2026-06-08T14:30:00.000Z", "2026-06-08T15:15:00.000Z"]
-    ]);
+    expect(invite.teamsJoinUrl).toContain("https://teams.microsoft.com/l/meetup-join/19%3Ameeting_link_only%40thread.v2/0");
   });
 
   it("still rejects plain emails without Teams links", () => {
     expect(() =>
-      parseIncomingInvite(`From: Peter <p.gustafson@wgsglobalservices.com>
-To: notetaker@wgs.bot
+      parseIncomingInvite(`From: Peter <p.gustafson@company.com>
+To: notetaker@minutes.bot
 Subject: TEST
 
 hello`)

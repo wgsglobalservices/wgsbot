@@ -1,0 +1,35 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Weekly project sync (moved)
+Content-Type: text/calendar; method=REQUEST
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T020000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:recurring-123
+RECURRENCE-ID;TZID=Eastern Standard Time:20260623T100000
+SUMMARY:Weekly project sync (moved)
+DTSTART;TZID=Eastern Standard Time:20260623T113000
+DTEND;TZID=Eastern Standard Time:20260623T120000
+SEQUENCE:1
+ORGANIZER;CN=Alice Organizer:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:Microsoft Teams meeting\nhttps://teams.microsoft.com/l/meetup-join/19%3ameeting_recurring%40thread.v2/0?context=%7b%7d
+LOCATION:Microsoft Teams Meeting
+END:VEVENT
+END:VCALENDAR

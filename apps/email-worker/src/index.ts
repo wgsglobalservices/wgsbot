@@ -1,26 +1,21 @@
 import {
-  cancelFutureSeriesOccurrences,
-  cancelMeetingSeries,
-  createArtifact,
   createAuditLog,
+  createInboundMessage,
   getSettings,
-  markStaleRecurringOccurrencesCancelled,
-  replaceMeetingAttendees,
-  updateMeetingStatus,
-  upsertMeeting,
-  upsertMeetingSeries
+  resolveInboundMessage,
+  upsertArtifact,
+  type InboundMessageRow
 } from "@minutesbot/db";
-import { expandInviteOccurrences, parseIncomingInvite } from "@minutesbot/invite-parser";
-import { buildSummaryRecipients, getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
-import { createId, shouldCreateBotNow, weeklySalesRecapEmail, type MeetingStatus } from "@minutesbot/shared";
-
-type MeetingType = "weekly_sales" | "general";
+import { parseIncomingInvite, type ParsedMeetingInvite } from "@minutesbot/invite-parser";
+import { getEmailDomain, isAllowedDomain } from "@minutesbot/recipient-policy";
+import { ingestParsedInvite } from "@minutesbot/scheduler";
+import { AppError, nowIso, rawInviteKey, readStreamTextWithLimit, sha256Hex, type AppSettings } from "@minutesbot/shared";
+import { verifySenderAuthentication } from "./senderAuthentication";
 
 type Env = {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
-  INVITE_QUEUE: { send(message: unknown): Promise<void> };
-  ENVIRONMENT?: string;
+  JOBS_QUEUE: { send(message: unknown, options?: { delaySeconds?: number }): Promise<void> };
 };
 
 type EmailMessage = {
@@ -30,292 +25,224 @@ type EmailMessage = {
   setReject(reason: string): void;
 };
 
+const MAX_RAW_EMAIL_BYTES = 10 * 1024 * 1024;
+
 export default {
   async email(message: EmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
-    const rawEmail = await readTextWithLimit(message.raw, 5 * 1024 * 1024);
-    ctx.waitUntil(handleInvite(message, env, rawEmail));
+    const rawEmail = await readStreamTextWithLimit(message.raw, MAX_RAW_EMAIL_BYTES, "RAW_INVITE_TOO_LARGE");
+    ctx.waitUntil(handleInbound(message, env, rawEmail));
   }
 };
 
-export async function handleInvite(message: Pick<EmailMessage, "from" | "to" | "setReject">, env: Env, rawEmail: string): Promise<void> {
-  const settings = await getSettings(env.DB);
+type RejectionReason =
+  | "REJECTED_PARSE_ERROR"
+  | "REJECTED_INVALID_RECIPIENT"
+  | "REJECTED_UNAUTHENTICATED_SENDER"
+  | "REJECTED_NO_TEAMS_LINK"
+  | "REJECTED_EXTERNAL_ORGANIZER"
+  | "REJECTED_NO_ELIGIBLE_RECIPIENTS";
 
-  let parsed: ReturnType<typeof parseIncomingInvite>;
+export async function handleInbound(message: Pick<EmailMessage, "from" | "to" | "setReject">, env: Env, rawEmail: string): Promise<void> {
+  const settings = await getSettings(env.DB);
+  const contentHash = await sha256Hex(rawEmail);
+  const headerMeta = extractHeaderMeta(rawEmail);
+
+  // Dedup gate: forwarded copies and duplicate deliveries of the same bytes
+  // are recorded once and processed once.
+  const messageRow = await createInboundMessage(env.DB, {
+    messageId: headerMeta.messageId,
+    contentHash,
+    fromEmail: message.from.toLowerCase(),
+    toEmail: message.to.toLowerCase(),
+    subject: headerMeta.subject,
+    rawR2Key: "pending"
+  });
+  if (!messageRow) {
+    await createAuditLog(env.DB, {
+      actorEmail: message.from,
+      eventType: "invite.ignored",
+      resourceType: "inbound_message",
+      message: "Duplicate message content; already processed",
+      metadata: { contentHash, messageId: headerMeta.messageId }
+    });
+    return;
+  }
+
+  const rawKey = rawInviteKey(messageRow.id, nowIso());
+  await env.ARTIFACTS.put(rawKey, rawEmail, { httpMetadata: { contentType: "message/rfc822" } });
+  await env.DB.prepare("UPDATE inbound_messages SET raw_r2_key = ? WHERE id = ?").bind(rawKey, messageRow.id).run();
+  await upsertArtifact(env.DB, {
+    ownerType: "inbound_message",
+    ownerId: messageRow.id,
+    kind: "raw_invite",
+    r2Key: rawKey,
+    contentType: "message/rfc822",
+    sizeBytes: new TextEncoder().encode(rawEmail).byteLength,
+    sha256: contentHash
+  });
+  await createAuditLog(env.DB, {
+    actorEmail: message.from,
+    eventType: "invite.received",
+    resourceType: "inbound_message",
+    resourceId: messageRow.id,
+    metadata: { rawKey }
+  });
+
+  let parsed: ParsedMeetingInvite;
   try {
     parsed = parseIncomingInvite(rawEmail);
   } catch (error) {
-    await ignoreInvite(env, message, "REJECTED_PARSE_ERROR", error instanceof Error ? error.message : "Parse error");
+    if (error instanceof AppError && error.code === "REJECTED_NO_TEAMS_LINK") {
+      await rejectMessage(env, message, messageRow, "REJECTED_NO_TEAMS_LINK", error.message);
+      return;
+    }
+    await ignoreMessage(env, message, messageRow, error instanceof Error ? error.message : "Parse error");
     return;
   }
 
-  if (!isAuthenticatedInvite(rawEmail, parsed.rawSender, parsed.organizer.email, env.ENVIRONMENT)) {
-    await rejectInvite(env, message, "REJECTED_UNAUTHENTICATED_SENDER", "Inbound sender authentication did not pass or does not align with the organizer");
+  if (parsed.kind === "other") {
+    // Attendee responses (METHOD:REPLY/COUNTER/...) must not reschedule the
+    // meeting or spawn another bot.
+    await ignoreMessage(env, message, messageRow, "Calendar method is not a meeting request or cancellation", parsed);
     return;
   }
 
-  const salesRecapSourceRecipient = findSalesRecapSourceRecipient(message.to, rawEmail);
-  const recorderAliasEmails = [...settings.recorderAliasEmails, weeklySalesRecapEmail];
-  if (!isRecorderRecipient(message.to, settings.recorderEmail, recorderAliasEmails) && !salesRecapSourceRecipient) {
-    await rejectInvite(env, message, "REJECTED_INVALID_RECIPIENT", "Inbound recipient does not match configured recorder email");
+  if (!isRecorderRecipient(message.to, settings.recorderEmail, settings.recorderAliasEmails)) {
+    await rejectMessage(env, message, messageRow, "REJECTED_INVALID_RECIPIENT", "Inbound recipient does not match configured recorder email", parsed);
     return;
   }
 
-  if (!parsed.teamsJoinUrl && parsed.kind !== "cancel") {
-    await rejectInvite(env, message, "REJECTED_NO_TEAMS_LINK", "No Teams join URL found");
+  if (settings.policy.requireAuthenticatedSender) {
+    const senderAuth = verifySenderAuthentication(rawEmail, message.from);
+    if (!senderAuth.allowed) {
+      await rejectMessage(env, message, messageRow, "REJECTED_UNAUTHENTICATED_SENDER", senderAuth.reason, parsed);
+      return;
+    }
+  }
+
+  if (parsed.kind === "request" && !parsed.teamsJoinUrl) {
+    await rejectMessage(env, message, messageRow, "REJECTED_NO_TEAMS_LINK", "No Teams join URL found", parsed);
     return;
   }
 
   const organizerDomain = getEmailDomain(parsed.organizer.email);
   if (
+    parsed.kind === "request" &&
     settings.policy.rejectExternalOrganizers &&
-    (!organizerDomain || !isAllowedDomain(organizerDomain, [settings.primaryDomain, ...settings.allowedDomains], settings.policy.allowSubdomains))
+    (!organizerDomain || !isAllowedDomain(organizerDomain, settings.allowedDomains, settings.policy.allowSubdomains))
   ) {
-    await rejectInvite(env, message, "REJECTED_EXTERNAL_ORGANIZER", "Organizer domain is not allowed");
+    await rejectMessage(env, message, messageRow, "REJECTED_EXTERNAL_ORGANIZER", "Organizer domain is not allowed", parsed);
     return;
   }
 
-  const meetingType: MeetingType = salesRecapSourceRecipient ? "weekly_sales" : "general";
-  const sourceRecipient = salesRecapSourceRecipient ?? normalizeEmailAddress(message.to) ?? message.to.trim().toLowerCase();
-  const meetingInvitees = parsed.attendees.filter((attendee) => !isRecorderRecipient(attendee.email, settings.recorderEmail, recorderAliasEmails));
-  const filtered = buildSummaryRecipients({
-    organizer: parsed.organizer,
-    attendees: meetingInvitees,
-    primaryDomain: settings.primaryDomain,
-    allowedDomains: settings.allowedDomains,
-    allowSubdomains: settings.policy.allowSubdomains
+  if (parsed.kind === "request" && settings.policy.requireAtLeastOneEligibleRecipient && !hasEligibleRecipient(parsed, settings)) {
+    await rejectMessage(env, message, messageRow, "REJECTED_NO_ELIGIBLE_RECIPIENTS", "No eligible same-company recap recipients", parsed);
+    return;
+  }
+
+  const outcome = await ingestParsedInvite(env.DB, parsed, settings, { inboundMessageId: messageRow.id });
+
+  await resolveInboundMessage(env.DB, messageRow.id, {
+    parseStatus: "parsed",
+    icsUid: parsed.calendarUid,
+    icsMethod: parsed.kind,
+    icsSequence: parsed.sequence ?? null,
+    recurrenceId: parsed.recurrenceId?.utc ?? null,
+    eventId: outcome.eventId
   });
 
-  if (settings.policy.requireAtLeastOneEligibleRecipient && filtered.included.length === 0) {
-    await rejectInvite(env, message, "REJECTED_NO_ELIGIBLE_RECIPIENTS", "No eligible same-company summary recipients");
-    return;
-  }
-
-  const rawKey = `raw-invites/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.eml`;
-  await env.ARTIFACTS.put(rawKey, rawEmail, { httpMetadata: { contentType: "message/rfc822" } });
-  await createAuditLog(env.DB, { actorEmail: message.from, eventType: "invite.received", resourceType: "raw_invite", resourceId: rawKey });
-
-  const rawSizeBytes = new TextEncoder().encode(rawEmail).byteLength;
-  const now = new Date().toISOString();
-  const attendeeRows = [
-    ...filtered.included.map((recipient) => ({
-      email: recipient.email,
-      name: recipient.name ?? null,
-      role: null,
-      domain: recipient.domain ?? null,
-      summary_eligible: 1,
-      exclusion_reason: null
-    })),
-    ...filtered.excluded.map((recipient) => ({
-      email: recipient.email,
-      name: recipient.name ?? null,
-      role: null,
-      domain: recipient.domain ?? null,
-      summary_eligible: 0,
-      exclusion_reason: recipient.reason
-    }))
-  ];
-
-  if (parsed.kind === "cancel") {
-    await cancelMeetingSeries(env.DB, parsed.seriesUid, now);
-    if (parsed.calendarUid === parsed.seriesUid) await cancelFutureSeriesOccurrences(env.DB, { seriesUid: parsed.seriesUid, nowIso: now });
-  }
-
-  const occurrences = parsed.kind === "cancel" ? [] : expandInviteOccurrences(parsed);
-  const visibleOccurrences = occurrences.length > 0
-    ? occurrences
-    : [
-        {
-          calendarUid: parsed.calendarUid,
-          seriesUid: parsed.seriesUid,
-          startTime: parsed.startTime,
-          endTime: parsed.endTime,
-          timeZone: parsed.timeZone,
-          occurrenceIndex: 0,
-          recurring: Boolean(parsed.recurrence)
-        }
-      ];
-
-  if (parsed.kind !== "cancel" && parsed.recurrence) {
-    await upsertMeetingSeries(env.DB, {
-      series_uid: parsed.seriesUid,
-      subject: parsed.subject,
-      organizer_email: parsed.organizer.email,
-      organizer_name: parsed.organizer.name,
-      teams_join_url: parsed.teamsJoinUrl,
-      first_start_time: parsed.startTime,
-      first_end_time: parsed.endTime,
-      time_zone: parsed.timeZone,
-      recurrence_json: JSON.stringify(parsed.recurrence),
-      attendees_json: JSON.stringify(attendeeRows),
-      meeting_type: meetingType,
-      source_recipient: sourceRecipient,
-      raw_invite_r2_key: rawKey,
-      raw_invite_size_bytes: rawSizeBytes,
-      status: "ACTIVE",
-      expanded_until: maxOccurrenceStartTime(occurrences)
+  for (const warning of outcome.warnings) {
+    await createAuditLog(env.DB, {
+      eventType: "invite.received",
+      severity: "warning",
+      resourceType: "inbound_message",
+      resourceId: messageRow.id,
+      message: warning
     });
   }
 
-  if (parsed.kind !== "cancel" && parsed.recurrence && occurrences.length > 0) {
-    await markStaleRecurringOccurrencesCancelled(env.DB, {
-      seriesUid: parsed.seriesUid,
-      keepCalendarUids: occurrences.map((occurrence) => occurrence.calendarUid),
-      nowIso: now
-    });
+  // Cancelled occurrences with live bots need their runtime sessions stopped.
+  for (const occurrence of outcome.botsToCancel) {
+    await env.JOBS_QUEUE.send({ type: "enqueue_cancel_bot", occurrenceId: occurrence.id });
   }
 
-  for (const occurrence of visibleOccurrences) {
-    const meeting = await upsertMeeting(env.DB, {
-      calendar_uid: occurrence.calendarUid,
-      subject: parsed.subject,
-      organizer_email: parsed.organizer.email,
-      organizer_name: parsed.organizer.name,
-      teams_join_url: parsed.teamsJoinUrl,
-      start_time: occurrence.startTime,
-      end_time: occurrence.endTime,
-      time_zone: occurrence.timeZone ?? parsed.timeZone,
-      meeting_type: meetingType,
-      source_recipient: sourceRecipient,
-      series_uid: occurrence.seriesUid,
-      occurrence_index: occurrence.occurrenceIndex,
-      recurring: occurrence.recurring ? 1 : 0,
-      status: parsed.kind === "cancel" ? "CANCELLED" : "SCHEDULED"
-    });
-
-    await createArtifact(env.DB, {
-      meeting_id: meeting.id,
-      type: "raw_invite",
-      r2_key: rawKey,
-      content_type: "message/rfc822",
-      size_bytes: rawSizeBytes,
-      deleted_at: null
-    });
-
-    await replaceMeetingAttendees(
-      env.DB,
-      meeting.id,
-      attendeeRows
-    );
-
-    if (parsed.kind === "cancel") {
-      await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.cancelled", resourceType: "meeting", resourceId: meeting.id });
-      continue;
-    }
-
-    if (shouldCreateBotNow(meeting.start_time, settings.attendee.createBotMinutesBeforeStart)) {
-      await env.INVITE_QUEUE.send({ type: "create_bot", meetingId: meeting.id });
-    } else {
-      await updateMeetingStatus(env.DB, meeting.id, "WAITING_TO_CREATE_BOT");
-    }
-    await createAuditLog(env.DB, { actorEmail: parsed.organizer.email, eventType: "meeting.scheduled", resourceType: "meeting", resourceId: meeting.id });
+  // Wake the job runner for anything due now (e.g. a meeting already starting)
+  // instead of waiting for the next cron sweep.
+  if (outcome.jobsCreated > 0) {
+    await env.JOBS_QUEUE.send({ type: "sweep_due_jobs" });
   }
 }
 
-function maxOccurrenceStartTime(occurrences: Array<{ startTime: string }>): string | null {
-  return occurrences.reduce<string | null>((latest, occurrence) => (!latest || occurrence.startTime > latest ? occurrence.startTime : latest), null);
+function hasEligibleRecipient(parsed: ParsedMeetingInvite, settings: AppSettings): boolean {
+  const candidates = [parsed.organizer.email, ...parsed.attendees.map((attendee) => attendee.email)];
+  return candidates.some((email) => {
+    const domain = getEmailDomain(email);
+    return domain !== null && isAllowedDomain(domain, settings.allowedDomains, settings.policy.allowSubdomains);
+  });
+}
+
+function extractHeaderMeta(rawEmail: string): { messageId: string | null; subject: string | null } {
+  const headerText = rawEmail.split(/\r?\n\r?\n/, 1)[0] ?? "";
+  const unfolded = headerText.replace(/\r?\n[ \t]+/g, " ");
+  const messageIdMatch = unfolded.match(/^message-id:\s*<?([^>\s]+)>?/im);
+  const subjectMatch = unfolded.match(/^subject:\s*(.+)$/im);
+  return {
+    messageId: messageIdMatch ? messageIdMatch[1].trim() : null,
+    subject: subjectMatch ? subjectMatch[1].trim().slice(0, 500) : null
+  };
 }
 
 function isRecorderRecipient(recipient: string, recorderEmail: string, aliases: string[] = []): boolean {
-  const normalizedRecipient = normalizeEmailAddress(recipient);
-  if (!normalizedRecipient) return false;
+  const normalizedRecipient = recipient.trim().toLowerCase();
   return [recorderEmail, ...aliases].some((email) => email.trim().toLowerCase() === normalizedRecipient);
 }
 
-function findSalesRecapSourceRecipient(envelopeRecipient: string, rawEmail: string): string | null {
-  return candidateRecipientEmails(envelopeRecipient, rawEmail).find((email) => email === weeklySalesRecapEmail) ?? null;
+async function rejectMessage(
+  env: Env,
+  message: Pick<EmailMessage, "from" | "setReject">,
+  messageRow: InboundMessageRow,
+  reason: RejectionReason,
+  detail: string,
+  parsed?: ParsedMeetingInvite
+): Promise<void> {
+  message.setReject(detail);
+  await resolveInboundMessage(env.DB, messageRow.id, {
+    parseStatus: "rejected",
+    rejectionReason: `${reason}: ${detail}`,
+    icsUid: parsed?.calendarUid ?? null,
+    icsMethod: parsed?.kind ?? null,
+    icsSequence: parsed?.sequence ?? null,
+    recurrenceId: parsed?.recurrenceId?.utc ?? null
+  });
+  await createAuditLog(env.DB, {
+    actorEmail: message.from,
+    eventType: "invite.rejected",
+    severity: "warning",
+    resourceType: "inbound_message",
+    resourceId: messageRow.id,
+    message: detail,
+    metadata: { reason }
+  });
 }
 
-function candidateRecipientEmails(envelopeRecipient: string, rawEmail: string): string[] {
-  const candidates = [...extractEmailAddresses(envelopeRecipient)];
-  const headers = rawEmail.split(/\r?\n\r?\n/, 1)[0]?.replace(/\r?\n[ \t]+/g, " ") ?? "";
-  const recipientHeaders = new Set(["to", "cc", "delivered-to", "x-original-to", "envelope-to", "resent-to", "apparently-to"]);
-  for (const line of headers.split(/\r?\n/)) {
-    const separator = line.indexOf(":");
-    if (separator <= 0) continue;
-    const name = line.slice(0, separator).trim().toLowerCase();
-    if (!recipientHeaders.has(name)) continue;
-    candidates.push(...extractEmailAddresses(line.slice(separator + 1)));
-  }
-  return Array.from(new Set(candidates));
-}
-
-function extractEmailAddresses(value: string): string[] {
-  return Array.from(value.matchAll(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z0-9-]+/gi))
-    .map((match) => normalizeEmailAddress(match[0]))
-    .filter((email): email is string => Boolean(email));
-}
-
-function normalizeEmailAddress(value: string): string | null {
-  return extractEmailAddress(value)?.trim().toLowerCase() || null;
-}
-
-function extractEmailAddress(value: string): string | null {
-  return value.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z0-9-]+/i)?.[0] ?? null;
-}
-
-async function rejectInvite(env: Env, message: Pick<EmailMessage, "from" | "setReject">, status: MeetingStatus, reason: string): Promise<void> {
-  message.setReject(reason);
-  await recordRejectedInvite(env, message.from, status, reason);
-}
-
-async function ignoreInvite(env: Env, message: Pick<EmailMessage, "from">, status: MeetingStatus, reason: string): Promise<void> {
+async function ignoreMessage(
+  env: Env,
+  message: Pick<EmailMessage, "from">,
+  messageRow: InboundMessageRow,
+  detail: string,
+  parsed?: ParsedMeetingInvite
+): Promise<void> {
+  await resolveInboundMessage(env.DB, messageRow.id, {
+    parseStatus: "ignored",
+    rejectionReason: detail,
+    icsUid: parsed?.calendarUid ?? null,
+    icsMethod: parsed?.kind ?? null
+  });
   await createAuditLog(env.DB, {
     actorEmail: message.from,
     eventType: "invite.ignored",
-    resourceType: "invite",
-    resourceId: createId("ign"),
-    metadata: { status: "IGNORED_NON_CALENDAR_EMAIL", originalStatus: status, reason }
+    resourceType: "inbound_message",
+    resourceId: messageRow.id,
+    message: detail
   });
-}
-
-async function recordRejectedInvite(env: Env, actorEmail: string, status: MeetingStatus, reason: string): Promise<void> {
-  await createAuditLog(env.DB, {
-    actorEmail,
-    eventType: "invite.rejected",
-    resourceType: "invite",
-    resourceId: createId("rej"),
-    metadata: { status, reason }
-  });
-}
-
-async function readTextWithLimit(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<string> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let text = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytes += value.byteLength;
-    if (bytes > maxBytes) throw new Error("Inbound email exceeds the maximum supported size.");
-    text += decoder.decode(value, { stream: true });
-  }
-  return text + decoder.decode();
-}
-
-function isAuthenticatedInvite(rawEmail: string, senderEmail: string, organizerEmail: string, environment?: string): boolean {
-  if (environment !== "production") return true;
-  const senderDomain = getEmailDomain(senderEmail);
-  const organizerDomain = getEmailDomain(organizerEmail);
-  if (!senderDomain || !organizerDomain || senderDomain !== organizerDomain) return false;
-  return authenticatedDomains(rawEmail).has(senderDomain);
-}
-
-function authenticatedDomains(rawEmail: string): Set<string> {
-  const headers = rawEmail.split(/\r?\n\r?\n/, 1)[0]?.replace(/\r?\n[ \t]+/g, " ") ?? "";
-  const domains = new Set<string>();
-  for (const line of headers.split(/\r?\n/)) {
-    if (!line.toLowerCase().startsWith("authentication-results:")) continue;
-    collectAuthDomain(line, /\bdmarc=pass\b[^;]*\bheader\.from=([a-z0-9.-]+)/gi, domains);
-    collectAuthDomain(line, /\bdkim=pass\b[^;]*\bheader\.d=([a-z0-9.-]+)/gi, domains);
-    collectAuthDomain(line, /\bspf=pass\b[^;]*\bsmtp\.mailfrom=([a-z0-9.-]+)/gi, domains);
-  }
-  return domains;
-}
-
-function collectAuthDomain(line: string, pattern: RegExp, domains: Set<string>): void {
-  for (const match of line.matchAll(pattern)) {
-    const domain = match[1]?.toLowerCase().replace(/\.+$/, "");
-    if (domain) domains.add(domain);
-  }
 }

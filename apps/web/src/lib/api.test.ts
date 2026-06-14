@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiGet, apiGetBlob, apiGetText, setApiAuthTokenProvider } from "./api";
+import { ADMIN_TOKEN_STORAGE_KEY, ApiError, apiGet, setApiAuthTokenProvider, verifyAdminToken } from "./api";
 
 describe("web api client auth", () => {
   afterEach(() => {
     setApiAuthTokenProvider(null);
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -49,45 +50,45 @@ describe("web api client auth", () => {
     await expect(apiGet<{ ok: boolean }>("/api/settings")).rejects.toBeInstanceOf(ApiError);
   });
 
-  it("fetches text artifacts with the admin bearer token", async () => {
-    const fetchMock = vi.fn(async () => new Response("Alex: transcript ready", { status: 200, headers: { "content-type": "text/plain" } }));
-    vi.stubGlobal("fetch", fetchMock);
-    setApiAuthTokenProvider(async () => "session-token");
-
-    await expect(apiGetText("/api/meetings/mtg_1/transcript.txt")).resolves.toBe("Alex: transcript ready");
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/meetings/mtg_1/transcript.txt",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          authorization: "Bearer session-token"
-        })
-      })
+  it("clears the stored admin token on an unauthorized response", async () => {
+    const storage = new Map([[ADMIN_TOKEN_STORAGE_KEY, "stale-token"]]);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        removeItem: (key: string) => storage.delete(key)
+      }
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Invalid admin token" } }), { status: 401 }))
     );
+
+    await expect(apiGet<{ ok: boolean }>("/api/settings")).rejects.toMatchObject({ status: 401 });
+    expect(storage.has(ADMIN_TOKEN_STORAGE_KEY)).toBe(false);
   });
 
-  it("fetches recording artifacts as blobs and preserves API errors", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } }))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: "Recording not found." } }), {
-          status: 404,
-          headers: { "content-type": "application/json" }
-        })
-      );
+  it("verifies a candidate admin token with a bearer header", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    setApiAuthTokenProvider(async () => "session-token");
 
-    const blob = await apiGetBlob("/api/meetings/mtg_1/recording");
+    await expect(verifyAdminToken("candidate-token")).resolves.toEqual({ ok: true, status: 200 });
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/status", {
+      headers: { authorization: "Bearer candidate-token" }
+    });
+  });
 
-    expect(blob.type).toBe("audio/mpeg");
-    await expect(blob.arrayBuffer()).resolves.toHaveProperty("byteLength", 3);
-    await expect(apiGetBlob("/api/meetings/mtg_missing/recording")).rejects.toMatchObject({
-      name: "ApiError",
-      status: 404,
-      code: "NOT_FOUND",
-      message: "Recording not found."
+  it("uses plain admin test action messages on failed responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ ok: false, message: "BOT_UPSTREAM_ERROR: Meeting bot request failed with 502" }), { status: 502 })
+      )
+    );
+
+    await expect(apiGet<{ ok: boolean }>("/api/admin/status")).rejects.toMatchObject({
+      status: 502,
+      code: "REQUEST_FAILED",
+      message: "BOT_UPSTREAM_ERROR: Meeting bot request failed with 502"
     });
   });
 });

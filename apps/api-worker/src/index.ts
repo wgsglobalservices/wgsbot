@@ -1,50 +1,46 @@
 import { Hono } from "hono";
 import { toErrorResponse } from "@minutesbot/shared";
 import type { Env } from "./env";
-import { auditLogsRoute } from "./routes/auditLogs";
 import { artifactsRoute } from "./routes/artifacts";
-import { attendeeWebhookRoute } from "./routes/attendeeWebhook";
-import { healthRoute } from "./routes/health";
-import { meetingsRoute } from "./routes/meetings";
+import { auditLogsRoute } from "./routes/auditLogs";
+import { botWebhookRoute } from "./routes/botWebhook";
+import { eventsRoute } from "./routes/events";
+import { healthRoute, readyRoute } from "./routes/health";
+import { jobsRoute } from "./routes/jobs";
+import { occurrencesRoute } from "./routes/occurrences";
 import { settingsRoute } from "./routes/settings";
 import { testActionsRoute } from "./routes/testActions";
 import { corsMiddleware } from "./middleware/cors";
 import { errorMiddleware } from "./middleware/errors";
 import { adminTokenAuthMiddleware, isPublicApiPath } from "./middleware/auth";
-import { applySecurityHeaders, securityHeadersMiddleware } from "./middleware/securityHeaders";
-import { cleanupOldArtifacts, handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
-import { queueDueBotCreations } from "../../workflow-worker/src/botCreation";
+import { isCloudflareAccessConfigured, requireCloudflareAccess } from "./middleware/cloudflareAccess";
+import { handleQueueBatch } from "../../workflow-worker/src/queueConsumers";
+import { handleScheduled } from "../../workflow-worker/src/cron";
 import emailWorker from "../../email-worker/src/index";
 
-export { CleanupWorkflow } from "../../workflow-worker/src/cleanupWorkflow";
-export { MeetingWorkflow } from "../../workflow-worker/src/meetingWorkflow";
-export { SummaryWorkflow } from "../../workflow-worker/src/summaryWorkflow";
-export { TranscriptWorkflow } from "../../workflow-worker/src/transcriptWorkflow";
-
 export const app = new Hono<{ Bindings: Env }>();
-const BOT_SCHEDULER_CRON = "* * * * *";
-const CLEANUP_CRON = "17 3 * * *";
 
 app.onError((error, c) => {
-  const response = toErrorResponse(error, c.env?.ENVIRONMENT);
-  applySecurityHeaders(c);
+  const response = toErrorResponse(error);
+  if (response.status >= 500) console.error("api-worker unhandled error", error);
   return c.json(response.body, response.status as 400);
 });
 
 app.use("*", errorMiddleware);
-app.use("*", securityHeadersMiddleware);
 app.use("*", corsMiddleware);
-app.options("*", (c) => c.body(null, 204));
 app.use("/api/*", adminTokenAuthMiddleware);
 
 app.route("/api/health", healthRoute);
+app.route("/api/ready", readyRoute);
 app.route("/api/settings", settingsRoute);
 app.route("/api/admin", testActionsRoute);
 app.route("/api/admin/audit-logs", auditLogsRoute);
-app.route("/api/meetings", meetingsRoute);
+app.route("/api/events", eventsRoute);
+app.route("/api/occurrences", occurrencesRoute);
+app.route("/api/jobs", jobsRoute);
 app.route("/api/artifacts", artifactsRoute);
-app.route("/api/webhooks/attendee", attendeeWebhookRoute);
-app.route("/api/webhooks/attendee/", attendeeWebhookRoute);
+app.route("/api/webhooks/bot", botWebhookRoute);
+app.route("/api/webhooks/bot/", botWebhookRoute);
 
 export default {
   async fetch(request, env, ctx) {
@@ -55,8 +51,7 @@ export default {
     await handleQueueBatch(batch, env);
   },
   async scheduled(event, env, ctx) {
-    if (event.cron === BOT_SCHEDULER_CRON) ctx.waitUntil(queueDueBotCreations(env));
-    if (event.cron === CLEANUP_CRON) ctx.waitUntil(cleanupOldArtifacts(env));
+    ctx.waitUntil(handleScheduled(env, event.cron));
   }
 } satisfies ExportedHandler<Env>;
 
@@ -71,6 +66,15 @@ export async function handleFetch(request: Request, env: Env, ctx?: ExecutionCon
 
   if (url.hostname !== new URL(env.APP_BASE_URL).hostname) {
     return new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=UTF-8" } });
+  }
+
+  if (isCloudflareAccessConfigured(env)) {
+    try {
+      await requireCloudflareAccess(request, env);
+    } catch (error) {
+      const response = toErrorResponse(error);
+      return Response.json(response.body, { status: response.status });
+    }
   }
 
   return env.ASSETS ? env.ASSETS.fetch(request) : app.fetch(request, env, ctx);

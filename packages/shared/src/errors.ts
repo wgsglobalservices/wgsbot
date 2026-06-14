@@ -19,7 +19,7 @@ export class AppError extends Error {
   }
 }
 
-export function toErrorResponse(error: unknown, environment = ""): { status: number; body: ErrorResponse } {
+export function toErrorResponse(error: unknown): { status: number; body: ErrorResponse } {
   if (error instanceof AppError) {
     return {
       status: error.status,
@@ -32,9 +32,10 @@ export function toErrorResponse(error: unknown, environment = ""): { status: num
       body: { error: { code: "VALIDATION_ERROR", message: "Invalid request data", details: error.flatten() } }
     };
   }
-  const message = environment === "production" ? "Unexpected error" : error instanceof Error ? error.message : "Unexpected error";
+  // Never echo internal error details (SQL text, stack fragments, provider
+  // responses) to clients; callers log the original error.
   return {
     status: 500,
-    body: { error: { code: "INTERNAL_ERROR", message } }
+    body: { error: { code: "INTERNAL_ERROR", message: "Unexpected error" } }
   };
 }

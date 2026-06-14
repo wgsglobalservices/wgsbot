@@ -1,36 +1,32 @@
 import type { Context, Next } from "hono";
+import type { Env } from "../env";
+
+const fallbackAllowedHeaders = "authorization,content-type";
 
 export async function corsMiddleware(c: Context, next: Next): Promise<Response | void> {
-  await next();
-  const origin = c.req.header("origin");
-  if (origin && allowedOrigins(c.env as Record<string, string | undefined>).has(origin)) {
-    c.header("access-control-allow-origin", origin);
-    c.header("vary", appendVary(c.res.headers.get("vary"), "Origin"));
+  if (c.req.method === "OPTIONS") {
+    applyCorsHeaders(c);
+    return c.body(null, 204);
   }
+  await next();
+  applyCorsHeaders(c);
+}
+
+function applyCorsHeaders(c: Context<{ Bindings: Env }>): void {
+  const origin = c.req.header("origin");
+  const allowedOrigin = allowedCorsOrigin(c.env, origin);
+  if (allowedOrigin) c.header("access-control-allow-origin", allowedOrigin);
+  c.header("vary", "Origin");
   c.header("access-control-allow-methods", "GET,POST,PUT,DELETE,OPTIONS");
-  c.header("access-control-allow-headers", "authorization,content-type,x-webhook-signature");
+  c.header("access-control-allow-headers", fallbackAllowedHeaders);
 }
 
-function allowedOrigins(env: Record<string, string | undefined>): Set<string> {
-  return new Set(
-    [env.APP_BASE_URL, env.API_BASE_URL, ...(env.ADMIN_ALLOWED_ORIGINS ?? "").split(",")]
-      .map((value) => normalizeOrigin(value))
-      .filter((value): value is string => Boolean(value))
-  );
-}
-
-function normalizeOrigin(value?: string): string | null {
-  if (!value) return null;
+function allowedCorsOrigin(env: Pick<Env, "APP_BASE_URL"> | undefined, origin: string | undefined): string | null {
+  if (!origin) return null;
+  if (!env?.APP_BASE_URL) return null;
   try {
-    const url = new URL(value.trim());
-    return url.origin;
+    return new URL(origin).origin === new URL(env.APP_BASE_URL).origin ? origin : null;
   } catch {
     return null;
   }
-}
-
-function appendVary(current: string | null, value: string): string {
-  if (!current) return value;
-  const parts = current.split(",").map((part) => part.trim().toLowerCase());
-  return parts.includes(value.toLowerCase()) ? current : `${current}, ${value}`;
 }

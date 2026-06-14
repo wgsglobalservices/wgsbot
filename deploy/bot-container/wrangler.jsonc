@@ -1,0 +1,64 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Meeting bot container worker. Deployed via `pnpm bot:deploy`
+  // (scripts/deploy-bot-container.ts), which copies this config to
+  // .wrangler/bot-container.jsonc with a fresh BOT_CONTAINER_INSTANCE_ID and
+  // the current git sha as BOT_RUNTIME_VERSION before running wrangler.
+  //
+  // Replace the example.com domains (or run `pnpm setup:cloudflare`, which
+  // patches them from your answers). The Cloudflare account is selected via
+  // the CLOUDFLARE_ACCOUNT_ID env var or `wrangler login`; account ids are
+  // intentionally not checked in.
+  "name": "minutesbot-meeting-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "minutesbot-meeting-api.wgsglobal.app",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "BOT_CONTAINER_SLEEP_AFTER": "24h",
+    // Overridden with fresh values on every `pnpm bot:deploy`.
+    "BOT_CONTAINER_INSTANCE_ID": "dev",
+    "BOT_RUNTIME_VERSION": "dev",
+    "BOT_API_BASE_URL": "https://minutesbot-meeting-api.wgsglobal.app",
+    "BOT_RECORDING_BUCKET_NAME": "minutesbot-artifacts",
+    "BOT_WEBHOOK_BASE_URL": "https://minutesbot-webhook.wgsglobal.app"
+  },
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "minutesbot-artifacts"
+    }
+  ],
+  "containers": [
+    {
+      "class_name": "MeetingBotContainer",
+      "image": "../../Dockerfile.bot",
+      "max_instances": 6,
+      "instance_type": "standard-2"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MEETING_BOT",
+        "class_name": "MeetingBotContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MeetingBotContainer"]
+    }
+  ]
+}

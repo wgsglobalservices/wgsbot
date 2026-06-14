@@ -1,27 +1,47 @@
 # Security
 
-## Stored Data
+## Data placement
 
-D1 stores settings, allowed domains, meeting metadata, attendees and eligibility flags, webhook event metadata/payloads, transcript segments, summary metadata, email delivery metadata, and audit logs. Transcript artifacts and raw invites are stored in R2, not D1.
-
-Attendee stores meeting data separately in the company's self-hosted Attendee instance.
+- **D1** stores metadata only: settings, the mirrored domain allowlist, inbound message records, events/occurrences/attendees, bot sessions and webhook event metadata, transcript/recap status rows, email delivery rows, durable jobs, and audit logs.
+- **R2** stores every artifact body: raw MIME invites, MP3 recordings, transcript JSON/text, recap JSON/HTML/text, bot diagnostics, and oversized webhook payloads. D1 holds only owner-scoped pointers (`artifacts` table) and hashes — never artifact bytes. Artifact content is served exclusively through the authed admin API (plus short-lived HMAC-signed download tokens embedded in recap emails); the bucket is never public.
 
 ## Secrets
 
-Store `ATTENDEE_API_KEY`, `ATTENDEE_WEBHOOK_SECRET`, `AI_API_KEY`, `EMAIL_API_KEY`, `SMTP_PASSWORD`, `SESSION_SECRET`, and `TRANSCRIPT_LINK_SECRET` with `wrangler secret put`. D1 stores only configured status or secret references. Use a separate `TRANSCRIPT_LINK_SECRET`; do not reuse the admin session token for emailed transcript download links.
+Set with `wrangler secret put`, never stored in source, `.env`, or D1 (D1 keeps only "configured" status flags):
 
-## Webhooks
+- `AI_API_KEY` — OpenAI(-compatible) key for recap generation, also used for Whisper unless `TRANSCRIPTION_API_KEY` is set.
+- `TRANSCRIPTION_API_KEY` — optional separate transcription key.
+- `SESSION_SECRET` — the admin token; only needed in admin-token auth mode.
+- `BOT_INTERNAL_TOKEN` — generated and pushed to both workers automatically by `pnpm bot:deploy`; operators never see or handle the value.
 
-Attendee webhooks fail closed unless `ATTENDEE_WEBHOOK_SECRET` is configured. Requests are verified with HMAC-SHA256 using canonicalized JSON and `X-Webhook-Signature`, and webhook payloads must include an `idempotency_key` for replay protection.
+Nothing logs secrets or tokens; runtime log tails are redacted before they appear in diagnostics.
 
-## Provider URLs
+## Admin access
 
-Admin-configured Attendee and AI base URLs are allowlisted before secrets are sent upstream. Add `ATTENDEE_BASE_URL_ALLOWLIST` or `AI_BASE_URL_ALLOWLIST` as comma-separated HTTPS origins only when a self-hosted provider is intentionally approved.
+Cloudflare Access is the production default; a static admin token (`SESSION_SECRET`) is the explicit development fallback. Any named environment fails closed to Access unless `ALLOW_ADMIN_TOKEN_AUTH=true` is set deliberately. Details and the public-route list: [security-access-control.md](security-access-control.md).
 
-## Recipients
+## Internal bot auth (signed webhooks)
 
-External attendees never receive summaries by default. The recipient policy allows exact domains by default and optional subdomain matching.
+`BOT_INTERNAL_TOKEN` is the single shared credential between the two workers:
 
-## Admin Access and Consent
+- The control plane calls the bot runtime's `/v1/*` API with it as a bearer token.
+- The runtime presents it back on every webhook to `/api/webhooks/bot` (bearer), and payloads are schema-validated, idempotency-keyed, and may only mutate the bot session they name.
+- Recording/diagnostic uploads to `/internal/recordings` require it, are confined to the `recordings/` and `diagnostics/` key prefixes (no traversal), and are size-capped.
+- The runtime only delivers webhooks to the configured control-plane origin (`BOT_WEBHOOK_ALLOWED_ORIGINS`), so the token cannot be exfiltrated via a caller-supplied webhook URL.
 
-Use Cloudflare Access to protect the admin UI for the MVP. The meeting bot appears as a participant. The deploying company is responsible for meeting recording/transcription consent policies and compliance.
+Comparisons are constant-time. Rotate with `pnpm bot:deploy --rotate-token`.
+
+## Inbound email
+
+Invites are checked against the receiving MTA's `Authentication-Results` (SPF/DKIM/DMARC alignment with the From domain) when `policy.requireAuthenticatedSender` is on (default), so a spoofed internal sender cannot schedule recordings or steer recap email. Raw messages are capped at 10 MB and deduplicated by content hash.
+
+## Outbound email and the send boundary
+
+- **External attendees never receive recaps.** Recipients are filtered to admin-allowed domains; the policy fields are literal types in the settings schema (`sendToAllowedDomainsOnly: true`, `sendToExternalAttendees: false`), so no settings payload can widen delivery. Skipped recipients are recorded as `skipped_policy`.
+- The allowlist matches exact domains by default; subdomain matching is opt-in. Test emails are restricted to allowed domains too.
+- All header-bound fields (subject, addresses, display names) are stripped of CR/LF before sending, so calendar content cannot inject SMTP headers.
+- Sending goes through the Cloudflare `send_email` binding with pinned `allowed_sender_addresses`.
+
+## Recording consent
+
+The bot joins as a visible guest participant under a display name that must identify it as a recorder (default "Notetaker (minutesbot)"). The deploying company is responsible for meeting recording/transcription consent policies and compliance in its jurisdiction.

@@ -1,15 +1,17 @@
-import { AppError, cleanMeetingSubject } from "@minutesbot/shared";
+import { AppError } from "@minutesbot/shared";
 import { extractTeamsJoinUrl } from "./extractTeamsJoinUrl";
+import { decodeMimeWords, extractCalendarText, extractTextBody, parseHeaderBlock, splitMessage } from "./mime";
 import { normalizeAttendees } from "./normalizeAttendees";
-import { parseIcsCalendar } from "./parseIcs";
-import type { NormalizedAttendee, ParsedMeetingInvite, ParsedRecurrence, RawIcsAttendee } from "./types";
+import { parseCalendar } from "./parseIcs";
+import type { NormalizedAttendee, ParsedMeetingInvite, ParsedVEvent, RawIcsAttendee } from "./types";
 
 export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
-  const headers = parseHeaders(rawEmail);
+  const { headerText } = splitMessage(rawEmail);
+  const headers = parseHeaderBlock(headerText);
   const rawRecipient = firstAddress(headers.get("to") ?? headers.get("delivered-to") ?? "");
   const rawSender = firstAddress(headers.get("from") ?? headers.get("sender") ?? "");
-  const body = rawEmail.slice(rawEmail.indexOf("\n\n") + 2);
-  const calendarText = extractCalendarPart(rawEmail);
+  const body = extractTextBody(rawEmail);
+  const calendarText = extractCalendarText(rawEmail);
 
   if (!rawRecipient || !rawSender) {
     throw new AppError("INVITE_PARSE_ERROR", "Inbound email is missing sender or recipient", 400);
@@ -18,19 +20,25 @@ export function parseIncomingInvite(rawEmail: string): ParsedMeetingInvite {
     return parseLinkOnlyInvite({ headers, body, rawRecipient, rawSender });
   }
 
-  const calendar = parseIcsCalendar(calendarText);
-  const teamsJoinUrl = extractTeamsJoinUrl(`${calendar.description ?? ""}\n${calendar.location ?? ""}\n${body}`);
-  if (!teamsJoinUrl && calendar.kind !== "cancel") {
+  const calendar = parseCalendar(calendarText);
+  // The primary event is the series master (no RECURRENCE-ID) when present,
+  // otherwise the first event in the file.
+  const primary = calendar.events.find((event) => !event.recurrenceId) ?? calendar.events[0];
+  const teamsJoinUrl = extractTeamsJoinUrl(`${primary.description ?? ""}\n${primary.location ?? ""}\n${body}`);
+  // Cancellations are matched to the stored meeting by UID, so a missing
+  // join URL must not reject them — otherwise the bot attends cancelled
+  // meetings whose CANCEL payload omitted the link.
+  if (!teamsJoinUrl && primary.kind === "request") {
     throw new AppError("REJECTED_NO_TEAMS_LINK", "Meeting invite does not contain a Microsoft Teams join URL", 400);
   }
 
   return {
-    ...calendar,
-    attendees: mergeAttendees(calendar.attendees, headerAttendees(headers)),
-    calendarAttendees: calendar.calendarAttendees,
+    ...primary,
+    attendees: mergeAttendees(primary.attendees, headerAttendees(headers)),
     teamsJoinUrl,
     rawRecipient: rawRecipient.toLowerCase(),
-    rawSender: rawSender.toLowerCase()
+    rawSender: rawSender.toLowerCase(),
+    events: calendar.events
   };
 }
 
@@ -40,23 +48,23 @@ function parseLinkOnlyInvite(input: { headers: Map<string, string>; body: string
     throw new AppError("INVITE_PARSE_ERROR", "Inbound email does not include a calendar payload", 400);
   }
 
-  const subject = cleanMeetingSubject(decodeMimeWords(input.headers.get("subject") ?? "").trim()) || "Teams meeting";
-  const forwardedEvent = parseForwardedEventDetails(input.body, subject, input.headers.get("date") ?? "");
-  const start = forwardedEvent?.start ?? new Date();
-  const end = forwardedEvent?.end ?? new Date(start.getTime() + 60 * 60 * 1000);
-  return {
+  const start = new Date();
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const event: ParsedVEvent = {
     kind: "request",
     calendarUid: `teams-link-${stableHash(teamsJoinUrl)}`,
-    seriesUid: `teams-link-${stableHash(teamsJoinUrl)}`,
-    subject,
+    subject: decodeMimeWords(input.headers.get("subject") ?? "").trim() || "Teams meeting",
     organizer: { email: input.rawSender.toLowerCase() },
     attendees: headerAttendees(input.headers),
     startTime: start.toISOString(),
-    endTime: end.toISOString(),
-    ...(forwardedEvent?.recurrence ? { recurrence: forwardedEvent.recurrence } : {}),
+    endTime: end.toISOString()
+  };
+  return {
+    ...event,
     teamsJoinUrl,
     rawRecipient: input.rawRecipient.toLowerCase(),
-    rawSender: input.rawSender.toLowerCase()
+    rawSender: input.rawSender.toLowerCase(),
+    events: [event]
   };
 }
 
@@ -105,18 +113,6 @@ function mergeAttendees(primary: NormalizedAttendee[], fallback: NormalizedAtten
   return merged;
 }
 
-function parseHeaders(rawEmail: string): Map<string, string> {
-  const headerText = rawEmail.split(/\r?\n\r?\n/, 1)[0] ?? "";
-  const unfolded = headerText.replace(/\r?\n[ \t]+/g, " ");
-  const headers = new Map<string, string>();
-  for (const line of unfolded.split(/\r?\n/)) {
-    const index = line.indexOf(":");
-    if (index === -1) continue;
-    headers.set(line.slice(0, index).trim().toLowerCase(), line.slice(index + 1).trim());
-  }
-  return headers;
-}
-
 function firstAddress(value: string): string {
   const angle = value.match(/<([^>]+)>/);
   const candidate = angle?.[1] ?? value.split(",")[0] ?? "";
@@ -130,138 +126,4 @@ function stableHash(value: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function decodeMimeWords(value: string): string {
-  return value.replace(/=\?utf-8\?q\?([^?]+)\?=/gi, (_match, encoded: string) =>
-    encoded.replace(/_/g, " ").replace(/=([0-9a-f]{2})/gi, (_hexMatch, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
-  );
-}
-
-function parseForwardedEventDetails(body: string, subject: string, dateHeader: string): { start: Date; end: Date; recurrence?: ParsedRecurrence } | null {
-  const text = normalizeForwardedText(body);
-  const offsetMinutes = parseEmailTimezoneOffset(dateHeader);
-  const range = parseForwardedWhenRange(text, offsetMinutes);
-  if (!range) return null;
-  const recurrence = parseForwardedRecurrence(text, subject, range.byDay);
-  return {
-    start: range.start,
-    end: range.end,
-    ...(recurrence ? { recurrence } : {})
-  };
-}
-
-function normalizeForwardedText(input: string): string {
-  const decoded = decodeHtmlEntities(decodeQuotedPrintableAscii(input));
-  return decoded
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(?:div|p|tr|li|td|th)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\r/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .trim();
-}
-
-function decodeQuotedPrintableAscii(input: string): string {
-  return input.replace(/=\r?\n/g, "").replace(/=([0-9a-f]{2})/gi, (_match, hex: string) => {
-    const code = Number.parseInt(hex, 16);
-    return code === 10 || code === 13 ? "\n" : String.fromCharCode(code);
-  });
-}
-
-function decodeHtmlEntities(input: string): string {
-  return input
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number.parseInt(code, 10)));
-}
-
-function parseForwardedWhenRange(text: string, fallbackOffsetMinutes: number): { start: Date; end: Date; byDay: string } | null {
-  const whenLine = text.match(/\b(?:when|time)\s*:\s*([^\n]+)/i)?.[1] ?? text;
-  const dateParts = parseForwardedDateParts(whenLine);
-  if (!dateParts) return null;
-  const timeParts = parseForwardedTimeRange(whenLine);
-  if (!timeParts) return null;
-
-  const startMs = localDateTimeToUtcMs(dateParts, timeParts.start, fallbackOffsetMinutes);
-  let endMs = localDateTimeToUtcMs(dateParts, timeParts.end, fallbackOffsetMinutes);
-  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
-
-  return {
-    start: new Date(startMs),
-    end: new Date(endMs),
-    byDay: dayCodeForDate(dateParts)
-  };
-}
-
-function parseForwardedDateParts(value: string): { year: number; month: number; day: number } | null {
-  const monthNames = "january|february|march|april|may|june|july|august|september|october|november|december";
-  const named = value.match(new RegExp(`\\b(${monthNames})\\s+(\\d{1,2}),\\s*(\\d{4})\\b`, "i"));
-  if (named) {
-    return { year: Number(named[3]), month: monthNameToNumber(named[1]), day: Number(named[2]) };
-  }
-
-  const numeric = value.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/);
-  if (!numeric) return null;
-  const year = Number(numeric[3].length === 2 ? `20${numeric[3]}` : numeric[3]);
-  return { year, month: Number(numeric[1]), day: Number(numeric[2]) };
-}
-
-function parseForwardedTimeRange(value: string): { start: { hour: number; minute: number }; end: { hour: number; minute: number } } | null {
-  const match = value.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*(?:-|\u2013|\u2014|\bto\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
-  if (!match) return null;
-  const startMeridiem = match[3];
-  const endMeridiem = match[6] ?? startMeridiem;
-  return {
-    start: { hour: toTwentyFourHour(Number(match[1]), startMeridiem), minute: Number(match[2] ?? 0) },
-    end: { hour: toTwentyFourHour(Number(match[4]), endMeridiem), minute: Number(match[5] ?? 0) }
-  };
-}
-
-function parseForwardedRecurrence(text: string, subject: string, byDay: string): ParsedRecurrence | undefined {
-  const dayFromText = text.match(/\bevery\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i)?.[1];
-  const isWeekly = /\bweekly\b/i.test(subject) || /\b(?:occurs|recurs)\s+(?:every\s+)?week(?:ly)?\b/i.test(text) || Boolean(dayFromText);
-  if (!isWeekly) return undefined;
-  return { frequency: "weekly", interval: /\bevery\s+other\s+week\b/i.test(text) ? 2 : 1, byDay: [dayFromText ? dayNameToCode(dayFromText) : byDay] };
-}
-
-function parseEmailTimezoneOffset(value: string): number {
-  const match = value.match(/(?:^|\s)([+-])(\d{2})(\d{2})(?:\s|$)/);
-  if (!match) return 0;
-  const minutes = Number(match[2]) * 60 + Number(match[3]);
-  return match[1] === "-" ? -minutes : minutes;
-}
-
-function localDateTimeToUtcMs(date: { year: number; month: number; day: number }, time: { hour: number; minute: number }, offsetMinutes: number): number {
-  return Date.UTC(date.year, date.month - 1, date.day, time.hour, time.minute, 0, 0) - offsetMinutes * 60 * 1000;
-}
-
-function monthNameToNumber(value: string): number {
-  return ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"].indexOf(value.toLowerCase()) + 1;
-}
-
-function toTwentyFourHour(hour: number, meridiem: string): number {
-  const normalized = hour % 12;
-  return meridiem.toLowerCase() === "pm" ? normalized + 12 : normalized;
-}
-
-function dayCodeForDate(date: { year: number; month: number; day: number }): string {
-  return ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay()];
-}
-
-function dayNameToCode(value: string): string {
-  return ({ sunday: "SU", monday: "MO", tuesday: "TU", wednesday: "WE", thursday: "TH", friday: "FR", saturday: "SA" } as const)[value.toLowerCase() as "sunday"] ?? "MO";
-}
-
-function extractCalendarPart(rawEmail: string): string | null {
-  const begin = rawEmail.indexOf("BEGIN:VCALENDAR");
-  const end = rawEmail.indexOf("END:VCALENDAR");
-  if (begin === -1 || end === -1) return null;
-  return rawEmail.slice(begin, end + "END:VCALENDAR".length);
 }

@@ -1,53 +1,73 @@
+import { z } from "zod";
 import { getSettings, saveSettings } from "@minutesbot/db";
-import { AppError, parseSettings, resolveAttendeeBaseUrl, type AppSettings } from "@minutesbot/shared";
+import { AppError, parseSettings, type AppSettings } from "@minutesbot/shared";
 import type { Env } from "../env";
 
 const botImageContentTypes = new Set(["image/png", "image/jpeg"]);
-const maxBotImageBytes = 2_000_000;
+const MAX_BOT_IMAGE_BYTES = 5 * 1024 * 1024;
 
-export async function readSettings(env: Env): Promise<AppSettings> {
+const botImageInputSchema = z.object({
+  contentType: z.string(),
+  data: z.string(),
+  fileName: z.string().max(255).optional()
+});
+
+export type SettingsView = {
+  settings: AppSettings;
+  /** Presence flags only — secret values never leave the worker. */
+  secrets: {
+    aiKeyConfigured: boolean;
+    transcriptionKeyConfigured: boolean;
+    botInternalTokenConfigured: boolean;
+    sessionSecretConfigured: boolean;
+  };
+};
+
+export async function readSettings(env: Env): Promise<SettingsView> {
   const settings = await getSettings(env.DB);
   return {
-    ...settings,
-    attendee: {
-      ...settings.attendee,
-      baseUrl: resolveAttendeeBaseUrl(settings.attendee.baseUrl, env.ATTENDEE_API_BASE_URL),
-      apiKeyConfigured: Boolean(env.ATTENDEE_API_KEY) || settings.attendee.apiKeyConfigured,
-      webhookSecretConfigured: Boolean(env.ATTENDEE_WEBHOOK_SECRET) || settings.attendee.webhookSecretConfigured
+    settings: {
+      ...settings,
+      transcription: { ...settings.transcription, apiKeyConfigured: Boolean(env.TRANSCRIPTION_API_KEY ?? env.AI_API_KEY) },
+      recap: { ...settings.recap, apiKeyConfigured: Boolean(env.AI_API_KEY) }
     },
-    ai: {
-      ...settings.ai,
-      apiKeyConfigured: Boolean(env.AI_API_KEY)
+    secrets: {
+      aiKeyConfigured: Boolean(env.AI_API_KEY),
+      transcriptionKeyConfigured: Boolean(env.TRANSCRIPTION_API_KEY ?? env.AI_API_KEY),
+      botInternalTokenConfigured: Boolean(env.BOT_INTERNAL_TOKEN),
+      sessionSecretConfigured: Boolean(env.SESSION_SECRET)
     }
   };
 }
 
-export async function writeSettings(env: Env, input: unknown): Promise<AppSettings> {
+export async function writeSettings(env: Env, input: unknown): Promise<SettingsView> {
   const parsed = parseSettings(input);
-  assertApprovedProviderUrls(env, parsed);
   await saveSettings(env.DB, {
     ...parsed,
-    ai: {
-      ...parsed.ai,
-      apiKeyConfigured: false
-    }
+    transcription: { ...parsed.transcription, apiKeyConfigured: false },
+    recap: { ...parsed.recap, apiKeyConfigured: false }
   });
   return readSettings(env);
 }
 
-export async function uploadBotImage(
-  env: Env,
-  input: { contentType: string; data: string; fileName?: string }
-): Promise<AppSettings> {
+export async function uploadBotImage(env: Env, rawInput: unknown): Promise<SettingsView> {
+  const parsedInput = botImageInputSchema.safeParse(rawInput);
+  if (!parsedInput.success) {
+    throw new AppError("INVALID_BOT_IMAGE", "Bot image upload payload is invalid.");
+  }
+  const input = parsedInput.data;
   if (!botImageContentTypes.has(input.contentType)) {
     throw new AppError("INVALID_BOT_IMAGE", "Bot image must be a PNG or JPEG.");
   }
 
   const extension = input.contentType === "image/png" ? "png" : "jpg";
-  const r2Key = `settings/attendee-bot-image.${extension}`;
+  const r2Key = `settings/meeting-bot-image.${extension}`;
   const bytes = base64ToBytes(input.data);
-  if (bytes.byteLength > maxBotImageBytes) {
-    throw new AppError("BOT_IMAGE_TOO_LARGE", "Bot image must be 2 MB or smaller after compression.", 413);
+  if (bytes.byteLength > MAX_BOT_IMAGE_BYTES) {
+    throw new AppError("INVALID_BOT_IMAGE", "Bot image must be 5 MB or smaller.", 413);
+  }
+  if (!matchesImageSignature(bytes, input.contentType)) {
+    throw new AppError("INVALID_BOT_IMAGE", "Bot image bytes do not match the declared file type.");
   }
   await env.ARTIFACTS.put(r2Key, bytes, {
     httpMetadata: { contentType: input.contentType },
@@ -57,9 +77,9 @@ export async function uploadBotImage(
   const current = await getSettings(env.DB);
   await saveSettings(env.DB, {
     ...current,
-    attendee: {
-      ...current.attendee,
-      botImage: {
+    bot: {
+      ...current.bot,
+      image: {
         r2Key,
         contentType: input.contentType as "image/png" | "image/jpeg",
         fileName: input.fileName,
@@ -68,6 +88,16 @@ export async function uploadBotImage(
     }
   });
   return readSettings(env);
+}
+
+function matchesImageSignature(bytes: Uint8Array, contentType: string): boolean {
+  if (contentType === "image/png") {
+    return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  }
+  if (contentType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  return false;
 }
 
 function base64ToBytes(value: string): Uint8Array {
@@ -82,53 +112,4 @@ function base64ToBytes(value: string): Uint8Array {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
-}
-
-function assertApprovedProviderUrls(env: Env, settings: AppSettings): void {
-  assertApprovedUrl("Attendee base URL", settings.attendee.baseUrl, [
-    "https://app.attendee.dev",
-    "https://attendee.wgsglobal.app",
-    "https://attendee.wgs.bot",
-    env.ATTENDEE_API_BASE_URL,
-    ...(env.ATTENDEE_BASE_URL_ALLOWLIST ?? "").split(",")
-  ]);
-  if (settings.ai.baseUrl) {
-    assertApprovedUrl("AI base URL", settings.ai.baseUrl, [
-      "https://api.openai.com",
-      "https://api.openai.com/v1",
-      "https://openrouter.ai",
-      "https://openrouter.ai/api/v1",
-      ...(env.AI_BASE_URL_ALLOWLIST ?? "").split(",")
-    ]);
-  }
-}
-
-function assertApprovedUrl(label: string, value: string, allowedValues: Array<string | undefined>): void {
-  const normalized = normalizeProviderUrl(value);
-  const allowed = new Set(
-    allowedValues
-      .map((item) => normalizeProviderUrl(item ?? ""))
-      .filter((item): item is URL => Boolean(item))
-      .map(providerKey)
-  );
-  if (!normalized || normalized.protocol !== "https:" || isBlockedProviderHost(normalized.hostname) || !allowed.has(providerKey(normalized))) {
-    throw new AppError("UNAPPROVED_PROVIDER_URL", `${label} is not in the approved provider allowlist.`, 400);
-  }
-}
-
-function normalizeProviderUrl(value: string): URL | null {
-  try {
-    return new URL(value.trim().replace(/\/+$/, ""));
-  } catch {
-    return null;
-  }
-}
-
-function providerKey(url: URL): string {
-  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
-}
-
-function isBlockedProviderHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return host === "localhost" || host === "0.0.0.0" || host === "127.0.0.1" || host === "::1" || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
 }

@@ -11,6 +11,7 @@
     "@minutesbot/db": "workspace:*",
     "@minutesbot/invite-parser": "workspace:*",
     "@minutesbot/recipient-policy": "workspace:*",
-    "@minutesbot/shared": "workspace:*"
+    "@minutesbot/shared": "workspace:*",
+    "@minutesbot/scheduler": "workspace:*"
   }
 }

@@ -12,7 +12,7 @@ describe("AuthGate API token storage", () => {
   it("makes the stored admin token available before route effects run", async () => {
     const storage = new Map([["minutesbot.adminToken", "stored-token"]]);
     vi.stubGlobal("window", {
-      sessionStorage: {
+      localStorage: {
         getItem: (key: string) => storage.get(key) ?? null
       }
     });

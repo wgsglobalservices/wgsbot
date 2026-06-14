@@ -1,8 +1,14 @@
-import { AppError } from "@minutesbot/shared";
+import { AppError, timingSafeEqualString } from "@minutesbot/shared";
 import type { Context, Next } from "hono";
 import type { Env } from "../env";
+import { isCloudflareAccessConfigured, requireCloudflareAccess } from "./cloudflareAccess";
 
-export function createAuthMiddleware() {
+type AuthMiddlewareOptions = {
+  fetchAccessJwks?: typeof fetch;
+  now?: () => number;
+};
+
+export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
   return async function authMiddleware(c: Pick<Context<{ Bindings: Env }>, "env" | "req">, next: Next): Promise<void> {
     const env = (c.env ?? {}) as Env;
     if (isPublicApiPath(c.req.path)) {
@@ -10,11 +16,26 @@ export function createAuthMiddleware() {
       return;
     }
 
+    if (isCloudflareAccessConfigured(env)) {
+      await requireCloudflareAccess(c.req.raw, env, { fetcher: options.fetchAccessJwks, now: options.now });
+      await next();
+      return;
+    }
+
+    if (requiresCloudflareAccess(env)) {
+      throw new AppError(
+        "CLOUDFLARE_ACCESS_REQUIRED",
+        "Configure Cloudflare Access before exposing production admin routes.",
+        503
+      );
+    }
+
     if (!env.SESSION_SECRET) {
       throw new AppError("AUTH_NOT_CONFIGURED", "Configure SESSION_SECRET before exposing admin routes.", 503);
     }
 
-    if (!(await constantTimeEqual(readBearerToken(c.req.raw), env.SESSION_SECRET))) {
+    const token = readBearerToken(c.req.raw);
+    if (!token || !timingSafeEqualString(token, env.SESSION_SECRET)) {
       throw new AppError("UNAUTHORIZED", "Enter the admin token to access minutesbot.", 401);
     }
 
@@ -26,28 +47,28 @@ export function isPublicApiPath(path: string): boolean {
   return (
     path === "/api/health" ||
     path === "/api/health/" ||
-    path === "/api/webhooks/attendee" ||
-    path === "/api/webhooks/attendee/" ||
-    /^\/api\/artifacts\/[^/]+\/transcript\.txt\/?$/.test(path)
+    path === "/api/ready" ||
+    path === "/api/ready/" ||
+    path === "/api/webhooks/bot" ||
+    path === "/api/webhooks/bot/"
   );
 }
 
 export const adminTokenAuthMiddleware = createAuthMiddleware();
+
+// Fail closed: any named deployed environment ("production", "staging", a
+// typo like "prod") requires Cloudflare Access unless token auth is
+// explicitly allowed. Only unset/development/test environments may fall back
+// to the static admin token implicitly.
+function requiresCloudflareAccess(env: Pick<Env, "ENVIRONMENT" | "ALLOW_ADMIN_TOKEN_AUTH">): boolean {
+  if (env.ALLOW_ADMIN_TOKEN_AUTH === "true") return false;
+  const environment = (env.ENVIRONMENT ?? "").trim().toLowerCase();
+  return environment !== "" && environment !== "development" && environment !== "test" && environment !== "local";
+}
 
 function readBearerToken(request: Request): string | null {
   const header = request.headers.get("authorization") ?? "";
   const [scheme, token] = header.split(/\s+/, 2);
   if (scheme.toLowerCase() !== "bearer" || !token) return null;
   return token;
-}
-
-async function constantTimeEqual(left: string | null, right: string): Promise<boolean> {
-  if (!left) return false;
-  const leftBytes = new TextEncoder().encode(left);
-  const rightBytes = new TextEncoder().encode(right);
-  if (leftBytes.length !== rightBytes.length) return false;
-  let diff = 0;
-  for (let index = 0; index < leftBytes.length; index += 1) diff |= leftBytes[index] ^ rightBytes[index];
-  await crypto.subtle.digest("SHA-256", leftBytes);
-  return diff === 0;
 }

@@ -1,0 +1,19 @@
+{
+  "name": "@minutesbot/bot-container",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@minutesbot/shared": "workspace:*",
+    "@cloudflare/containers": "^0.3.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260421.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.14.4"
+  }
+}

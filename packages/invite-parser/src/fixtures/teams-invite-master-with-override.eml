@@ -1,0 +1,56 @@
+From: Alice Organizer <alice@company.com>
+To: minutesbot <notetaker@minutes.bot>
+Subject: Weekly project sync
+Content-Type: multipart/mixed; boundary="b"
+
+--b
+Content-Type: text/plain
+
+Join Teams: https://teams.microsoft.com/l/meetup-join/19%3ameeting_recurring%40thread.v2/0?context=%7b%7d
+--b
+Content-Type: text/calendar; method=REQUEST
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T020000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:recurring-123
+SUMMARY:Weekly project sync
+DTSTART;TZID=Eastern Standard Time:20260616T100000
+DTEND;TZID=Eastern Standard Time:20260616T103000
+RRULE:FREQ=WEEKLY;BYDAY=TU,TH;INTERVAL=1
+EXDATE;TZID=Eastern Standard Time:20260707T100000
+SEQUENCE:0
+ORGANIZER;CN=Alice Organizer:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:Microsoft Teams meeting\nhttps://teams.microsoft.com/l/meetup-join/19%3ameeting_recurring%40thread.v2/0?context=%7b%7d
+LOCATION:Microsoft Teams Meeting
+END:VEVENT
+BEGIN:VEVENT
+UID:recurring-123
+RECURRENCE-ID;TZID=Eastern Standard Time:20260714T100000
+SUMMARY:Weekly project sync (moved)
+DTSTART;TZID=Eastern Standard Time:20260714T130000
+DTEND;TZID=Eastern Standard Time:20260714T133000
+SEQUENCE:1
+ORGANIZER;CN=Alice Organizer:mailto:alice@company.com
+ATTENDEE;CN=Alex;ROLE=REQ-PARTICIPANT:mailto:alex@company.com
+DESCRIPTION:Microsoft Teams meeting\nhttps://teams.microsoft.com/l/meetup-join/19%3ameeting_recurring%40thread.v2/0?context=%7b%7d
+LOCATION:Microsoft Teams Meeting
+END:VEVENT
+END:VCALENDAR
+--b--

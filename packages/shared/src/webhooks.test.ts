@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { attendeeWebhookUrl } from "./webhooks";
+import { botWebhookUrl } from "./webhooks";
 
-describe("attendeeWebhookUrl", () => {
-  it("uses the dedicated Attendee webhook base URL when configured", () => {
+describe("botWebhookUrl", () => {
+  it("uses the dedicated meeting bot webhook base URL when configured", () => {
     expect(
-      attendeeWebhookUrl({
-        API_BASE_URL: "https://minutesbot-api.wgsglobal.app",
-        ATTENDEE_WEBHOOK_BASE_URL: "https://minutesbot-webhook.wgsglobal.app"
+      botWebhookUrl({
+        API_BASE_URL: "https://minutesbot-api.example.com",
+        BOT_WEBHOOK_BASE_URL: "https://minutesbot-webhook.example.com"
       })
-    ).toBe("https://minutesbot-webhook.wgsglobal.app/api/webhooks/attendee");
+    ).toBe("https://minutesbot-webhook.example.com/api/webhooks/bot");
   });
 
   it("falls back to API_BASE_URL for existing deployments", () => {
-    expect(attendeeWebhookUrl({ API_BASE_URL: "https://api.company.com/" })).toBe("https://api.company.com/api/webhooks/attendee");
+    expect(botWebhookUrl({ API_BASE_URL: "https://meeting.minutes.bot/" })).toBe("https://meeting.minutes.bot/api/webhooks/bot");
   });
 });

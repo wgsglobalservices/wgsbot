@@ -4,7 +4,7 @@ import type { ExcludedRecipient, Recipient, RecipientPolicy } from "./types";
 export type SummaryRecipientInput = {
   organizer?: Recipient | null;
   attendees: Recipient[];
-  primaryDomain: string;
+  primaryDomain?: string;
   allowedDomains: string[];
   allowSubdomains: boolean;
 };
@@ -12,7 +12,7 @@ export type SummaryRecipientInput = {
 export function buildSummaryRecipients(input: SummaryRecipientInput): { included: Recipient[]; excluded: ExcludedRecipient[] } {
   const recipients = dedupeRecipients([...(input.organizer ? [input.organizer] : []), ...input.attendees]);
   return filterSummaryRecipients(recipients, {
-    allowedDomains: Array.from(new Set([input.primaryDomain, ...input.allowedDomains].map((domain) => domain.trim().toLowerCase()).filter(Boolean))),
+    allowedDomains: Array.from(new Set([...(input.primaryDomain ? [input.primaryDomain] : []), ...input.allowedDomains].map((domain) => domain.trim().toLowerCase()).filter(Boolean))),
     allowSubdomains: input.allowSubdomains,
     sendToExternalAttendees: false
   });

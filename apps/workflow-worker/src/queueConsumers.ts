@@ -1,54 +1,64 @@
-import { createAuditLog, getMeeting, getSettings } from "@minutesbot/db";
-import { daysAgoIso } from "@minutesbot/shared";
-import type { WorkflowEnv } from "./env";
-import { deleteAttendeeData, generateAndStoreTranscript } from "./transcriptWorkflow";
-import { generateAndSendSingleRecipientSummary, generateAndSendSummary } from "./summaryWorkflow";
-import { handleCreateBotQueueMessage } from "./botCreation";
+import { createJob, listDueJobs } from "@minutesbot/db";
+import { nowIso } from "@minutesbot/shared";
+import type { QueueMessageBody, WorkflowEnv } from "./env";
+import { runJob } from "./jobRunner";
 
-export async function handleQueueBatch(batch: MessageBatch<unknown>, env: WorkflowEnv): Promise<void> {
+type QueueMessage = {
+  body: unknown;
+  ack(): void;
+  retry(options?: { delaySeconds?: number }): void;
+};
+
+type QueueBatch = { messages: readonly QueueMessage[] };
+
+/**
+ * Single consumer for the jobs queue. Messages are delivery hints: the jobs
+ * table is the source of truth, so any message can be acked safely — the
+ * cron sweeper re-enqueues anything still due.
+ */
+export async function handleQueueBatch(batch: QueueBatch, env: WorkflowEnv): Promise<void> {
   for (const message of batch.messages) {
-    const body = message.body as { type?: string; meetingId?: string; botId?: string; attempt?: number; force?: boolean; recipientEmail?: string };
-    if (body.type === "create_bot" && body.meetingId) await handleCreateBotQueueMessage(env, body.meetingId, { force: body.force });
-    if ((body.type === "generate_transcript" || body.type === "fetch_transcript") && body.meetingId) {
-      await generateAndStoreTranscript(env, body.meetingId, body.botId, undefined, { attempt: body.attempt });
+    try {
+      await handleQueueMessage(message.body as QueueMessageBody, env);
+      message.ack();
+    } catch (error) {
+      console.error("queue message failed", { error: error instanceof Error ? error.message : String(error) });
+      message.retry({ delaySeconds: 30 });
     }
-    if (body.type === "summarize" && body.meetingId) await generateAndSendSummary(env, body.meetingId);
-    if (body.type === "send_uploaded_transcript_recap" && body.meetingId && body.recipientEmail) {
-      await generateAndSendSingleRecipientSummary(env, {
-        meetingId: body.meetingId,
-        recipientEmail: body.recipientEmail,
-        auditEmailType: "summary_test"
+  }
+}
+
+async function handleQueueMessage(body: QueueMessageBody, env: WorkflowEnv): Promise<void> {
+  if (!body || typeof body !== "object" || !("type" in body)) return;
+  switch (body.type) {
+    case "run_job":
+      await runJob(env, body.jobId);
+      return;
+    case "sweep_due_jobs":
+      await sweepDueJobs(env);
+      return;
+    case "enqueue_cancel_bot": {
+      const job = await createJob(env.DB, {
+        type: "cancel_bot",
+        idempotencyKey: `cancel_bot:${body.occurrenceId}:${nowIso().slice(0, 16)}`,
+        ownerType: "occurrence",
+        ownerId: body.occurrenceId,
+        nextRunAt: nowIso(),
+        payload: { occurrenceId: body.occurrenceId, reason: body.reason ?? "calendar_cancel" }
       });
+      if (job) await env.JOBS_QUEUE.send({ type: "run_job", jobId: job.id });
+      return;
     }
-    if (body.type === "delete_attendee_data" && body.meetingId) await handleDeleteAttendeeData(env, body.meetingId);
-    message.ack();
+    default:
+      return;
   }
 }
 
-async function handleDeleteAttendeeData(env: WorkflowEnv, meetingId: string): Promise<void> {
-  const meeting = await getMeeting(env.DB, meetingId);
-  if (!meeting?.attendee_bot_id) return;
-  const settings = await getSettings(env.DB);
-  await deleteAttendeeData(env, settings, meeting.attendee_bot_id);
-  await createAuditLog(env.DB, { eventType: "attendee.data_deleted", resourceType: "meeting", resourceId: meetingId });
-}
-
-export async function cleanupOldArtifacts(env: WorkflowEnv): Promise<void> {
-  const settings = await getSettings(env.DB);
-  const thresholds = {
-    raw_invite: daysAgoIso(settings.retention.rawInviteDays),
-    recording: daysAgoIso(settings.retention.transcriptDays),
-    transcript_text: daysAgoIso(settings.retention.transcriptDays),
-    transcript_json: daysAgoIso(settings.retention.transcriptDays),
-    summary: daysAgoIso(settings.retention.summaryDays)
-  };
-  for (const [type, threshold] of Object.entries(thresholds)) {
-    const result = await env.DB.prepare("SELECT id, r2_key FROM artifacts WHERE type = ? AND created_at < ? AND deleted_at IS NULL").bind(type, threshold).all<{ id: string; r2_key: string }>();
-    for (const artifact of result.results ?? []) {
-      await env.ARTIFACTS.delete(artifact.r2_key);
-      await env.DB.prepare("UPDATE artifacts SET deleted_at = ? WHERE id = ?").bind(new Date().toISOString(), artifact.id).run();
-    }
+/** Enqueues run_job messages for everything due (also recovers expired leases). */
+export async function sweepDueJobs(env: WorkflowEnv, limit = 50): Promise<number> {
+  const due = await listDueJobs(env.DB, limit);
+  for (const job of due) {
+    await env.JOBS_QUEUE.send({ type: "run_job", jobId: job.id });
   }
-  await env.DB.prepare("DELETE FROM audit_logs WHERE created_at < ?").bind(daysAgoIso(settings.retention.auditLogDays)).run();
-  await createAuditLog(env.DB, { eventType: "cleanup.completed", resourceType: "system", resourceId: "retention" });
+  return due.length;
 }

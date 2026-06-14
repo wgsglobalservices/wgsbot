@@ -1,10 +1,5 @@
-export * from "./classifyMeeting";
-export * from "./classifyRecapDepth";
-export * from "./chunkTranscript";
-export * from "./meetingTypes";
-export * from "./promptTemplates";
-export * from "./providers/openAiCompatible";
-export * from "./providers/openRouterTranscription";
-export * from "./providers/workersAi";
-export * from "./summarizeTranscript";
-export * from "./types";
+export { recapDocumentSchema, type RecapDocument } from "./schema";
+export { RecapError } from "./recapError";
+export { generateRecap, type RecapConfig, type RecapMeetingContext, type RecapGenerationResult } from "./generateRecap";
+export { recapSystemPrompt, buildRecapUserPrompt, buildRepairPrompt } from "./prompts";
+export { chunkTranscript } from "./chunkTranscript";

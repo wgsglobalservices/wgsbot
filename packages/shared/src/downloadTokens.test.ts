@@ -11,7 +11,7 @@ function encodePayload(payload: unknown): string {
 
 describe("transcript download tokens", () => {
   it("round-trips a valid token", async () => {
-    const payload = { meetingId: "mtg_1", artifactType: "transcript_text" as const, expiresAt: Date.now() + 60_000 };
+    const payload = { occurrenceId: "occ_1", artifactType: "transcript_text" as const, expiresAt: Date.now() + 60_000 };
     const token = await createTranscriptDownloadToken(payload, secret);
 
     await expect(verifyTranscriptDownloadToken(token, secret)).resolves.toEqual(payload);
@@ -19,7 +19,7 @@ describe("transcript download tokens", () => {
 
   it("rejects expired tokens", async () => {
     const token = await createTranscriptDownloadToken(
-      { meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() - 1_000 },
+      { occurrenceId: "occ_1", artifactType: "transcript_text", expiresAt: Date.now() - 1_000 },
       secret
     );
 
@@ -28,18 +28,18 @@ describe("transcript download tokens", () => {
 
   it("rejects tampered payloads", async () => {
     const token = await createTranscriptDownloadToken(
-      { meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 },
+      { occurrenceId: "occ_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 },
       secret
     );
     const [, signature] = token.split(".");
-    const forgedBody = encodePayload({ meetingId: "mtg_2", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 });
+    const forgedBody = encodePayload({ occurrenceId: "occ_2", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 });
 
     await expect(verifyTranscriptDownloadToken(`${forgedBody}.${signature}`, secret)).resolves.toBeNull();
   });
 
   it("rejects tokens signed with a different secret", async () => {
     const token = await createTranscriptDownloadToken(
-      { meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 },
+      { occurrenceId: "occ_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 },
       "other-secret"
     );
 
@@ -50,10 +50,10 @@ describe("transcript download tokens", () => {
     // A string expiresAt previously verified forever: !"not-a-number" is
     // false and NaN comparisons never expire.
     for (const expiresAt of ["not-a-number", null, Number.POSITIVE_INFINITY]) {
-      const forged = { meetingId: "mtg_1", artifactType: "transcript_text", expiresAt };
+      const forged = { occurrenceId: "occ_1", artifactType: "transcript_text", expiresAt };
       const body = encodePayload(forged);
       const reference = await createTranscriptDownloadToken(
-        { meetingId: "mtg_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 },
+        { occurrenceId: "occ_1", artifactType: "transcript_text", expiresAt: Date.now() + 60_000 },
         secret
       );
       void reference;

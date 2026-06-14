@@ -1,133 +1,221 @@
-import type { MeetingStatus, SummaryStatus, TranscriptStatus } from "@minutesbot/shared";
+import type {
+  ArtifactKind,
+  ArtifactOwnerType,
+  AuditSeverity,
+  BotSessionState,
+  CalendarEventStatus,
+  DeliveryStatus,
+  InboundMessageStatus,
+  JobStatus,
+  JobType,
+  OccurrenceStatus,
+  RecapStatus,
+  TranscriptStatus
+} from "@minutesbot/shared";
 
 export type SettingRow = { key: string; value: string; updated_at: string };
 
-export type MeetingRow = {
+export type AllowedDomainRow = {
   id: string;
-  calendar_uid?: string | null;
-  subject?: string | null;
-  organizer_email?: string | null;
-  organizer_name?: string | null;
-  teams_join_url?: string | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  time_zone?: string | null;
-  status: MeetingStatus;
-  attendee_bot_id?: string | null;
-  attendee_bot_state?: string | null;
-  attendee_transcription_state?: string | null;
-  attendee_recording_state?: string | null;
-  attendee_last_event_at?: string | null;
-  transcript_status?: TranscriptStatus | null;
-  summary_status?: SummaryStatus | null;
-  latest_error?: string | null;
-  meeting_type?: string | null;
-  source_recipient?: string | null;
-  series_uid?: string | null;
-  occurrence_index?: number | null;
-  recurring?: number | null;
+  domain: string;
+  allow_subdomains: number;
+  enabled: number;
+  created_at: string;
+};
+
+export type InboundMessageRow = {
+  id: string;
+  message_id: string | null;
+  content_hash: string;
+  from_email: string | null;
+  to_email: string | null;
+  subject: string | null;
+  raw_r2_key: string;
+  parse_status: InboundMessageStatus;
+  rejection_reason: string | null;
+  ics_uid: string | null;
+  ics_method: string | null;
+  ics_sequence: number | null;
+  recurrence_id: string | null;
+  event_id: string | null;
+  created_at: string;
+  processed_at: string | null;
+};
+
+export type CalendarEventRow = {
+  id: string;
+  ics_uid: string;
+  sequence: number;
+  organizer_email: string | null;
+  organizer_name: string | null;
+  subject: string | null;
+  teams_join_url: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  time_zone: string | null;
+  start_wall_clock: string | null;
+  rrule: string | null;
+  /** JSON array of UTC ISO strings. */
+  rdates: string | null;
+  /** JSON array of UTC ISO strings. */
+  exdates: string | null;
+  is_recurring: number;
+  status: CalendarEventStatus;
+  expanded_until: string | null;
+  last_inbound_message_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type MeetingSeriesRow = {
-  series_uid: string;
-  subject: string;
-  organizer_email: string;
-  organizer_name?: string | null;
-  teams_join_url?: string | null;
-  first_start_time: string;
-  first_end_time: string;
-  time_zone?: string | null;
-  recurrence_json: string;
-  attendees_json: string;
-  meeting_type?: string | null;
-  source_recipient?: string | null;
-  raw_invite_r2_key?: string | null;
-  raw_invite_size_bytes?: number | null;
-  status: "ACTIVE" | "CANCELLED";
-  expanded_until?: string | null;
+export type OccurrenceRow = {
+  id: string;
+  event_id: string;
+  occurrence_key: string;
+  recurrence_id: string | null;
+  sequence: number;
+  is_override: number;
+  subject: string | null;
+  teams_join_url: string | null;
+  start_time: string;
+  end_time: string;
+  status: OccurrenceStatus;
+  scheduled_join_time: string | null;
+  latest_bot_session_id: string | null;
+  join_attempts: number;
+  last_error: string | null;
+  canceled_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type AttendeeRow = {
   id: string;
-  meeting_id: string;
+  event_id: string;
+  occurrence_id: string | null;
   email: string;
-  name?: string | null;
-  role?: string | null;
-  domain?: string | null;
-  summary_eligible: number;
-  exclusion_reason?: string | null;
+  name: string | null;
+  role: string | null;
+  domain: string | null;
+  is_external: number;
+  recipient_eligible: number;
+  exclusion_reason: string | null;
   created_at: string;
+};
+
+export type BotSessionRow = {
+  id: string;
+  occurrence_id: string;
+  runtime_bot_id: string | null;
+  state: BotSessionState;
+  is_active: number;
+  join_attempt: number;
+  last_heartbeat_at: string | null;
+  failure_stage: string | null;
+  failure_reason: string | null;
+  recording_r2_key: string | null;
+  started_at: string | null;
+  stopped_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BotEventRow = {
+  id: string;
+  bot_session_id: string;
+  event_type: string;
+  state: string | null;
+  payload_hash: string | null;
+  payload: string | null;
+  payload_r2_key: string | null;
+  idempotency_key: string | null;
+  received_at: string;
 };
 
 export type ArtifactRow = {
   id: string;
-  meeting_id: string;
-  type: string;
+  owner_type: ArtifactOwnerType;
+  owner_id: string;
+  kind: ArtifactKind;
   r2_key: string;
-  content_type?: string | null;
-  size_bytes?: number | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
   created_at: string;
-  deleted_at?: string | null;
+  expires_at: string | null;
+  deleted_at: string | null;
 };
 
-export type AuditLogRow = {
+export type TranscriptRow = {
   id: string;
-  actor_email?: string | null;
-  event_type: string;
-  resource_type?: string | null;
-  resource_id?: string | null;
-  metadata?: string | null;
+  occurrence_id: string;
+  status: TranscriptStatus;
+  provider: string | null;
+  model: string | null;
+  language: string | null;
+  duration_seconds: number | null;
+  json_artifact_id: string | null;
+  text_artifact_id: string | null;
+  attempts: number;
+  last_error: string | null;
   created_at: string;
+  updated_at: string;
 };
 
-export type WebhookEventRow = {
+export type RecapRow = {
   id: string;
-  idempotency_key?: string | null;
-  meeting_id?: string | null;
-  attendee_bot_id?: string | null;
-  trigger: string;
-  event_type?: string | null;
-  event_sub_type?: string | null;
-  payload: string;
-  processed_at?: string | null;
+  occurrence_id: string;
+  status: RecapStatus;
+  provider: string | null;
+  model: string | null;
+  json_artifact_id: string | null;
+  html_artifact_id: string | null;
+  text_artifact_id: string | null;
+  attempts: number;
+  last_error: string | null;
   created_at: string;
-};
-
-export type TranscriptSegmentRow = {
-  id: string;
-  meeting_id: string;
-  attendee_bot_id?: string | null;
-  speaker_name?: string | null;
-  speaker_uuid?: string | null;
-  speaker_user_uuid?: string | null;
-  timestamp_ms?: number | null;
-  duration_ms?: number | null;
-  text: string;
-  source: string;
-  created_at: string;
-};
-
-export type SummaryRow = {
-  id: string;
-  meeting_id: string;
-  r2_key?: string | null;
-  summary_json: string;
-  model?: string | null;
-  created_at: string;
+  updated_at: string;
 };
 
 export type EmailDeliveryRow = {
   id: string;
-  meeting_id: string;
+  recap_id: string;
+  occurrence_id: string;
   recipient_email: string;
-  type: string;
-  status: string;
-  provider_message_id?: string | null;
-  failure_reason?: string | null;
+  recipient_domain: string;
+  status: DeliveryStatus;
+  provider_message_id: string | null;
+  error: string | null;
   created_at: string;
-  sent_at?: string | null;
+  sent_at: string | null;
+};
+
+export type JobRow = {
+  id: string;
+  type: JobType;
+  idempotency_key: string;
+  owner_type: string | null;
+  owner_id: string | null;
+  status: JobStatus;
+  attempts: number;
+  max_attempts: number;
+  next_run_at: string;
+  lease_id: string | null;
+  lease_expires_at: string | null;
+  /** Small JSON payload — metadata only, never transcript/summary content. */
+  payload: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuditLogRow = {
+  id: string;
+  actor_email: string | null;
+  event_type: string;
+  severity: AuditSeverity;
+  resource_type: string | null;
+  resource_id: string | null;
+  message: string | null;
+  metadata: string | null;
+  created_at: string;
 };

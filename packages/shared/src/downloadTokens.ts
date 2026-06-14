@@ -1,6 +1,6 @@
 export type TranscriptDownloadTokenPayload = {
-  meetingId: string;
-  artifactType: "transcript_text";
+  occurrenceId: string;
+  artifactType: "transcript_text" | "recap_html";
   expiresAt: number;
 };
 
@@ -19,8 +19,8 @@ export async function verifyTranscriptDownloadToken(token: string, secret: strin
     const parsed = JSON.parse(base64UrlDecode(body)) as Partial<TranscriptDownloadTokenPayload>;
     // Strict type checks: a malformed payload (e.g. a string expiresAt) must
     // not verify — NaN comparisons would otherwise never expire the token.
-    if (parsed.artifactType !== "transcript_text") return null;
-    if (typeof parsed.meetingId !== "string" || !parsed.meetingId) return null;
+    if (parsed.artifactType !== "transcript_text" && parsed.artifactType !== "recap_html") return null;
+    if (typeof parsed.occurrenceId !== "string" || !parsed.occurrenceId) return null;
     if (typeof parsed.expiresAt !== "number" || !Number.isFinite(parsed.expiresAt)) return null;
     if (parsed.expiresAt < Date.now()) return null;
     return parsed as TranscriptDownloadTokenPayload;

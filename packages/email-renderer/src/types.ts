@@ -1,26 +1,18 @@
-import type { MeetingRecapType, MeetingSummary, RecapDepth } from "@minutesbot/summary-engine";
-import type { RecapSectionKey } from "@minutesbot/shared";
+import type { RecapDocument } from "@minutesbot/summary-engine";
 
-export type SummaryEmailSummary = Partial<Pick<MeetingSummary, "executiveRecap" | "meetingNotes" | "followUpTasks">> &
-  Omit<MeetingSummary, "meetingType" | "recapDepth" | "executiveRecap" | "meetingNotes" | "followUpTasks"> & {
-  meetingType?: MeetingRecapType;
-  recapDepth?: RecapDepth;
-};
-
-export type SummaryEmailInput = {
+export type RecapEmailInput = {
   subject: string;
-  date?: string;
+  /** ISO start of the occurrence, rendered in timeZone. */
+  startTime?: string;
   /** IANA time zone for rendering meeting times; defaults to UTC. */
   timeZone?: string;
-  summary: SummaryEmailSummary;
-  transcriptDownloadUrl?: string;
-  transcriptDownloadExpirationHours?: number;
+  recap: RecapDocument;
+  subjectPrefix?: string;
+  introText?: string;
+  /** Attendees excluded from delivery by policy, shown for transparency. */
   excludedRecipients?: string[];
-  recap?: {
-    subjectPrefix?: string;
-    introText?: string;
-    sections?: Array<{ key: RecapSectionKey; label: string; enabled: boolean }>;
-  };
+  /** Access-controlled admin link to the occurrence; never a raw artifact URL. */
+  adminUrl?: string;
 };
 
 export type RenderedEmail = {
