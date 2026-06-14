@@ -4,7 +4,7 @@
   // which creates the resources and patches the ids/domains in place).
   // The Cloudflare account is selected via the CLOUDFLARE_ACCOUNT_ID env var
   // or `wrangler login`; account ids are intentionally not checked in.
-  "name": "wgsbot",
+  "name": "wgsbot-notetaker",
   "main": "apps/api-worker/src/index.ts",
   "assets": {
     "directory": "./apps/web/dist",
@@ -49,7 +49,7 @@
     {
       "binding": "DB",
       "database_name": "minutesbot",
-      "database_id": "<D1_DATABASE_ID>"
+      "database_id": "7ab56d3f-c56d-4530-aa57-555a317511d3"
     }
   ],
   "r2_buckets": [

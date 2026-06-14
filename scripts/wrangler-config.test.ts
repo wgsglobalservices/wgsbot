@@ -32,6 +32,10 @@ function readConfig(path: string): { config: WranglerConfig; text: string } {
 describe("root wrangler config", () => {
   const { config, text } = readConfig("wrangler.jsonc");
 
+  it("uses the production Worker that already owns the jobs queue consumer", () => {
+    expect(config.name).toBe("wgsbot-notetaker");
+  });
+
   it("binds D1, R2, the jobs queue producer, assets, and send_email", () => {
     expect(config.d1_databases).toEqual([
       expect.objectContaining({ binding: "DB", database_name: "minutesbot", database_id: expect.any(String) })
